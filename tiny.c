@@ -6,26 +6,55 @@
 
 #define C_FILE_EXTENSION ".c"
 
+typedef enum {
+	TOK_INT,
+	TOK_MAIN,
+	TOK_LPAR,
+	TOK_VOID,
+	TOK_RPAR,
+	TOK_LBRACE,
+	TOK_RETURN,
+	TOK_TWO,
+	TOK_SEMICOLON,
+	TOK_RBRACE	
+} token_kind;
+
+const char * token_names[] = {
+	[TOK_INT], 	= "int",
+	[TOK_MAIN], 	= "return",
+	[TOK_LPAR], 	= "(",
+	[TOK_VOID], 	= "void",
+	[TOK_RPAR], 	= ")",
+	[TOK_LBRACE], 	= "{",
+	[TOK_RETURN], 	= "return",
+	[TOK_TWO], 	= "2",
+	[TOK_SEMICOLON],= ";",
+	[TOK_RBRACE] 	= "}"	
+};
+
 void display_help() {
 	// TODO
 	return;
 }
 
-size_t trim_leading_whitespace(char ** s, char ** tokens) {
-	while (isspace((unsigned char)**s)) {
-		(*s)++;
+int tokenize(FILE* f, token_kind ** out, size_t * count) {
+	if (f == NULL || out == NULL || count == NULL) {
+		return 1;
 	}
-	return 0;
-}
 
-size_t tokenize(FILE* source, char** tokens) {
-	char *line = NULL;
-	size_t len = 0;
-	ssize_t nread;
-	while ((nread = getline(&line, &len, source)) != -1) {
-		trim_leading_whitespace(&line, tokens);
+	fseek(f, 0, SEEK_END);
+	long size = ftell(f);
+	rewind(f);
+	char * src = malloc(size + 1);
+	fread(src, 1, size, f);
+	src[size] = '\0';
+	
+	char * tok = strtok(line, " \t\n");
+	while (tok != NULL) {
+
 	}
-	free(line);
+
+	free(src);
 	return 0;
 }
 
