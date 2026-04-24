@@ -15,3 +15,8 @@ typedef enum {
 } token_kind;
 
 extern const char *token_names[];
+
+struct token_list;
+
+int str_to_token(const char *str, token_kind *token);
+int tokenize(const char *str, struct token_list *tokens);

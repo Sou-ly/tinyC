@@ -1,9 +1,9 @@
 #pragma once
 
 #include <stdlib.h>
-#include "token.h"
+#include "lexer/token.h"
 
-typedef struct {
+typedef struct token_list {
 	token_kind *items;
 	size_t count;
 	size_t capacity;

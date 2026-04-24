@@ -2,7 +2,6 @@
 
 #include <stdlib.h>
 #include <stdbool.h>
-#include "list.h"
 
 typedef struct {
 	char *data;
@@ -31,6 +30,3 @@ bool str_contains(str s, const char *needle);
 // modification (returns new str, originals untouched)
 str str_substr(str s, size_t start, size_t len);
 str str_trim(str s);
-
-// splitting
-size_t str_split(str s, const char *delimiters, string_list *out);

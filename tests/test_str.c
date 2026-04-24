@@ -1,14 +1,13 @@
 #include <assert.h>
 #include <stdio.h>
-#include <string.h>
-#include "../str.h"
+#include "../strlib/str.h"
 
 // ---- create / destroy ----
 
 void test_str_from() {
 	str s = str_from("hello");
 	assert(s.len == 5);
-	assert(strcmp(s.data, "hello") == 0);
+	assert(str_eq_cstr(s, "hello"));
 	str_free(&s);
 	printf("  PASS: str_from\n");
 }
@@ -23,7 +22,7 @@ void test_str_from_null() {
 void test_str_from_empty() {
 	str s = str_from("");
 	assert(s.len == 0);
-	assert(strcmp(s.data, "") == 0);
+	assert(str_eq_cstr(s, ""));
 	str_free(&s);
 	printf("  PASS: str_from_empty\n");
 }
@@ -31,7 +30,7 @@ void test_str_from_empty() {
 void test_str_from_len() {
 	str s = str_from_len("hello world", 5);
 	assert(s.len == 5);
-	assert(strcmp(s.data, "hello") == 0);
+	assert(str_eq_cstr(s, "hello"));
 	str_free(&s);
 	printf("  PASS: str_from_len\n");
 }
@@ -40,7 +39,7 @@ void test_str_copy() {
 	str a = str_from("test");
 	str b = str_copy(a);
 	assert(str_eq(a, b));
-	assert(a.data != b.data);  // different allocations
+	assert(a.data != b.data);
 	str_free(&a);
 	str_free(&b);
 	printf("  PASS: str_copy\n");
@@ -58,7 +57,7 @@ void test_str_free() {
 
 void test_str_cstr() {
 	str s = str_from("hello");
-	assert(strcmp(str_cstr(s), "hello") == 0);
+	assert(str_eq_cstr(s, "hello"));
 	str_free(&s);
 	printf("  PASS: str_cstr\n");
 }
@@ -216,9 +215,13 @@ void test_str_split_spaces() {
 	size_t count = str_split(s, " ", &sl);
 	assert(count == 3);
 	assert(sl.count == 3);
-	assert(strcmp(sl.items[0], "int") == 0);
-	assert(strcmp(sl.items[1], "main") == 0);
-	assert(strcmp(sl.items[2], "void") == 0);
+	str t0 = str_from(sl.items[0]);
+	str t1 = str_from(sl.items[1]);
+	str t2 = str_from(sl.items[2]);
+	assert(str_eq_cstr(t0, "int"));
+	assert(str_eq_cstr(t1, "main"));
+	assert(str_eq_cstr(t2, "void"));
+	str_free(&t0); str_free(&t1); str_free(&t2);
 	for (size_t i = 0; i < sl.count; i++) free(sl.items[i]);
 	string_list_destroy(&sl);
 	str_free(&s);
@@ -230,10 +233,15 @@ void test_str_split_multiple_delimiters() {
 	string_list sl = string_list_create(4);
 	size_t count = str_split(s, " \t\n", &sl);
 	assert(count == 4);
-	assert(strcmp(sl.items[0], "int") == 0);
-	assert(strcmp(sl.items[1], "main") == 0);
-	assert(strcmp(sl.items[2], "{return") == 0);
-	assert(strcmp(sl.items[3], "0;}") == 0);
+	str t0 = str_from(sl.items[0]);
+	str t1 = str_from(sl.items[1]);
+	str t2 = str_from(sl.items[2]);
+	str t3 = str_from(sl.items[3]);
+	assert(str_eq_cstr(t0, "int"));
+	assert(str_eq_cstr(t1, "main"));
+	assert(str_eq_cstr(t2, "{return"));
+	assert(str_eq_cstr(t3, "0;}"));
+	str_free(&t0); str_free(&t1); str_free(&t2); str_free(&t3);
 	for (size_t i = 0; i < sl.count; i++) free(sl.items[i]);
 	string_list_destroy(&sl);
 	str_free(&s);
@@ -256,7 +264,9 @@ void test_str_split_no_delimiters_found() {
 	string_list sl = string_list_create(4);
 	size_t count = str_split(s, ",", &sl);
 	assert(count == 1);
-	assert(strcmp(sl.items[0], "hello") == 0);
+	str t0 = str_from(sl.items[0]);
+	assert(str_eq_cstr(t0, "hello"));
+	str_free(&t0);
 	free(sl.items[0]);
 	string_list_destroy(&sl);
 	str_free(&s);
@@ -268,8 +278,11 @@ void test_str_split_leading_trailing() {
 	string_list sl = string_list_create(4);
 	size_t count = str_split(s, " ", &sl);
 	assert(count == 2);
-	assert(strcmp(sl.items[0], "hello") == 0);
-	assert(strcmp(sl.items[1], "world") == 0);
+	str t0 = str_from(sl.items[0]);
+	str t1 = str_from(sl.items[1]);
+	assert(str_eq_cstr(t0, "hello"));
+	assert(str_eq_cstr(t1, "world"));
+	str_free(&t0); str_free(&t1);
 	for (size_t i = 0; i < sl.count; i++) free(sl.items[i]);
 	string_list_destroy(&sl);
 	str_free(&s);
