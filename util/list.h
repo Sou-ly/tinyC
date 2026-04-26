@@ -4,16 +4,14 @@
 #include "lexer/token.h"
 
 typedef struct token_list {
-	token *items;
+	token_kind *items;
 	size_t count;
 	size_t capacity;
 } token_list;
 
 token_list token_list_create(size_t capacity);
-// Frees each token's owned text, then the items array. Pushing transfers
-// text ownership to the list — callers must not free a token they pushed.
 void token_list_destroy(token_list *list);
-void token_list_push(token_list *list, token tok);
+void token_list_push(token_list *list, token_kind tok);
 
 typedef struct {
 	char **items;
