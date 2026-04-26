@@ -58,7 +58,28 @@ const char *keyword_name(token_keyword k) {
 // TODO: real lexer — recognize keywords, identifiers, integer literals,
 // separators, operators; track line/col; populate token.text for ident/literal.
 lexer_err tokenize(const char *source, struct token_list *tokens) {
-	(void)source; (void)tokens;
+	size_t i = 0;
+	while (source[i] != '\0') {
+		if (isalpha((unsigned char)source[i]) || source[i] == '_') {
+		    // identifier OR keyword: read [a-zA-Z0-9_]+
+		    size_t start = i;
+		    while (isalnum((unsigned char)source[i]) || source[i] == '_') i++;
+		    // slice source[start..i] is the lexeme
+		    // then: lookup in keyword table → if hit, it's a keyword;
+		    //       otherwise it's an identifier
+		} else if (isdigit((unsigned char)source[i])) {
+		    // integer literal: read [0-9]+
+		    size_t start = i;
+		    while (isdigit((unsigned char)source[i])) i++;
+		    // slice is the literal's spelling
+		} else if (isspace((unsigned char)source[i])) {
+		    if (source[i] == '\n') line++;
+		    i++;
+		} else {
+		    // separator / operator / unknown
+		    i++;
+		}
+	}
 	return ERR_OK;
 }
 
