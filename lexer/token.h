@@ -52,8 +52,10 @@ typedef struct {
 		token_separator sep;
 		token_operator  op;
 		token_keyword   kw;
+		char           *ident;
+		char           *literal;
+		int             int_val;
 	} as;
-	char * text;
 	size_t line;
 	size_t col;
 } token;

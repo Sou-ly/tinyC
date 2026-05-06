@@ -17,10 +17,10 @@ static token tok_op(token_operator o) {
 	return (token){ .kind = TOK_OPERATOR, .as.op = o };
 }
 static token tok_ident(const char *name) {
-	return (token){ .kind = TOK_IDENTIFIER, .text = strdup(name) };
+	return (token){ .kind = TOK_IDENTIFIER, .as.ident = strdup(name) };
 }
 static token tok_int(const char *spelling) {
-	return (token){ .kind = TOK_INT_LITERAL, .text = strdup(spelling) };
+	return (token){ .kind = TOK_INT_LITERAL, .as.literal = strdup(spelling) };
 }
 
 // ---- token_list tests ----
@@ -69,7 +69,7 @@ void test_token_list_push_identifier() {
 	token_list_push(&tl, tok_ident("main"));
 	assert(tl.count == 1);
 	assert(tl.items[0].kind == TOK_IDENTIFIER);
-	assert(strcmp(tl.items[0].text, "main") == 0);
+	assert(strcmp(tl.items[0].as.ident, "main") == 0);
 	token_list_destroy(&tl);
 	printf("  PASS: token_list_push_identifier\n");
 }
@@ -79,7 +79,7 @@ void test_token_list_push_int_literal() {
 	token_list_push(&tl, tok_int("42"));
 	assert(tl.count == 1);
 	assert(tl.items[0].kind == TOK_INT_LITERAL);
-	assert(strcmp(tl.items[0].text, "42") == 0);
+	assert(strcmp(tl.items[0].as.literal, "42") == 0);
 	token_list_destroy(&tl);
 	printf("  PASS: token_list_push_int_literal\n");
 }
@@ -91,7 +91,7 @@ void test_token_list_push_mixed() {
 	token_list_push(&tl, tok_sep(SEP_LPAR));
 	assert(tl.count == 3);
 	assert(tl.items[0].kind == TOK_KEYWORD && tl.items[0].as.kw == KW_INT);
-	assert(tl.items[1].kind == TOK_IDENTIFIER && strcmp(tl.items[1].text, "main") == 0);
+	assert(tl.items[1].kind == TOK_IDENTIFIER && strcmp(tl.items[1].as.ident, "main") == 0);
 	assert(tl.items[2].kind == TOK_SEPARATOR && tl.items[2].as.sep == SEP_LPAR);
 	token_list_destroy(&tl);
 	printf("  PASS: token_list_push_mixed\n");
@@ -145,9 +145,9 @@ void test_token_list_destroy_frees_owned_text() {
 	token_list_push(&tl, tok_ident("foo"));
 	token_list_push(&tl, tok_int("42"));
 	token_list_push(&tl, tok_ident("bar"));
-	assert(strcmp(tl.items[0].text, "foo") == 0);
-	assert(strcmp(tl.items[1].text, "42") == 0);
-	assert(strcmp(tl.items[2].text, "bar") == 0);
+	assert(strcmp(tl.items[0].as.ident, "foo") == 0);
+	assert(strcmp(tl.items[1].as.literal, "42") == 0);
+	assert(strcmp(tl.items[2].as.ident, "bar") == 0);
 	token_list_destroy(&tl);
 	printf("  PASS: token_list_destroy_frees_owned_text\n");
 }
@@ -167,13 +167,13 @@ void test_token_list_preserves_order() {
 	token_list_push(&tl, tok_sep(SEP_RBRACE));
 	assert(tl.count == 10);
 	assert(tl.items[0].kind == TOK_KEYWORD     && tl.items[0].as.kw  == KW_INT);
-	assert(tl.items[1].kind == TOK_IDENTIFIER  && strcmp(tl.items[1].text, "main") == 0);
+	assert(tl.items[1].kind == TOK_IDENTIFIER  && strcmp(tl.items[1].as.ident, "main") == 0);
 	assert(tl.items[2].kind == TOK_SEPARATOR   && tl.items[2].as.sep == SEP_LPAR);
 	assert(tl.items[3].kind == TOK_KEYWORD     && tl.items[3].as.kw  == KW_VOID);
 	assert(tl.items[4].kind == TOK_SEPARATOR   && tl.items[4].as.sep == SEP_RPAR);
 	assert(tl.items[5].kind == TOK_SEPARATOR   && tl.items[5].as.sep == SEP_LBRACE);
 	assert(tl.items[6].kind == TOK_KEYWORD     && tl.items[6].as.kw  == KW_RETURN);
-	assert(tl.items[7].kind == TOK_INT_LITERAL && strcmp(tl.items[7].text, "2") == 0);
+	assert(tl.items[7].kind == TOK_INT_LITERAL && strcmp(tl.items[7].as.literal, "2") == 0);
 	assert(tl.items[8].kind == TOK_SEPARATOR   && tl.items[8].as.sep == SEP_SEMICOLON);
 	assert(tl.items[9].kind == TOK_SEPARATOR   && tl.items[9].as.sep == SEP_RBRACE);
 	token_list_destroy(&tl);

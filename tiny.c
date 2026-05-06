@@ -4,58 +4,14 @@
 #include <stdbool.h>
 #include <ctype.h>
 
+#include "lexer/token.h"
+#include "util/list.h"
+
 #define C_FILE_EXTENSION ".c"
-
-typedef enum {
-	TOK_INT,
-	TOK_MAIN,
-	TOK_LPAR,
-	TOK_VOID,
-	TOK_RPAR,
-	TOK_LBRACE,
-	TOK_RETURN,
-	TOK_TWO,
-	TOK_SEMICOLON,
-	TOK_RBRACE	
-} token_kind;
-
-const char * token_names[] = {
-	[TOK_INT], 	= "int",
-	[TOK_MAIN], 	= "return",
-	[TOK_LPAR], 	= "(",
-	[TOK_VOID], 	= "void",
-	[TOK_RPAR], 	= ")",
-	[TOK_LBRACE], 	= "{",
-	[TOK_RETURN], 	= "return",
-	[TOK_TWO], 	= "2",
-	[TOK_SEMICOLON],= ";",
-	[TOK_RBRACE] 	= "}"	
-};
 
 void display_help() {
 	// TODO
 	return;
-}
-
-int tokenize(FILE* f, token_kind ** out, size_t * count) {
-	if (f == NULL || out == NULL || count == NULL) {
-		return 1;
-	}
-
-	fseek(f, 0, SEEK_END);
-	long size = ftell(f);
-	rewind(f);
-	char * src = malloc(size + 1);
-	fread(src, 1, size, f);
-	src[size] = '\0';
-	
-	char * tok = strtok(line, " \t\n");
-	while (tok != NULL) {
-
-	}
-
-	free(src);
-	return 0;
 }
 
 int main(int argc, char * argv[]) {
@@ -89,6 +45,8 @@ int main(int argc, char * argv[]) {
 		}
 	}
 
+
+    // read snd tokenize source file
 	if (source_path == NULL) {
 		fprintf(stderr, "Input file is missing.");
 		display_help();
@@ -102,6 +60,11 @@ int main(int argc, char * argv[]) {
 		return 2;
 	}
 
+    token_list tokens = token_list_create(32);
+    if (tokenize_file(src, &tokens) != ERR_OK) {
+        fprintf(stderr, "Failed to tokenize %s.\n", source_path);
+    }
+
 	fclose(src);
 	
 	// generate the executable
@@ -110,6 +73,8 @@ int main(int argc, char * argv[]) {
 	memcpy(executable_path, source_path, srclen - 2);
 	executable_path[srclen - 2] = '\0';
 
+    fprintf(stdout, "%s", executable_path);
+
 	FILE* exec_path = fopen(executable_path, "w");
 
 	if (exec_path == NULL) {
@@ -117,7 +82,7 @@ int main(int argc, char * argv[]) {
 		return 2;
 	}
 
-	fclose(exec_path);
+    fclose(exec_path);
 
 	return 0;
 }

@@ -1,4 +1,5 @@
 #include "str.h"
+#include "list.h"
 
 static size_t cstr_len(const char *s) {
 	size_t len = 0;
