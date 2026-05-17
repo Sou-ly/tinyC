@@ -7,12 +7,13 @@ LDFLAGS =
 SRCS = tiny.c \
        list.c \
        lexer/token.c \
+       parser/parser.c \
        strlib/str.c
 
 OBJS = $(SRCS:.c=.o)
 
-TEST_TARGETS = tests/test_list tests/test_token tests/test_str
-TEST_SRCS = tests/test_list.c tests/test_token.c tests/test_str.c
+TEST_TARGETS = tests/tests_parser tests/test_list tests/test_token tests/test_str
+TEST_SRCS = tests/test_list.c tests/test_token.c tests/test_str.c tests/test_parser.c
 
 all: $(TARGET)
 
@@ -26,19 +27,18 @@ test: build_tests
 	@echo "Running tests..."
 	@./tests/test_list
 	@./tests/test_token
+	@./tests/test_parser
 	@echo "test_str skipped: str_split not yet implemented"
 
-all: $(TARGET)
-
-$(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
-
-build_tests: tests/test_list tests/test_token
+build_tests: tests/test_list tests/test_token tests/test_parser
 
 tests/test_list: tests/test_list.c list.o lexer/token.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 tests/test_token: tests/test_token.c list.o lexer/token.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+tests/test_parser: tests/test_parser.c parser/parser.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 tests/test_str:
