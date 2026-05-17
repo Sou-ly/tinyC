@@ -1,116 +1,122 @@
 #include "parser.h"
+#include <stdio.h>
 #include <string.h>
 
-// --- Expressions ---
+// --- Utilities ---
 
-Expr* create_int_expr(int value) {
-    Expr* e = malloc(sizeof(Expr));
-    e->kind = EXPR_INT;
-    e->int_lit.value = value;
-    return e;
+static token* current(Parser* p) {
+    return &p->tokens[p->pos];
 }
 
-Expr* create_unary_expr(char op, Expr* operand) {
-    Expr* e = malloc(sizeof(Expr));
-    e->kind = EXPR_UNARY;
-    e->unary.op = op;
-    e->unary.operand = operand;
-    return e;
+static token* advance(Parser* p) {
+    return &p->tokens[p->pos++];
 }
 
-Expr* create_binary_expr(char op, Expr* lhs, Expr* rhs) {
-    Expr* e = malloc(sizeof(Expr));
-    e->kind = EXPR_BINARY;
-    e->binary.op = op;
-    e->binary.lhs = lhs;
-    e->binary.rhs = rhs;
-    return e;
+static bool at_end(Parser* p) {
+    return p->pos >= p->num_tokens;
 }
 
-void destroy_expr(Expr* expr) {
-    if (!expr) return;
-    switch (expr->kind) {
-        case EXPR_UNARY:
-            destroy_expr(expr->unary.operand);
-            break;
-        case EXPR_BINARY:
-            destroy_expr(expr->binary.lhs);
-            destroy_expr(expr->binary.rhs);
-            break;
-        case EXPR_INT:
-            break;
+static void expect_keyword(Parser* p, token_keyword kw) {
+    if (at_end(p) || current(p)->kind != TOK_KEYWORD || current(p)->as.kw != kw) {
+        fprintf(stderr, "parse error at %zu:%zu: expected keyword '%s'\n",
+                current(p)->line, current(p)->col, keyword_name(kw));
+        exit(1);
     }
-    free(expr);
+    advance(p);
 }
 
-// --- Statements ---
-
-Stmt* create_return_stmt(Expr* expr) {
-    Stmt* s = malloc(sizeof(Stmt));
-    s->kind = STMT_RETURN;
-    s->ret.expr = expr;
-    return s;
-}
-
-Stmt* create_expr_stmt(Expr* expr) {
-    Stmt* s = malloc(sizeof(Stmt));
-    s->kind = STMT_EXPR;
-    s->expr_stmt.expr = expr;
-    return s;
-}
-
-void destroy_stmt(Stmt* stmt) {
-    if (!stmt) return;
-    switch (stmt->kind) {
-        case STMT_RETURN:
-            destroy_expr(stmt->ret.expr);
-            break;
-        case STMT_EXPR:
-            destroy_expr(stmt->expr_stmt.expr);
-            break;
+static void expect_separator(Parser* p, token_separator sep) {
+    if (at_end(p) || current(p)->kind != TOK_SEPARATOR || current(p)->as.sep != sep) {
+        fprintf(stderr, "parse error at %zu:%zu: expected '%s'\n",
+                current(p)->line, current(p)->col, separator_name(sep));
+        exit(1);
     }
-    free(stmt);
+    advance(p);
 }
 
-// --- Declarations ---
+// --- Parsing ---
 
-Decl* create_function_decl(char* name, Stmt** body, int num_stmts) {
-    Decl* d = malloc(sizeof(Decl));
-    d->kind = DECL_FUNCTION;
-    d->function.name = strdup(name);
-    d->function.body = body;
-    d->function.num_stmts = num_stmts;
-    return d;
-}
-
-void destroy_decl(Decl* decl) {
-    if (!decl) return;
-    switch (decl->kind) {
-        case DECL_FUNCTION:
-            free(decl->function.name);
-            for (int i = 0; i < decl->function.num_stmts; i++) {
-                destroy_stmt(decl->function.body[i]);
-            }
-            free(decl->function.body);
-            break;
+static Expr* parse_expression(Parser* p) {
+    if (current(p)->kind == TOK_INT_LITERAL) {
+        int val = current(p)->as.int_val;
+        advance(p);
+        return create_int_expr(val);
     }
-    free(decl);
+
+    fprintf(stderr, "parse error at %zu:%zu: expected expression\n",
+            current(p)->line, current(p)->col);
+    exit(1);
 }
 
-// --- Program ---
-
-Program* create_program(Decl** decls, int num_decls) {
-    Program* p = malloc(sizeof(Program));
-    p->decls = decls;
-    p->num_decls = num_decls;
-    return p;
-}
-
-void destroy_program(Program* program) {
-    if (!program) return;
-    for (int i = 0; i < program->num_decls; i++) {
-        destroy_decl(program->decls[i]);
+static Stmt* parse_statement(Parser* p) {
+    if (current(p)->kind == TOK_KEYWORD && current(p)->as.kw == KW_RETURN) {
+        advance(p); // consume 'return'
+        Expr* expr = parse_expression(p);
+        expect_separator(p, SEP_SEMICOLON);
+        return create_return_stmt(expr);
     }
-    free(program->decls);
-    free(program);
+
+    fprintf(stderr, "parse error at %zu:%zu: expected statement\n",
+            current(p)->line, current(p)->col);
+    exit(1);
+}
+
+static Decl* parse_declaration(Parser* p) {
+    // expect: int <name> ( )  { ... }
+    expect_keyword(p, KW_INT);
+
+    if (current(p)->kind != TOK_IDENTIFIER) {
+        fprintf(stderr, "parse error at %zu:%zu: expected function name\n",
+                current(p)->line, current(p)->col);
+        exit(1);
+    }
+    char* name = current(p)->as.ident;
+    advance(p);
+
+    expect_separator(p, SEP_LPAR);
+    expect_separator(p, SEP_RPAR);
+    expect_separator(p, SEP_LBRACE);
+
+    // parse body statements
+    int capacity = 8;
+    int count = 0;
+    Stmt** body = malloc(sizeof(Stmt*) * capacity);
+
+    while (!at_end(p) && !(current(p)->kind == TOK_SEPARATOR && current(p)->as.sep == SEP_RBRACE)) {
+        if (count >= capacity) {
+            capacity *= 2;
+            body = realloc(body, sizeof(Stmt*) * capacity);
+        }
+        body[count++] = parse_statement(p);
+    }
+
+    expect_separator(p, SEP_RBRACE);
+
+    return create_function_decl(name, body, count);
+}
+
+// --- Public API ---
+
+Parser parser_create(token_list* tokens) {
+    return (Parser){
+        .tokens = tokens->items,
+        .num_tokens = (int)tokens->count,
+        .pos = 0
+    };
+}
+
+Program* parse_program(Parser* p) {
+    int capacity = 4;
+    int count = 0;
+    Decl** decls = malloc(sizeof(Decl*) * capacity);
+
+    while (!at_end(p)) {
+        if (count >= capacity) {
+            capacity *= 2;
+            decls = realloc(decls, sizeof(Decl*) * capacity);
+        }
+        decls[count++] = parse_declaration(p);
+    }
+
+    return create_program(decls, count);
 }
