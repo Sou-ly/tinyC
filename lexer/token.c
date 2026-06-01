@@ -9,8 +9,6 @@ void token_free(token *t) {
 	if (!t) return;
 	if (t->kind == TOK_IDENTIFIER)
 		free(t->as.ident);
-	else if (t->kind == TOK_INT_LITERAL)
-		free(t->as.literal);
 }
 
 const char *token_kind_name(token_kind kind) {
@@ -141,15 +139,13 @@ lexer_err tokenize(const char *source, struct token_list *tokens) {
 				token_list_push(tokens, t);
 			}
 		} else if (isdigit((unsigned char)source[i])) {
-			size_t start = i;
-			while (isdigit((unsigned char)source[i])) i++;
-			size_t len = i - start;
-			char *lit = malloc(len + 1);
-			if (!lit) return ERR_NO_MEMORY;
-			memcpy(lit, source + start, len);
-			lit[len] = '\0';
+			int val = 0;
+			while (isdigit((unsigned char)source[i])) {
+				val = val * 10 + (source[i] - '0');
+				i++;
+			}
 
-			token t = { .kind = TOK_INT_LITERAL, .as.literal = lit };
+			token t = { .kind = TOK_INT_LITERAL, .as.int_val = val };
 			token_list_push(tokens, t);
 		} else if (isspace((unsigned char)source[i])) {
 			i++;

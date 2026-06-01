@@ -2,7 +2,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include "../parser/ast.h"
 #include "../parser/parser.h"
+#include "../list.h"
+
+// --- AST unit tests ---
 
 void test_create_int_expr() {
     Expr* e = create_int_expr(42);
@@ -35,8 +39,7 @@ void test_create_binary_expr() {
 }
 
 void test_create_return_stmt() {
-    Expr* e = create_int_expr(2);
-    Stmt* s = create_return_stmt(e);
+    Stmt* s = create_return_stmt(create_int_expr(2));
     assert(s != NULL);
     assert(s->kind == STMT_RETURN);
     assert(s->ret.expr->int_lit.value == 2);
@@ -58,19 +61,37 @@ void test_create_function_decl() {
     printf("  PASS: test_create_function_decl\n");
 }
 
-void test_create_program() {
-    Stmt** body = malloc(sizeof(Stmt*));
-    body[0] = create_return_stmt(create_int_expr(0));
+// --- Parser integration test ---
+// Parses: int main() { return 2; }
 
-    Decl** decls = malloc(sizeof(Decl*));
-    decls[0] = create_function_decl("main", body, 1);
+void test_parse_return_2() {
+    token_list tokens = token_list_create(8);
 
-    Program* prog = create_program(decls, 1);
+    token_list_push(&tokens, (token){TOK_KEYWORD,   {.kw = KW_INT},          1, 1});
+    token_list_push(&tokens, (token){TOK_IDENTIFIER, {.ident = strdup("main")}, 1, 5});
+    token_list_push(&tokens, (token){TOK_SEPARATOR, {.sep = SEP_LPAR},       1, 9});
+    token_list_push(&tokens, (token){TOK_SEPARATOR, {.sep = SEP_RPAR},       1, 10});
+    token_list_push(&tokens, (token){TOK_SEPARATOR, {.sep = SEP_LBRACE},     1, 12});
+    token_list_push(&tokens, (token){TOK_KEYWORD,   {.kw = KW_RETURN},       2, 5});
+    token_list_push(&tokens, (token){TOK_INT_LITERAL, {.int_val = 2},        2, 12});
+    token_list_push(&tokens, (token){TOK_SEPARATOR, {.sep = SEP_SEMICOLON},  2, 13});
+    token_list_push(&tokens, (token){TOK_SEPARATOR, {.sep = SEP_RBRACE},     3, 1});
+
+    Parser parser = parser_create(&tokens);
+    Program* prog = parse_program(&parser);
+
     assert(prog != NULL);
     assert(prog->num_decls == 1);
     assert(prog->decls[0]->kind == DECL_FUNCTION);
+    assert(strcmp(prog->decls[0]->function.name, "main") == 0);
+    assert(prog->decls[0]->function.num_stmts == 1);
+    assert(prog->decls[0]->function.body[0]->kind == STMT_RETURN);
+    assert(prog->decls[0]->function.body[0]->ret.expr->kind == EXPR_INT);
+    assert(prog->decls[0]->function.body[0]->ret.expr->int_lit.value == 2);
+
     destroy_program(prog);
-    printf("  PASS: test_create_program\n");
+    free(tokens.items);
+    printf("  PASS: test_parse_return_2\n");
 }
 
 int main(void) {
@@ -80,7 +101,7 @@ int main(void) {
     test_create_binary_expr();
     test_create_return_stmt();
     test_create_function_decl();
-    test_create_program();
+    test_parse_return_2();
     printf("All parser tests passed!\n");
     return 0;
 }

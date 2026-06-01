@@ -2,87 +2,154 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-#include <ctype.h>
 
 #include "lexer/token.h"
-#include "util/list.h"
+#include "list.h"
+#include "parser/parser.h"
+#include "codegen/codegen.h"
+#include "codegen/emit.h"
 
 #define C_FILE_EXTENSION ".c"
 
-void display_help() {
-	// TODO
-	return;
+typedef enum {
+    STAGE_FULL,
+    STAGE_LEX,
+    STAGE_PARSE,
+    STAGE_CODEGEN
+} CompileStage;
+
+static void display_help(const char* prog_name) {
+    fprintf(stderr, "Usage: %s [options] <source.c>\n", prog_name);
+    fprintf(stderr, "Options:\n");
+    fprintf(stderr, "  --lex       Stop after lexing\n");
+    fprintf(stderr, "  --parse     Stop after parsing\n");
+    fprintf(stderr, "  --codegen   Stop after codegen (emit .s file)\n");
+    fprintf(stderr, "  --help      Show this help\n");
 }
 
-int main(int argc, char * argv[]) {
-	bool lex = false;
-	bool parse = false;
-	bool codegen = false;
-	bool help = false;
-	char* source_path = NULL;
-	FILE* src = NULL;
-	size_t srclen = 0; 
+int main(int argc, char* argv[]) {
+    CompileStage stage = STAGE_FULL;
+    char* source_path = NULL;
 
-	// parse arguments
-	for (int i = 1; i < argc; i++) {
-		if (strcmp(argv[i], "--lex") == 0 && !lex) {
-			lex = true;
-		} else if (strcmp(argv[i], "--parse") == 0 && !parse) {
-			parse = true;
-		} else if (strcmp(argv[i], "--codegen") == 0 && !codegen) {
-			codegen = true;
-		} else if (strcmp(argv[i], "--help") == 0 && !help) {
-			display_help();
-		} else if (source_path == NULL) {
-			srclen = strlen(argv[i]);
-			if (srclen > 2 && strncmp(&argv[i][srclen - 2], C_FILE_EXTENSION, 2) == 0) {
-				source_path = argv[i];
-			}
-		} else {
-			fprintf(stderr, "Unrecognized argument: %s.\n", argv[i]);
-			display_help();
-			return 2;
-		}
-	}
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--lex") == 0) {
+            stage = STAGE_LEX;
+        } else if (strcmp(argv[i], "--parse") == 0) {
+            stage = STAGE_PARSE;
+        } else if (strcmp(argv[i], "--codegen") == 0) {
+            stage = STAGE_CODEGEN;
+        } else if (strcmp(argv[i], "--help") == 0) {
+            display_help(argv[0]);
+            return 0;
+        } else if (source_path == NULL) {
+            size_t len = strlen(argv[i]);
+            if (len > 2 && strcmp(&argv[i][len - 2], C_FILE_EXTENSION) == 0) {
+                source_path = argv[i];
+            } else {
+                fprintf(stderr, "Error: input file must end in .c\n");
+                return 2;
+            }
+        } else {
+            fprintf(stderr, "Error: unrecognized argument: %s\n", argv[i]);
+            return 2;
+        }
+    }
 
+    if (source_path == NULL) {
+        fprintf(stderr, "Error: no input file\n");
+        display_help(argv[0]);
+        return 2;
+    }
 
-    // read snd tokenize source file
-	if (source_path == NULL) {
-		fprintf(stderr, "Input file is missing.");
-		display_help();
-		return 2;
-	}
+    // --- Lex ---
 
-	src = fopen(source_path, "r");
-
-	if (src == NULL) {
-		fprintf(stderr, "Failed to open %s.\n", source_path);
-		return 2;
-	}
+    FILE* src = fopen(source_path, "r");
+    if (src == NULL) {
+        fprintf(stderr, "Error: cannot open %s\n", source_path);
+        return 2;
+    }
 
     token_list tokens = token_list_create(32);
     if (tokenize_file(src, &tokens) != ERR_OK) {
-        fprintf(stderr, "Failed to tokenize %s.\n", source_path);
+        fprintf(stderr, "Error: failed to tokenize %s\n", source_path);
+        fclose(src);
+        token_list_destroy(&tokens);
+        return 1;
+    }
+    fclose(src);
+
+    if (stage == STAGE_LEX) {
+        token_list_destroy(&tokens);
+        return 0;
     }
 
-	fclose(src);
-	
-	// generate the executable
-	
-	char * executable_path = malloc(srclen - 1);
-	memcpy(executable_path, source_path, srclen - 2);
-	executable_path[srclen - 2] = '\0';
+    // --- Parse ---
 
-    fprintf(stdout, "%s", executable_path);
+    Parser parser = parser_create(&tokens);
+    Program* program = parse_program(&parser);
 
-	FILE* exec_path = fopen(executable_path, "w");
+    if (stage == STAGE_PARSE) {
+        destroy_program(program);
+        token_list_destroy(&tokens);
+        return 0;
+    }
 
-	if (exec_path == NULL) {
-		fprintf(stderr, "Failed to open %s.\n", executable_path);
-		return 2;
-	}
+    // --- Codegen ---
 
-    fclose(exec_path);
+    AsmProgram* asm_prog = codegen(program);
 
-	return 0;
+    // Build the .s output path from the source path
+    size_t src_len = strlen(source_path);
+    char* asm_path = malloc(src_len + 1); // .c -> .s (same length)
+    memcpy(asm_path, source_path, src_len - 2);
+    asm_path[src_len - 2] = '.';
+    asm_path[src_len - 1] = 's';
+    asm_path[src_len] = '\0';
+
+    FILE* asm_out = fopen(asm_path, "w");
+    if (asm_out == NULL) {
+        fprintf(stderr, "Error: cannot open %s for writing\n", asm_path);
+        free(asm_path);
+        destroy_asm_program(asm_prog);
+        destroy_program(program);
+        token_list_destroy(&tokens);
+        return 2;
+    }
+
+    emit_arm64(asm_prog, asm_out);
+    fclose(asm_out);
+
+    if (stage == STAGE_CODEGEN) {
+        free(asm_path);
+        destroy_asm_program(asm_prog);
+        destroy_program(program);
+        token_list_destroy(&tokens);
+        return 0;
+    }
+
+    // --- Assemble & Link ---
+
+    char* exe_path = malloc(src_len - 1);
+    memcpy(exe_path, source_path, src_len - 2);
+    exe_path[src_len - 2] = '\0';
+
+    char cmd[1024];
+    snprintf(cmd, sizeof(cmd), "cc -o %s %s", exe_path, asm_path);
+    int ret = system(cmd);
+
+    // Clean up the .s file after assembling
+    remove(asm_path);
+
+    free(asm_path);
+    free(exe_path);
+    destroy_asm_program(asm_prog);
+    destroy_program(program);
+    token_list_destroy(&tokens);
+
+    if (ret != 0) {
+        fprintf(stderr, "Error: assembler/linker failed\n");
+        return 1;
+    }
+
+    return 0;
 }

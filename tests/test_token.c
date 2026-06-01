@@ -156,7 +156,7 @@ void test_tokenize_int_literal() {
 	assert(tokenize("42", &tl) == ERR_OK);
 	assert(tl.count == 1);
 	assert(tl.items[0].kind == TOK_INT_LITERAL);
-	assert(strcmp(tl.items[0].as.literal, "42") == 0);
+	assert(tl.items[0].as.int_val == 42);
 	token_list_destroy(&tl);
 	printf("  PASS: tokenize_int_literal\n");
 }
@@ -200,7 +200,7 @@ void test_tokenize_full_function() {
 	assert(tl.items[4].kind == TOK_SEPARATOR   && tl.items[4].as.sep == SEP_RPAR);
 	assert(tl.items[5].kind == TOK_SEPARATOR   && tl.items[5].as.sep == SEP_LBRACE);
 	assert(tl.items[6].kind == TOK_KEYWORD     && tl.items[6].as.kw  == KW_RETURN);
-	assert(tl.items[7].kind == TOK_INT_LITERAL && strcmp(tl.items[7].as.literal, "2") == 0);
+	assert(tl.items[7].kind == TOK_INT_LITERAL && tl.items[7].as.int_val == 2);
 	assert(tl.items[8].kind == TOK_SEPARATOR   && tl.items[8].as.sep == SEP_SEMICOLON);
 	assert(tl.items[9].kind == TOK_SEPARATOR   && tl.items[9].as.sep == SEP_RBRACE);
 	token_list_destroy(&tl);
