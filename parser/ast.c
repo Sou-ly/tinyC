@@ -10,10 +10,10 @@ Expr* create_int_expr(int value) {
     return e;
 }
 
-Expr* create_unary_expr(char op, Expr* operand) {
+Expr* create_unary_expr(UnaryOpType op_type, Expr* operand) {
     Expr* e = malloc(sizeof(Expr));
     e->kind = EXPR_UNARY;
-    e->unary.op = op;
+    e->unary.op_type = op_type;
     e->unary.operand = operand;
     return e;
 }

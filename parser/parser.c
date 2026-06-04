@@ -41,6 +41,19 @@ static Expr* parse_expression(Parser* p) {
         int val = current(p)->as.int_val;
         advance(p);
         return create_int_expr(val);
+    } else if (current(p)->kind == TOK_OPERATOR) {
+        if (current(p)->as.op == OP_NOT) {
+            advance(p);
+            return create_unary_expr(UNARY_NOT, parse_expression(p));
+        } else if (current(p)->as.op == OP_MINUS) {
+            advance(p);
+            return create_unary_expr(UNARY_MINUS, parse_expression(p));
+        }
+    } else if (current(p)->kind == TOK_SEPARATOR && current(p)->as.sep == SEP_LPAR) {
+        advance(p);
+        Expr* expr = parse_expression(p);
+        expect_separator(p, SEP_RPAR);
+        return expr;
     }
 
     fprintf(stderr, "parse error at %zu:%zu: expected expression\n",

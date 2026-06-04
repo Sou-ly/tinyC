@@ -6,6 +6,11 @@
 // --- Expressions ---
 
 typedef enum {
+    UNARY_NOT,
+    UNARY_MINUS
+} UnaryOpType;
+
+typedef enum {
     EXPR_INT,
     EXPR_UNARY,
     EXPR_BINARY
@@ -17,13 +22,13 @@ struct Expr {
     ExprKind kind;
     union {
         struct { int value; } int_lit;
-        struct { char op; Expr* operand; } unary;
+        struct { UnaryOpType op_type; Expr* operand; } unary;
         struct { char op; Expr* lhs; Expr* rhs; } binary;
     };
 };
 
 Expr* create_int_expr(int value);
-Expr* create_unary_expr(char op, Expr* operand);
+Expr* create_unary_expr(UnaryOpType op_type, Expr* operand);
 Expr* create_binary_expr(char op, Expr* lhs, Expr* rhs);
 void destroy_expr(Expr* expr);
 
