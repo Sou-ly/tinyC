@@ -29,6 +29,8 @@ typedef enum {
 	OP_NEQ,
 	OP_AND,
 	OP_OR,
+    OP_NOT,
+    OP_DECR
 } token_operator;
 
 typedef enum {

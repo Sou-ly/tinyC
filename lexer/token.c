@@ -42,6 +42,8 @@ const char *operator_name(token_operator o) {
 		case OP_NEQ:   return "!=";
 		case OP_AND:   return "&&";
 		case OP_OR:    return "||";
+		case OP_NOT:   return "~";
+		case OP_DECR:  return "--";
 	}
 	return "<unknown>";
 }
@@ -89,10 +91,12 @@ static int operator_lookup(const char *source, size_t i, size_t *advance) {
 		if (source[i] == '!' && source[i + 1] == '=') { *advance = 2; return OP_NEQ; }
 		if (source[i] == '&' && source[i + 1] == '&') { *advance = 2; return OP_AND; }
 		if (source[i] == '|' && source[i + 1] == '|') { *advance = 2; return OP_OR; }
+		if (source[i] == '-' && source[i + 1] == '-') { *advance = 2; return OP_DECR; }
 	}
 	// single-char operators
 	if (source[i] == '+') { *advance = 1; return OP_PLUS; }
 	if (source[i] == '-') { *advance = 1; return OP_MINUS; }
+	if (source[i] == '~') { *advance = 1; return OP_MINUS; }
 	return -1;
 }
 

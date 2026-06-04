@@ -47,6 +47,8 @@ void test_operator_name() {
 	assert(strcmp(operator_name(OP_NEQ),   "!=") == 0);
 	assert(strcmp(operator_name(OP_AND),   "&&") == 0);
 	assert(strcmp(operator_name(OP_OR),    "||") == 0);
+	assert(strcmp(operator_name(OP_NOT),   "~")  == 0);
+	assert(strcmp(operator_name(OP_DECR),  "--") == 0);
 	printf("  PASS: operator_name\n");
 }
 
