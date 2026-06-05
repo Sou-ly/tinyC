@@ -1,7 +1,7 @@
 #pragma once
 
-#include "asm_ast.h"
+#include "x86/x86_ast.h"
 #include "../parser/ast.h"
 
 // Translate high-level AST to assembly AST.
-AsmProgram* codegen(AstProgram* program);
+x86_Program* codegen(AstProgram* program);

@@ -96,7 +96,7 @@ int main(int argc, char* argv[]) {
 
     // --- Codegen ---
 
-    AsmProgram* asm_prog = codegen(program);
+    x86_Program* asm_prog = codegen(program);
 
     // Build the .s output path from the source path
     size_t src_len = strlen(source_path);
@@ -110,7 +110,7 @@ int main(int argc, char* argv[]) {
     if (asm_out == NULL) {
         fprintf(stderr, "Error: cannot open %s for writing\n", asm_path);
         free(asm_path);
-        destroy_asm_program(asm_prog);
+        destroy_x86_program(asm_prog);
         destroy_program(program);
         token_list_destroy(&tokens);
         return 2;
@@ -121,7 +121,7 @@ int main(int argc, char* argv[]) {
 
     if (stage == STAGE_CODEGEN) {
         free(asm_path);
-        destroy_asm_program(asm_prog);
+        destroy_x86_program(asm_prog);
         destroy_program(program);
         token_list_destroy(&tokens);
         return 0;
@@ -142,7 +142,7 @@ int main(int argc, char* argv[]) {
 
     free(asm_path);
     free(exe_path);
-    destroy_asm_program(asm_prog);
+    destroy_x86_program(asm_prog);
     destroy_program(program);
     token_list_destroy(&tokens);
 

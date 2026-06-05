@@ -10,7 +10,7 @@ SRCS = tiny.c \
        parser/ast.c \
        parser/parser.c \
        ir/ir.c \
-       codegen/asm_ast.c \
+       codegen/x86/x86_ast.c \
        codegen/codegen.c \
        codegen/emit.c \
        strlib/str.c
@@ -48,7 +48,7 @@ tests/test_token: tests/test_token.c list.o lexer/token.o
 tests/test_parser: tests/test_parser.c parser/ast.o parser/parser.o list.o lexer/token.o strlib/str.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-tests/test_codegen: tests/test_codegen.c codegen/asm_ast.o codegen/codegen.o codegen/emit.o parser/ast.o
+tests/test_codegen: tests/test_codegen.c codegen/x86/x86_ast.o codegen/codegen.o codegen/emit.o parser/ast.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 tests/test_ir: tests/test_ir.c ir/ir.o parser/ast.o
