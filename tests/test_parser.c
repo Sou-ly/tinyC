@@ -18,10 +18,10 @@ void test_create_int_expr() {
 }
 
 void test_create_unary_expr() {
-    AstExpression* e = create_unary_expr('-', create_int_expr(5));
+    AstExpression* e = create_unary_expr(UNARY_MINUS, create_int_expr(5));
     assert(e != NULL);
     assert(e->kind == EXPR_UNARY);
-    assert(e->unary.op == '-');
+    assert(e->unary.op_type == UNARY_MINUS);
     assert(e->unary.operand->int_lit.value == 5);
     destroy_expr(e);
     printf("  PASS: test_create_unary_expr\n");

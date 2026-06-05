@@ -33,7 +33,7 @@ static void free_ir_program(IrProgram* program) {
             }
         }
         free(fn->instructions);
-        free(fn->identifier);
+        free(fn->name);
     }
     free(program->functions);
 }
@@ -47,7 +47,7 @@ void test_emit_return_constant() {
 
     assert(ir.size == 1);
     IrFunction* fn = &ir.functions[0];
-    assert(strcmp(fn->identifier, "main") == 0);
+    assert(strcmp(fn->name, "main") == 0);
     assert(fn->size == 1);
 
     IrInstruction* ret = &fn->instructions[0];
@@ -60,17 +60,17 @@ void test_emit_return_constant() {
     printf("  PASS: test_emit_return_constant\n");
 }
 
-// The IR identifier must be an independent copy of the AST name.
-void test_emit_identifier_is_owned_copy() {
+// The IR function name must be an independent copy of the AST name.
+void test_emit_name_is_owned_copy() {
     AstProgram* ast = program_of_stmt(create_return_stmt(create_int_expr(0)));
     IrProgram ir = emit_ir(ast);
 
-    assert(ir.functions[0].identifier != ast->decls[0]->function.name);
-    assert(strcmp(ir.functions[0].identifier, "main") == 0);
+    assert(ir.functions[0].name != ast->decls[0]->function.name);
+    assert(strcmp(ir.functions[0].name, "main") == 0);
 
     free_ir_program(&ir);
     destroy_program(ast);
-    printf("  PASS: test_emit_identifier_is_owned_copy\n");
+    printf("  PASS: test_emit_name_is_owned_copy\n");
 }
 
 // int main() { return -5; }  ->  unary NEG into a temp, then return the temp.
@@ -179,8 +179,8 @@ void test_emit_multiple_functions() {
     IrProgram ir = emit_ir(ast);
 
     assert(ir.size == 2);
-    assert(strcmp(ir.functions[0].identifier, "foo") == 0);
-    assert(strcmp(ir.functions[1].identifier, "bar") == 0);
+    assert(strcmp(ir.functions[0].name, "foo") == 0);
+    assert(strcmp(ir.functions[1].name, "bar") == 0);
     assert(ir.functions[0].instructions[0].ret.val.int_val == 1);
     assert(ir.functions[1].instructions[0].ret.val.int_val == 2);
 
@@ -192,7 +192,7 @@ void test_emit_multiple_functions() {
 int main(void) {
     printf("Running IR tests...\n");
     test_emit_return_constant();
-    test_emit_identifier_is_owned_copy();
+    test_emit_name_is_owned_copy();
     test_emit_return_negate();
     test_emit_return_complement();
     test_emit_nested_unary();

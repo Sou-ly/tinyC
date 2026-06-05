@@ -82,7 +82,7 @@ static void append_ir_function(IrProgram* program, IrFunction function) {
 static IrFunction emit_ir_function(const AstDeclaration* decl) {
 	assert(decl->kind == DECL_FUNCTION);
 	IrFunction ir_function = {NULL, NULL, 0};
-	ir_function.identifier = strdup(decl->function.name);
+	ir_function.name = strdup(decl->function.name);
 	for (int i = 0; i < decl->function.num_stmts; i++) {
 		emit_ir_statement(decl->function.body[i], &ir_function);
 	}

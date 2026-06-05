@@ -37,7 +37,7 @@ typedef struct {
 } IrInstruction;
 
 typedef struct {
-    char* identifier;
+    char* name;
     IrInstruction* instructions;
 	int size;
 } IrFunction;

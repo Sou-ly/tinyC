@@ -37,24 +37,32 @@ static void expect_separator(Parser* p, token_separator sep) {
 // --- Parsing ---
 
 static AstExpression* parse_expression(Parser* p) {
-    switch (current(p)->kind == TOK_INT_LITERAL) {
-		case TOK_INT_LITERAL:
-		    int val = current(p)->as.int_val;
-    	    advance(p);
-    	    return create_int_expr(val);
-		case TOK_OPERATOR:
-    	    if (current(p)->as.op == OP_NOT) {
-    	        advance(p);
-    	        return create_unary_expr(UNARY_NOT, parse_expression(p));
-    	    } else if (current(p)->as.op == OP_MINUS) {
-    	        advance(p);
-    	        return create_unary_expr(UNARY_MINUS, parse_expression(p));
-    	    }
-		case TOK_SEPARATOR && current(p)->as.sep == SEP_LPAR:
-    	    advance(p);
-    	    AstExpression* expr = parse_expression(p);
-    	    expect_separator(p, SEP_RPAR);
-    	    return expr;
+    token* tok = current(p);
+    switch (tok->kind) {
+        case TOK_INT_LITERAL: {
+            int val = tok->as.int_val;
+            advance(p);
+            return create_int_expr(val);
+        }
+        case TOK_OPERATOR:
+            if (tok->as.op == OP_NOT) {
+                advance(p);
+                return create_unary_expr(UNARY_NOT, parse_expression(p));
+            } else if (tok->as.op == OP_MINUS) {
+                advance(p);
+                return create_unary_expr(UNARY_MINUS, parse_expression(p));
+            }
+            break;
+        case TOK_SEPARATOR:
+            if (tok->as.sep == SEP_LPAR) {
+                advance(p);
+                AstExpression* expr = parse_expression(p);
+                expect_separator(p, SEP_RPAR);
+                return expr;
+            }
+            break;
+        default:
+            break;
     }
 
     fprintf(stderr, "parse error at %zu:%zu: expected expression\n",
