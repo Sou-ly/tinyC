@@ -1,7 +1,7 @@
 #include "codegen.h"
 #include <stdio.h>
 
-static AsmInstr* codegen_stmt(Stmt* stmt, int* num_instrs) {
+static AsmInstr* codegen_stmt(AstStatement* stmt, int* num_instrs) {
     switch (stmt->kind) {
         case STMT_RETURN: {
             int val = stmt->ret.expr->int_lit.value;
@@ -17,7 +17,7 @@ static AsmInstr* codegen_stmt(Stmt* stmt, int* num_instrs) {
     }
 }
 
-static AsmFunction* codegen_decl(Decl* decl) {
+static AsmFunction* codegen_decl(AstDeclaration* decl) {
     switch (decl->kind) {
         case DECL_FUNCTION: {
             // For now: codegen only the first statement
@@ -31,7 +31,7 @@ static AsmFunction* codegen_decl(Decl* decl) {
     }
 }
 
-AsmProgram* codegen(Program* program) {
+AsmProgram* codegen(AstProgram* program) {
     AsmFunction** functions = malloc(sizeof(AsmFunction*) * program->num_decls);
     for (int i = 0; i < program->num_decls; i++) {
         functions[i] = codegen_decl(program->decls[i]);

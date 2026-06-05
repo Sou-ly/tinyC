@@ -36,24 +36,25 @@ static void expect_separator(Parser* p, token_separator sep) {
 
 // --- Parsing ---
 
-static Expr* parse_expression(Parser* p) {
-    if (current(p)->kind == TOK_INT_LITERAL) {
-        int val = current(p)->as.int_val;
-        advance(p);
-        return create_int_expr(val);
-    } else if (current(p)->kind == TOK_OPERATOR) {
-        if (current(p)->as.op == OP_NOT) {
-            advance(p);
-            return create_unary_expr(UNARY_NOT, parse_expression(p));
-        } else if (current(p)->as.op == OP_MINUS) {
-            advance(p);
-            return create_unary_expr(UNARY_MINUS, parse_expression(p));
-        }
-    } else if (current(p)->kind == TOK_SEPARATOR && current(p)->as.sep == SEP_LPAR) {
-        advance(p);
-        Expr* expr = parse_expression(p);
-        expect_separator(p, SEP_RPAR);
-        return expr;
+static AstExpression* parse_expression(Parser* p) {
+    switch (current(p)->kind == TOK_INT_LITERAL) {
+		case TOK_INT_LITERAL:
+		    int val = current(p)->as.int_val;
+    	    advance(p);
+    	    return create_int_expr(val);
+		case TOK_OPERATOR:
+    	    if (current(p)->as.op == OP_NOT) {
+    	        advance(p);
+    	        return create_unary_expr(UNARY_NOT, parse_expression(p));
+    	    } else if (current(p)->as.op == OP_MINUS) {
+    	        advance(p);
+    	        return create_unary_expr(UNARY_MINUS, parse_expression(p));
+    	    }
+		case TOK_SEPARATOR && current(p)->as.sep == SEP_LPAR:
+    	    advance(p);
+    	    AstExpression* expr = parse_expression(p);
+    	    expect_separator(p, SEP_RPAR);
+    	    return expr;
     }
 
     fprintf(stderr, "parse error at %zu:%zu: expected expression\n",
@@ -61,10 +62,10 @@ static Expr* parse_expression(Parser* p) {
     exit(1);
 }
 
-static Stmt* parse_statement(Parser* p) {
+static AstStatement* parse_statement(Parser* p) {
     if (current(p)->kind == TOK_KEYWORD && current(p)->as.kw == KW_RETURN) {
         advance(p); // consume 'return'
-        Expr* expr = parse_expression(p);
+        AstExpression* expr = parse_expression(p);
         expect_separator(p, SEP_SEMICOLON);
         return create_return_stmt(expr);
     }
@@ -74,7 +75,7 @@ static Stmt* parse_statement(Parser* p) {
     exit(1);
 }
 
-static Decl* parse_declaration(Parser* p) {
+static AstDeclaration* parse_declaration(Parser* p) {
     // expect: int <name> ( )  { ... }
     expect_keyword(p, KW_INT);
 
@@ -93,12 +94,12 @@ static Decl* parse_declaration(Parser* p) {
     // parse body statements
     int capacity = 8;
     int count = 0;
-    Stmt** body = malloc(sizeof(Stmt*) * capacity);
+    AstStatement** body = malloc(sizeof(AstStatement*) * capacity);
 
     while (!at_end(p) && !(current(p)->kind == TOK_SEPARATOR && current(p)->as.sep == SEP_RBRACE)) {
         if (count >= capacity) {
             capacity *= 2;
-            body = realloc(body, sizeof(Stmt*) * capacity);
+            body = realloc(body, sizeof(AstStatement*) * capacity);
         }
         body[count++] = parse_statement(p);
     }
@@ -121,12 +122,12 @@ Parser parser_create(token_list* tokens) {
 AstProgram* parse_program(Parser* p) {
     int capacity = 4;
     int count = 0;
-    Decl** decls = malloc(sizeof(Decl*) * capacity);
+    AstDeclaration** decls = malloc(sizeof(AstDeclaration*) * capacity);
 
     while (!at_end(p)) {
         if (count >= capacity) {
             capacity *= 2;
-            decls = realloc(decls, sizeof(Decl*) * capacity);
+            decls = realloc(decls, sizeof(AstDeclaration*) * capacity);
         }
         decls[count++] = parse_declaration(p);
     }

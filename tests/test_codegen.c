@@ -79,11 +79,11 @@ void test_create_asm_program() {
 // Converts AST for: int main() { return 2; }
 
 void test_codegen_return_2() {
-    Stmt** body = malloc(sizeof(Stmt*));
+    AstStatement** body = malloc(sizeof(AstStatement*));
     body[0] = create_return_stmt(create_int_expr(2));
-    Decl** decls = malloc(sizeof(Decl*));
+    AstDeclaration** decls = malloc(sizeof(AstDeclaration*));
     decls[0] = create_function_decl("main", body, 1);
-    Program* program = create_program(decls, 1);
+    AstProgram* program = create_program(decls, 1);
 
     AsmProgram* asm_prog = codegen(program);
 
@@ -104,11 +104,11 @@ void test_codegen_return_2() {
 }
 
 void test_codegen_return_0() {
-    Stmt** body = malloc(sizeof(Stmt*));
+    AstStatement** body = malloc(sizeof(AstStatement*));
     body[0] = create_return_stmt(create_int_expr(0));
-    Decl** decls = malloc(sizeof(Decl*));
+    AstDeclaration** decls = malloc(sizeof(AstDeclaration*));
     decls[0] = create_function_decl("main", body, 1);
-    Program* program = create_program(decls, 1);
+    AstProgram* program = create_program(decls, 1);
 
     AsmProgram* asm_prog = codegen(program);
 
@@ -122,11 +122,11 @@ void test_codegen_return_0() {
 // --- emit integration test ---
 
 void test_emit_return_2() {
-    Stmt** body = malloc(sizeof(Stmt*));
+    AstStatement** body = malloc(sizeof(AstStatement*));
     body[0] = create_return_stmt(create_int_expr(2));
-    Decl** decls = malloc(sizeof(Decl*));
+    AstDeclaration** decls = malloc(sizeof(AstDeclaration*));
     decls[0] = create_function_decl("main", body, 1);
-    Program* program = create_program(decls, 1);
+    AstProgram* program = create_program(decls, 1);
 
     AsmProgram* asm_prog = codegen(program);
 

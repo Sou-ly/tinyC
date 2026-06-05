@@ -1,25 +1,25 @@
 #include "ast.h"
 #include <string.h>
 
-// --- Expressions ---
+// --- AstExpressionessions ---
 
-Expr* create_int_expr(int value) {
-    Expr* e = malloc(sizeof(Expr));
+AstExpression* create_int_expr(int value) {
+    AstExpression* e = malloc(sizeof(AstExpression));
     e->kind = EXPR_INT;
     e->int_lit.value = value;
     return e;
 }
 
-Expr* create_unary_expr(UnaryOpType op_type, Expr* operand) {
-    Expr* e = malloc(sizeof(Expr));
+AstExpression* create_unary_expr(UnaryOpType op_type, AstExpression* operand) {
+    AstExpression* e = malloc(sizeof(AstExpression));
     e->kind = EXPR_UNARY;
     e->unary.op_type = op_type;
     e->unary.operand = operand;
     return e;
 }
 
-Expr* create_binary_expr(char op, Expr* lhs, Expr* rhs) {
-    Expr* e = malloc(sizeof(Expr));
+AstExpression* create_binary_expr(char op, AstExpression* lhs, AstExpression* rhs) {
+    AstExpression* e = malloc(sizeof(AstExpression));
     e->kind = EXPR_BINARY;
     e->binary.op = op;
     e->binary.lhs = lhs;
@@ -27,7 +27,7 @@ Expr* create_binary_expr(char op, Expr* lhs, Expr* rhs) {
     return e;
 }
 
-void destroy_expr(Expr* expr) {
+void destroy_expr(AstExpression* expr) {
     if (!expr) return;
     switch (expr->kind) {
         case EXPR_UNARY:
@@ -45,21 +45,21 @@ void destroy_expr(Expr* expr) {
 
 // --- Statements ---
 
-Stmt* create_return_stmt(Expr* expr) {
-    Stmt* s = malloc(sizeof(Stmt));
+AstStatement* create_return_stmt(AstExpression* expr) {
+    AstStatement* s = malloc(sizeof(AstStatement));
     s->kind = STMT_RETURN;
     s->ret.expr = expr;
     return s;
 }
 
-Stmt* create_expr_stmt(Expr* expr) {
-    Stmt* s = malloc(sizeof(Stmt));
+AstStatement* create_expr_stmt(AstExpression* expr) {
+    AstStatement* s = malloc(sizeof(AstStatement));
     s->kind = STMT_EXPR;
     s->expr_stmt.expr = expr;
     return s;
 }
 
-void destroy_stmt(Stmt* stmt) {
+void destroy_stmt(AstStatement* stmt) {
     if (!stmt) return;
     switch (stmt->kind) {
         case STMT_RETURN:
@@ -72,10 +72,10 @@ void destroy_stmt(Stmt* stmt) {
     free(stmt);
 }
 
-// --- Declarations ---
+// --- AstDeclarationarations ---
 
-Decl* create_function_decl(char* name, Stmt** body, int num_stmts) {
-    Decl* d = malloc(sizeof(Decl));
+AstDeclaration* create_function_decl(char* name, AstStatement** body, int num_stmts) {
+    AstDeclaration* d = malloc(sizeof(AstDeclaration));
     d->kind = DECL_FUNCTION;
     d->function.name = strdup(name);
     d->function.body = body;
@@ -83,7 +83,7 @@ Decl* create_function_decl(char* name, Stmt** body, int num_stmts) {
     return d;
 }
 
-void destroy_decl(Decl* decl) {
+void destroy_decl(AstDeclaration* decl) {
     if (!decl) return;
     switch (decl->kind) {
         case DECL_FUNCTION:
@@ -99,7 +99,7 @@ void destroy_decl(Decl* decl) {
 
 // --- AstProgram ---
 
-AstProgram* create_program(Decl** decls, int num_decls) {
+AstProgram* create_program(AstDeclaration** decls, int num_decls) {
     AstProgram* p = malloc(sizeof(AstProgram));
     p->decls = decls;
     p->num_decls = num_decls;

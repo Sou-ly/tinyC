@@ -4,4 +4,4 @@
 #include "../parser/ast.h"
 
 // Translate high-level AST to assembly AST.
-AsmProgram* codegen(Program* program);
+AsmProgram* codegen(AstProgram* program);

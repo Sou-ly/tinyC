@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-// --- Expressions ---
+// --- AstExpressionessions ---
 
 typedef enum {
     UNARY_NOT,
@@ -14,73 +14,73 @@ typedef enum {
     EXPR_INT,
     EXPR_UNARY,
     EXPR_BINARY
-} ExprKind;
+} AstExpressionKind;
 
-typedef struct Expr Expr;
+typedef struct AstExpression AstExpression;
 
-struct Expr {
-    ExprKind kind;
+struct AstExpression {
+    AstExpressionKind kind;
     union {
         struct { int value; } int_lit;
-        struct { UnaryOpType op_type; Expr* operand; } unary;
-        struct { char op; Expr* lhs; Expr* rhs; } binary;
+        struct { UnaryOpType op_type; AstExpression* operand; } unary;
+        struct { char op; AstExpression* lhs; AstExpression* rhs; } binary;
     };
 };
 
-Expr* create_int_expr(int value);
-Expr* create_unary_expr(UnaryOpType op_type, Expr* operand);
-Expr* create_binary_expr(char op, Expr* lhs, Expr* rhs);
-void destroy_expr(Expr* expr);
+AstExpression* create_int_expr(int value);
+AstExpression* create_unary_expr(UnaryOpType op_type, AstExpression* operand);
+AstExpression* create_binary_expr(char op, AstExpression* lhs, AstExpression* rhs);
+void destroy_expr(AstExpression* expr);
 
 // --- Statements ---
 
 typedef enum {
     STMT_RETURN,
     STMT_EXPR
-} StmtKind;
+} AstStatementKind;
 
-typedef struct Stmt Stmt;
+typedef struct AstStatement AstStatement;
 
-struct Stmt {
-    StmtKind kind;
+struct AstStatement {
+    AstStatementKind kind;
     union {
-        struct { Expr* expr; } ret;
-        struct { Expr* expr; } expr_stmt;
+        struct { AstExpression* expr; } ret;
+        struct { AstExpression* expr; } expr_stmt;
     };
 };
 
-Stmt* create_return_stmt(Expr* expr);
-Stmt* create_expr_stmt(Expr* expr);
-void destroy_stmt(Stmt* stmt);
+AstStatement* create_return_stmt(AstExpression* expr);
+AstStatement* create_expr_stmt(AstExpression* expr);
+void destroy_stmt(AstStatement* stmt);
 
-// --- Declarations ---
+// --- AstDeclarationarations ---
 
 typedef enum {
     DECL_FUNCTION
-} DeclKind;
+} AstDeclarationKind;
 
-typedef struct Decl Decl;
+typedef struct {
+	char* name;
+	AstStatement** body;
+	int num_stmts;
+} AstFunction;
 
-struct Decl {
-    DeclKind kind;
+typedef struct {
+    AstDeclarationKind kind;
     union {
-        struct {
-            char* name;
-            Stmt** body;
-            int num_stmts;
-        } function;
+		AstFunction function;
     };
-};
+} AstDeclaration;
 
-Decl* create_function_decl(char* name, Stmt** body, int num_stmts);
-void destroy_decl(Decl* decl);
+AstDeclaration* create_function_decl(char* name, AstStatement** body, int num_stmts);
+void destroy_decl(AstDeclaration* decl);
 
 // --- AstProgram ---
 
 typedef struct {
-    Decl** decls;
+    AstDeclaration** decls;
     int num_decls;
 } AstProgram;
 
-AstProgram* create_program(Decl** decls, int num_decls);
+AstProgram* create_program(AstDeclaration** decls, int num_decls);
 void destroy_program(AstProgram* program);

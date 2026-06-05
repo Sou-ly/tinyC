@@ -9,7 +9,7 @@
 // --- AST unit tests ---
 
 void test_create_int_expr() {
-    Expr* e = create_int_expr(42);
+    AstExpression* e = create_int_expr(42);
     assert(e != NULL);
     assert(e->kind == EXPR_INT);
     assert(e->int_lit.value == 42);
@@ -18,7 +18,7 @@ void test_create_int_expr() {
 }
 
 void test_create_unary_expr() {
-    Expr* e = create_unary_expr('-', create_int_expr(5));
+    AstExpression* e = create_unary_expr('-', create_int_expr(5));
     assert(e != NULL);
     assert(e->kind == EXPR_UNARY);
     assert(e->unary.op == '-');
@@ -28,7 +28,7 @@ void test_create_unary_expr() {
 }
 
 void test_create_binary_expr() {
-    Expr* e = create_binary_expr('+', create_int_expr(3), create_int_expr(7));
+    AstExpression* e = create_binary_expr('+', create_int_expr(3), create_int_expr(7));
     assert(e != NULL);
     assert(e->kind == EXPR_BINARY);
     assert(e->binary.op == '+');
@@ -39,7 +39,7 @@ void test_create_binary_expr() {
 }
 
 void test_create_return_stmt() {
-    Stmt* s = create_return_stmt(create_int_expr(2));
+    AstStatement* s = create_return_stmt(create_int_expr(2));
     assert(s != NULL);
     assert(s->kind == STMT_RETURN);
     assert(s->ret.expr->int_lit.value == 2);
@@ -48,10 +48,10 @@ void test_create_return_stmt() {
 }
 
 void test_create_function_decl() {
-    Stmt** body = malloc(sizeof(Stmt*));
+    AstStatement** body = malloc(sizeof(AstStatement*));
     body[0] = create_return_stmt(create_int_expr(0));
 
-    Decl* fn = create_function_decl("main", body, 1);
+    AstDeclaration* fn = create_function_decl("main", body, 1);
     assert(fn != NULL);
     assert(fn->kind == DECL_FUNCTION);
     assert(strcmp(fn->function.name, "main") == 0);
