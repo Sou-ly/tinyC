@@ -98,7 +98,7 @@ void test_emit_return_2() {
     char* buf = NULL;
     size_t buf_size = 0;
     FILE* out = open_memstream(&buf, &buf_size);
-    emit_arm64(asm_prog, out);
+    emit_asm(asm_prog, out);
     fclose(out);
 
     assert(strstr(buf, ".global _main") != NULL);

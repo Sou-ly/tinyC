@@ -1,0 +1,15 @@
+*.o
+*.s
+*.dSYM/
+tinyc
+main
+main.c
+test_list
+test_token
+tests/test_list
+tests/test_token
+tests/test_parser
+tests/test_codegen
+tests/test_str
+tests/test_ir
+util/

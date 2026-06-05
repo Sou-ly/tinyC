@@ -116,7 +116,7 @@ int main(int argc, char* argv[]) {
         return 2;
     }
 
-    emit_arm64(asm_prog, asm_out);
+    emit_asm(asm_prog, asm_out);
     fclose(asm_out);
 
     if (stage == STAGE_CODEGEN) {
