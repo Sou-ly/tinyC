@@ -78,7 +78,7 @@ void test_parse_return_2() {
     token_list_push(&tokens, (token){TOK_SEPARATOR, {.sep = SEP_RBRACE},     3, 1});
 
     Parser parser = parser_create(&tokens);
-    Program* prog = parse_program(&parser);
+    AstProgram* prog = parse_program(&parser);
 
     assert(prog != NULL);
     assert(prog->num_decls == 1);

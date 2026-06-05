@@ -75,12 +75,12 @@ struct Decl {
 Decl* create_function_decl(char* name, Stmt** body, int num_stmts);
 void destroy_decl(Decl* decl);
 
-// --- Program ---
+// --- AstProgram ---
 
 typedef struct {
     Decl** decls;
     int num_decls;
-} Program;
+} AstProgram;
 
-Program* create_program(Decl** decls, int num_decls);
-void destroy_program(Program* program);
+AstProgram* create_program(Decl** decls, int num_decls);
+void destroy_program(AstProgram* program);

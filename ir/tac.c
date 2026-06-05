@@ -97,16 +97,16 @@ void destroy_decl(Decl* decl) {
     free(decl);
 }
 
-// --- AstProgram ---
+// --- Program ---
 
-AstProgram* create_program(Decl** decls, int num_decls) {
-    AstProgram* p = malloc(sizeof(Program));
+Program* create_program(Decl** decls, int num_decls) {
+    Program* p = malloc(sizeof(Program));
     p->decls = decls;
     p->num_decls = num_decls;
     return p;
 }
 
-void destroy_program(AstProgram* program) {
+void destroy_program(Program* program) {
     if (!program) return;
     for (int i = 0; i < program->num_decls; i++) {
         destroy_decl(program->decls[i]);

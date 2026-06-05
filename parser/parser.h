@@ -13,4 +13,4 @@ typedef struct {
 Parser parser_create(token_list* tokens);
 
 // Parse a full program (one or more declarations).
-Program* parse_program(Parser* p);
+AstProgram* parse_program(Parser* p);

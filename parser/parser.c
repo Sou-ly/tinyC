@@ -118,7 +118,7 @@ Parser parser_create(token_list* tokens) {
     };
 }
 
-Program* parse_program(Parser* p) {
+AstProgram* parse_program(Parser* p) {
     int capacity = 4;
     int count = 0;
     Decl** decls = malloc(sizeof(Decl*) * capacity);
