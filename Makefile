@@ -47,7 +47,7 @@ tests/test_token: tests/test_token.c src/list.o src/lexer/token.o
 tests/test_parser: tests/test_parser.c src/parser/ast.o src/parser/parser.o src/list.o src/lexer/token.o src/strlib/str.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-tests/test_codegen: tests/test_codegen.c src/codegen/x86/x86_ast.o src/codegen/codegen.o src/codegen/emit.o src/parser/ast.o
+tests/test_codegen: tests/test_codegen.c src/codegen/x86/x86_ast.o src/codegen/codegen.o src/codegen/emit.o src/ir/ir.o src/parser/ast.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 tests/test_ir: tests/test_ir.c src/ir/ir.o src/parser/ast.o

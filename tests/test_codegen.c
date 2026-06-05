@@ -6,6 +6,7 @@
 #include "../src/codegen/codegen.h"
 #include "../src/codegen/emit.h"
 #include "../src/parser/ast.h"
+#include "../src/ir/ir.h"
 
 // --- asm_ast unit tests ---
 
@@ -52,7 +53,8 @@ void test_codegen_return_2() {
     decls[0] = create_function_decl("main", body, 1);
     AstProgram* program = create_program(decls, 1);
 
-    x86_Program* asm_prog = codegen(program);
+    IrProgram ir = emit_ir(program);
+    x86_Program* asm_prog = codegen(&ir);
 
     assert(asm_prog != NULL);
     assert(asm_prog->num_functions == 1);
@@ -75,7 +77,8 @@ void test_codegen_return_0() {
     decls[0] = create_function_decl("main", body, 1);
     AstProgram* program = create_program(decls, 1);
 
-    x86_Program* asm_prog = codegen(program);
+    IrProgram ir = emit_ir(program);
+    x86_Program* asm_prog = codegen(&ir);
 
     assert(asm_prog->functions[0]->instrs[0].mov.src.imm == 0);
 
@@ -93,7 +96,8 @@ void test_emit_return_2() {
     decls[0] = create_function_decl("main", body, 1);
     AstProgram* program = create_program(decls, 1);
 
-    x86_Program* asm_prog = codegen(program);
+    IrProgram ir = emit_ir(program);
+    x86_Program* asm_prog = codegen(&ir);
 
     char* buf = NULL;
     size_t buf_size = 0;

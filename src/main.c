@@ -6,6 +6,7 @@
 #include "lexer/token.h"
 #include "list.h"
 #include "parser/parser.h"
+#include "ir/ir.h"
 #include "codegen/codegen.h"
 #include "codegen/emit.h"
 
@@ -94,9 +95,13 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
+    // --- IR ---
+
+    IrProgram ir_program = emit_ir(program);
+
     // --- Codegen ---
 
-    x86_Program* asm_prog = codegen(program);
+    x86_Program* asm_prog = codegen(&ir_program);
 
     // Build the .s output path from the source path
     size_t src_len = strlen(source_path);

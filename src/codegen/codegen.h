@@ -1,7 +1,7 @@
 #pragma once
 
 #include "x86/x86_ast.h"
-#include "../parser/ast.h"
+#include "../ir/ir.h"
 
-// Translate high-level AST to assembly AST.
-x86_Program* codegen(AstProgram* program);
+// Translate IR to assembly AST.
+x86_Program* codegen(IrProgram* program);

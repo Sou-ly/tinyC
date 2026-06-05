@@ -1,42 +1,76 @@
 #include "codegen.h"
 #include <stdio.h>
+#include <string.h>
 
-static x86_Instr* codegen_stmt(AstStatement* stmt, int* num_instrs) {
-    switch (stmt->kind) {
-        case STMT_RETURN: {
-            int val = stmt->ret.expr->int_lit.value;
-            x86_Instr* instrs = malloc(sizeof(x86_Instr) * 2);
-            instrs[0] = (x86_Instr){.kind = x86_MOV, .mov = {
+static x86_Operand codegen_val(IrVal val) {
+    switch (val.kind) {
+        case IR_CONSTANT:
+            return (x86_Operand){.kind = x86_IMM, .imm = val.int_val};
+        case IR_VARIABLE:
+            return (x86_Operand){.kind = x86_ID, .identifier = strdup(val.name)};
+    }
+    fprintf(stderr, "codegen: unsupported IR value kind\n");
+    exit(1);
+}
+
+static x86_Unop codegen_unop(IrUnaryOpType op) {
+    switch (op) {
+        case IR_NEG:  return x86_NEG;
+        case IR_COMP: return x86_NOT;
+    }
+    fprintf(stderr, "codegen: unsupported unary op\n");
+    exit(1);
+}
+
+static void append_instr(x86_Instr** instrs, int* count, x86_Instr instr) {
+    *instrs = realloc(*instrs, (*count + 1) * sizeof(x86_Instr));
+    (*instrs)[*count] = instr;
+    (*count)++;
+}
+
+static void codegen_instr(IrInstruction* ir_instr, x86_Instr** instrs, int* count) {
+    switch (ir_instr->type) {
+        case IR_RETURN: {
+            x86_Operand src = codegen_val(ir_instr->ret.val);
+            append_instr(instrs, count, (x86_Instr){.kind = x86_MOV, .mov = {
                 .dst = (x86_Operand){.kind = x86_REG, .reg = x86_AX},
-                .src = (x86_Operand){.kind = x86_IMM, .imm = val}
-            }};
-            instrs[1] = (x86_Instr){.kind = x86_RET};
-            *num_instrs = 2;
-            return instrs;
+                .src = src
+            }});
+            append_instr(instrs, count, (x86_Instr){.kind = x86_RET});
+            return;
         }
-        default:
-            fprintf(stderr, "codegen: unsupported statement kind\n");
-            exit(1);
+        case IR_UNARY: {
+            x86_Operand src = codegen_val(ir_instr->unary.src);
+            x86_Operand dst = codegen_val(ir_instr->unary.dst);
+            append_instr(instrs, count, (x86_Instr){.kind = x86_MOV, .mov = {
+                .dst = dst,
+                .src = src
+            }});
+            x86_Operand dst2 = codegen_val(ir_instr->unary.dst);
+            append_instr(instrs, count, (x86_Instr){.kind = x86_UNOP, .unop = {
+                .unop = codegen_unop(ir_instr->unary.op),
+                .operand = dst2
+            }});
+            return;
+        }
     }
+    fprintf(stderr, "codegen: unsupported IR instruction type\n");
+    exit(1);
 }
 
-static x86_Function* codegen_decl(AstDeclaration* decl) {
-    switch (decl->kind) {
-        case DECL_FUNCTION: {
-            int num_instrs = 0;
-            x86_Instr* instrs = codegen_stmt(decl->function.body[0], &num_instrs);
-            return create_x86_function(decl->function.name, instrs, num_instrs);
-        }
-        default:
-            fprintf(stderr, "codegen: unsupported declaration kind\n");
-            exit(1);
+static x86_Function* codegen_function(IrFunction* ir_fn) {
+    x86_Instr* instrs = NULL;
+    int num_instrs = 0;
+    for (int i = 0; i < ir_fn->size; i++) {
+        codegen_instr(&ir_fn->instructions[i], &instrs, &num_instrs);
     }
+    return create_x86_function(ir_fn->name, instrs, num_instrs);
 }
 
-x86_Program* codegen(AstProgram* program) {
-    x86_Function** functions = malloc(sizeof(x86_Function*) * program->num_decls);
-    for (int i = 0; i < program->num_decls; i++) {
-        functions[i] = codegen_decl(program->decls[i]);
+x86_Program* codegen(IrProgram* program) {
+    x86_Function** functions = malloc(sizeof(x86_Function*) * program->size);
+    for (int i = 0; i < program->size; i++) {
+        functions[i] = codegen_function(&program->functions[i]);
     }
-    return create_x86_program(functions, program->num_decls);
+    return create_x86_program(functions, program->size);
 }
