@@ -2,10 +2,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include "../codegen/x86/x86_ast.h"
-#include "../codegen/codegen.h"
-#include "../codegen/emit.h"
-#include "../parser/ast.h"
+#include "../src/codegen/x86/x86_ast.h"
+#include "../src/codegen/codegen.h"
+#include "../src/codegen/emit.h"
+#include "../src/parser/ast.h"
 
 // --- asm_ast unit tests ---
 

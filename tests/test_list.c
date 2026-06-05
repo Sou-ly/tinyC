@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include "../list.h"
+#include "../src/list.h"
 
 // Categorical tokens leave .text NULL. Identifiers/literals strdup the
 // spelling — pushing transfers ownership to the list, which frees on destroy.

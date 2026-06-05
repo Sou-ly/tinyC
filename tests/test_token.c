@@ -2,8 +2,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include "../lexer/token.h"
-#include "../list.h"
+#include "../src/lexer/token.h"
+#include "../src/list.h"
 
 // ---- token_kind_name ----
 

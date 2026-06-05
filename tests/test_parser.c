@@ -2,9 +2,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include "../parser/ast.h"
-#include "../parser/parser.h"
-#include "../list.h"
+#include "../src/parser/ast.h"
+#include "../src/parser/parser.h"
+#include "../src/list.h"
 
 // --- AST unit tests ---
 

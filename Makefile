@@ -1,24 +1,23 @@
 TARGET = tinyc
 
 CC = gcc
-CFLAGS = -Wall -Wextra -g -Iutil -I.
+CFLAGS = -Wall -Wextra -g -Isrc
 LDFLAGS =
 
-SRCS = tiny.c \
-       list.c \
-       lexer/token.c \
-       parser/ast.c \
-       parser/parser.c \
-       ir/ir.c \
-       codegen/x86/x86_ast.c \
-       codegen/codegen.c \
-       codegen/emit.c \
-       strlib/str.c
+SRCS = src/main.c \
+       src/list.c \
+       src/lexer/token.c \
+       src/parser/ast.c \
+       src/parser/parser.c \
+       src/ir/ir.c \
+       src/codegen/x86/x86_ast.c \
+       src/codegen/codegen.c \
+       src/codegen/emit.c \
+       src/strlib/str.c
 
 OBJS = $(SRCS:.c=.o)
 
-TEST_TARGETS = tests/tests_parser tests/test_list tests/test_token tests/test_str tests/test_codegen tests/test_ir
-TEST_SRCS = tests/test_list.c tests/test_token.c tests/test_str.c tests/test_parser.c tests/test_codegen.c tests/test_ir.c
+TEST_TARGETS = tests/test_list tests/test_token tests/test_parser tests/test_str tests/test_codegen tests/test_ir
 
 all: $(TARGET)
 
@@ -39,19 +38,19 @@ test: build_tests
 
 build_tests: tests/test_list tests/test_token tests/test_parser tests/test_codegen tests/test_ir
 
-tests/test_list: tests/test_list.c list.o lexer/token.o
+tests/test_list: tests/test_list.c src/list.o src/lexer/token.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-tests/test_token: tests/test_token.c list.o lexer/token.o
+tests/test_token: tests/test_token.c src/list.o src/lexer/token.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-tests/test_parser: tests/test_parser.c parser/ast.o parser/parser.o list.o lexer/token.o strlib/str.o
+tests/test_parser: tests/test_parser.c src/parser/ast.o src/parser/parser.o src/list.o src/lexer/token.o src/strlib/str.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-tests/test_codegen: tests/test_codegen.c codegen/x86/x86_ast.o codegen/codegen.o codegen/emit.o parser/ast.o
+tests/test_codegen: tests/test_codegen.c src/codegen/x86/x86_ast.o src/codegen/codegen.o src/codegen/emit.o src/parser/ast.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-tests/test_ir: tests/test_ir.c ir/ir.o parser/ast.o
+tests/test_ir: tests/test_ir.c src/ir/ir.o src/parser/ast.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 tests/test_str:

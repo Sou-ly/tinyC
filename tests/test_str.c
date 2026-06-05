@@ -1,6 +1,6 @@
 #include <assert.h>
 #include <stdio.h>
-#include "../strlib/str.h"
+#include "../src/strlib/str.h"
 
 // ---- create / destroy ----
 

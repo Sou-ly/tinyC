@@ -2,8 +2,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include "../parser/ast.h"
-#include "../ir/ir.h"
+#include "../src/parser/ast.h"
+#include "../src/ir/ir.h"
 
 // --- helpers ---
 
