@@ -59,15 +59,15 @@ typedef struct {
     int num_instrs;
 } x86_Function;
 
-x86_Function* create_x86_function(char* name, x86_Instr* instrs, int num_instrs);
-void destroy_x86_function(x86_Function* fn);
-
 // --- Program ---
 
 typedef struct {
-    x86_Function** functions;
+    x86_Function* functions;
     int num_functions;
 } x86_Program;
 
-x86_Program* create_x86_program(x86_Function** functions, int num_functions);
+x86_Function make_x86_function(char* name, x86_Instr* instrs, int num_instrs);
+void destroy_x86_function(x86_Function* fn);
+
+x86_Program make_x86_program(x86_Function* functions, int num_functions);
 void destroy_x86_program(x86_Program* prog);

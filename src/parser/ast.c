@@ -1,7 +1,7 @@
 #include "ast.h"
 #include <string.h>
 
-// --- AstExpressionessions ---
+// --- Expressions ---
 
 AstExpression* create_int_expr(int value) {
     AstExpression* e = malloc(sizeof(AstExpression));
@@ -45,22 +45,15 @@ void destroy_expr(AstExpression* expr) {
 
 // --- Statements ---
 
-AstStatement* create_return_stmt(AstExpression* expr) {
-    AstStatement* s = malloc(sizeof(AstStatement));
-    s->kind = STMT_RETURN;
-    s->ret.expr = expr;
-    return s;
+AstStatement make_return_stmt(AstExpression* expr) {
+    return (AstStatement){ .kind = STMT_RETURN, .ret = { expr } };
 }
 
-AstStatement* create_expr_stmt(AstExpression* expr) {
-    AstStatement* s = malloc(sizeof(AstStatement));
-    s->kind = STMT_EXPR;
-    s->expr_stmt.expr = expr;
-    return s;
+AstStatement make_expr_stmt(AstExpression* expr) {
+    return (AstStatement){ .kind = STMT_EXPR, .expr_stmt = { expr } };
 }
 
 void destroy_stmt(AstStatement* stmt) {
-    if (!stmt) return;
     switch (stmt->kind) {
         case STMT_RETURN:
             destroy_expr(stmt->ret.expr);
@@ -69,48 +62,38 @@ void destroy_stmt(AstStatement* stmt) {
             destroy_expr(stmt->expr_stmt.expr);
             break;
     }
-    free(stmt);
 }
 
-// --- AstDeclarationarations ---
+// --- Declarations ---
 
-AstDeclaration* create_function_decl(char* name, AstStatement** body, int num_stmts) {
-    AstDeclaration* d = malloc(sizeof(AstDeclaration));
-    d->kind = DECL_FUNCTION;
-    d->function.name = strdup(name);
-    d->function.body = body;
-    d->function.num_stmts = num_stmts;
-    return d;
+AstDeclaration make_function_decl(char* name, AstStatement* body, int num_stmts) {
+    return (AstDeclaration){
+        .kind = DECL_FUNCTION,
+        .function = { .name = strdup(name), .body = body, .num_stmts = num_stmts }
+    };
 }
 
 void destroy_decl(AstDeclaration* decl) {
-    if (!decl) return;
     switch (decl->kind) {
         case DECL_FUNCTION:
             free(decl->function.name);
             for (int i = 0; i < decl->function.num_stmts; i++) {
-                destroy_stmt(decl->function.body[i]);
+                destroy_stmt(&decl->function.body[i]);
             }
             free(decl->function.body);
             break;
     }
-    free(decl);
 }
 
-// --- AstProgram ---
+// --- Program ---
 
-AstProgram* create_program(AstDeclaration** decls, int num_decls) {
-    AstProgram* p = malloc(sizeof(AstProgram));
-    p->decls = decls;
-    p->num_decls = num_decls;
-    return p;
+AstProgram make_program(AstDeclaration* decls, int num_decls) {
+    return (AstProgram){ .decls = decls, .num_decls = num_decls };
 }
 
 void destroy_program(AstProgram* program) {
-    if (!program) return;
     for (int i = 0; i < program->num_decls; i++) {
-        destroy_decl(program->decls[i]);
+        destroy_decl(&program->decls[i]);
     }
     free(program->decls);
-    free(program);
 }

@@ -16,6 +16,7 @@ typedef enum {
     STAGE_FULL,
     STAGE_LEX,
     STAGE_PARSE,
+    STAGE_IR,
     STAGE_CODEGEN
 } CompileStage;
 
@@ -24,6 +25,7 @@ static void display_help(const char* prog_name) {
     fprintf(stderr, "Options:\n");
     fprintf(stderr, "  --lex       Stop after lexing\n");
     fprintf(stderr, "  --parse     Stop after parsing\n");
+    fprintf(stderr, "  --ir        Stop after IR generation");
     fprintf(stderr, "  --codegen   Stop after codegen (emit .s file)\n");
     fprintf(stderr, "  --help      Show this help\n");
 }
@@ -37,6 +39,8 @@ int main(int argc, char* argv[]) {
             stage = STAGE_LEX;
         } else if (strcmp(argv[i], "--parse") == 0) {
             stage = STAGE_PARSE;
+        } else if (strcmp(argv[i], "--ir") == 0) {
+            stage = STAGE_IR;
         } else if (strcmp(argv[i], "--codegen") == 0) {
             stage = STAGE_CODEGEN;
         } else if (strcmp(argv[i], "--help") == 0) {
@@ -87,21 +91,28 @@ int main(int argc, char* argv[]) {
     // --- Parse ---
 
     Parser parser = parser_create(&tokens);
-    AstProgram* program = parse_program(&parser);
+    AstProgram program = parse_program(&parser);
 
     if (stage == STAGE_PARSE) {
-        destroy_program(program);
+        destroy_program(&program);
         token_list_destroy(&tokens);
         return 0;
     }
 
     // --- IR ---
 
-    IrProgram ir_program = emit_ir(program);
+    IrProgram ir_program = emit_ir(&program);
+
+    if (stage == STAGE_IR) {
+        destroyi_ir(&ir_program);
+        destroy_program(&program);
+        token_list_destroy(&tokens);
+        return 0;
+    }
 
     // --- Codegen ---
 
-    x86_Program* asm_prog = codegen(&ir_program);
+    x86_Program asm_prog = codegen(&ir_program);
 
     // Build the .s output path from the source path
     size_t src_len = strlen(source_path);
@@ -115,19 +126,19 @@ int main(int argc, char* argv[]) {
     if (asm_out == NULL) {
         fprintf(stderr, "Error: cannot open %s for writing\n", asm_path);
         free(asm_path);
-        destroy_x86_program(asm_prog);
-        destroy_program(program);
+        destroy_x86_program(&asm_prog);
+        destroy_program(&program);
         token_list_destroy(&tokens);
         return 2;
     }
 
-    emit_asm(asm_prog, asm_out);
+    emit_asm(&asm_prog, asm_out);
     fclose(asm_out);
 
     if (stage == STAGE_CODEGEN) {
         free(asm_path);
-        destroy_x86_program(asm_prog);
-        destroy_program(program);
+        destroy_x86_program(&asm_prog);
+        destroy_program(&program);
         token_list_destroy(&tokens);
         return 0;
     }
@@ -147,8 +158,8 @@ int main(int argc, char* argv[]) {
 
     free(asm_path);
     free(exe_path);
-    destroy_x86_program(asm_prog);
-    destroy_program(program);
+    destroy_x86_program(&asm_prog);
+    destroy_program(&program);
     token_list_destroy(&tokens);
 
     if (ret != 0) {

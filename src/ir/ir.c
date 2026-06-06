@@ -64,8 +64,8 @@ static void emit_ir_statement(const AstStatement* stmt, IrFunction* ir_function)
 			return;
 		case STMT_RETURN: {
 			IrVal val = emit_ir_expression(stmt->ret.expr, ir_function);
-			IrInstruction ret = { IR_RETURN, .ret = { val } };
-			append_ir_instruction(ir_function, ret);
+			IrInstruction ret_instr = { IR_RETURN, .ret = { val } };
+			append_ir_instruction(ir_function, ret_instr);
 			return;
 		}
 	}
@@ -84,7 +84,7 @@ static IrFunction emit_ir_function(const AstDeclaration* decl) {
 	IrFunction ir_function = {NULL, NULL, 0};
 	ir_function.name = strdup(decl->function.name);
 	for (int i = 0; i < decl->function.num_stmts; i++) {
-		emit_ir_statement(decl->function.body[i], &ir_function);
+		emit_ir_statement(&decl->function.body[i], &ir_function);
 	}
 	return ir_function;
 }
@@ -92,7 +92,7 @@ static IrFunction emit_ir_function(const AstDeclaration* decl) {
 IrProgram emit_ir(const AstProgram* ast_program) {
 	IrProgram ir_program = {NULL, 0};
 	for (int i = 0; i < ast_program->num_decls; i++) {
-		AstDeclaration* decl = ast_program->decls[i];
+		const AstDeclaration* decl = &ast_program->decls[i];
 		switch (decl->kind) {
 			case DECL_FUNCTION:
 				append_ir_function(&ir_program, emit_ir_function(decl));
@@ -103,4 +103,36 @@ IrProgram emit_ir(const AstProgram* ast_program) {
 		}
 	}
 	return ir_program;
+}
+
+static void destroy_val(IrVal val) {
+    if (val.kind == IR_VARIABLE) {
+        free(val.name);
+    }
+}
+
+void destroy_ir(IrProgram* program){
+    for (int fn = 0; fn < program->size; fn++) {
+        // iterate over functions
+        IrFunction function = program->functions[fn];
+        for (int in = 0; in < function.size; in++) {
+            // iterate over instructions    
+            IrInstruction instruction = function.instructions[in];
+            switch (instruction.type) {
+                case IR_RETURN:
+                    destroy_val(instruction.ret.val);
+                    break;
+                case IR_UNARY:
+                    destroy_val(instruction.unary.dst); 
+                    destroy_val(instruction.unary.src);
+                    break;
+                default:
+                    break;
+            }
+        }
+        free(function.name);
+        free(function.instructions);
+    }
+    free(program->functions);
+    program->functions = NULL;
 }

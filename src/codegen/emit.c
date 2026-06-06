@@ -36,7 +36,7 @@ static void emit_instr(x86_Instr* instr, FILE* out) {
 
 void emit_asm(x86_Program* prog, FILE* out) {
     for (int i = 0; i < prog->num_functions; i++) {
-        x86_Function* fn = prog->functions[i];
+        x86_Function* fn = &prog->functions[i];
         fprintf(out, ".global _%s\n", fn->name);
         fprintf(out, "_%s:\n", fn->name);
         for (int j = 0; j < fn->num_instrs; j++) {

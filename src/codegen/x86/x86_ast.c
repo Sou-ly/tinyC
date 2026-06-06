@@ -3,35 +3,24 @@
 
 // --- Functions ---
 
-x86_Function* create_x86_function(char* name, x86_Instr* instrs, int num_instrs) {
-    x86_Function* fn = malloc(sizeof(x86_Function));
-    fn->name = strdup(name);
-    fn->instrs = instrs;
-    fn->num_instrs = num_instrs;
-    return fn;
+x86_Function make_x86_function(char* name, x86_Instr* instrs, int num_instrs) {
+    return (x86_Function){ .name = strdup(name), .instrs = instrs, .num_instrs = num_instrs };
 }
 
 void destroy_x86_function(x86_Function* fn) {
-    if (!fn) return;
     free(fn->name);
     free(fn->instrs);
-    free(fn);
 }
 
 // --- Program ---
 
-x86_Program* create_x86_program(x86_Function** functions, int num_functions) {
-    x86_Program* prog = malloc(sizeof(x86_Program));
-    prog->functions = functions;
-    prog->num_functions = num_functions;
-    return prog;
+x86_Program make_x86_program(x86_Function* functions, int num_functions) {
+    return (x86_Program){ .functions = functions, .num_functions = num_functions };
 }
 
 void destroy_x86_program(x86_Program* prog) {
-    if (!prog) return;
     for (int i = 0; i < prog->num_functions; i++) {
-        destroy_x86_function(prog->functions[i]);
+        destroy_x86_function(&prog->functions[i]);
     }
     free(prog->functions);
-    free(prog);
 }

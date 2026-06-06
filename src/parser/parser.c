@@ -70,12 +70,12 @@ static AstExpression* parse_expression(Parser* p) {
     exit(1);
 }
 
-static AstStatement* parse_statement(Parser* p) {
+static AstStatement parse_statement(Parser* p) {
     if (current(p)->kind == TOK_KEYWORD && current(p)->as.kw == KW_RETURN) {
         advance(p); // consume 'return'
         AstExpression* expr = parse_expression(p);
         expect_separator(p, SEP_SEMICOLON);
-        return create_return_stmt(expr);
+        return make_return_stmt(expr);
     }
 
     fprintf(stderr, "parse error at %zu:%zu: expected statement\n",
@@ -83,7 +83,7 @@ static AstStatement* parse_statement(Parser* p) {
     exit(1);
 }
 
-static AstDeclaration* parse_declaration(Parser* p) {
+static AstDeclaration parse_declaration(Parser* p) {
     // expect: int <name> ( )  { ... }
     expect_keyword(p, KW_INT);
 
@@ -102,19 +102,19 @@ static AstDeclaration* parse_declaration(Parser* p) {
     // parse body statements
     int capacity = 8;
     int count = 0;
-    AstStatement** body = malloc(sizeof(AstStatement*) * capacity);
+    AstStatement* body = malloc(sizeof(AstStatement) * capacity);
 
     while (!at_end(p) && !(current(p)->kind == TOK_SEPARATOR && current(p)->as.sep == SEP_RBRACE)) {
         if (count >= capacity) {
             capacity *= 2;
-            body = realloc(body, sizeof(AstStatement*) * capacity);
+            body = realloc(body, sizeof(AstStatement) * capacity);
         }
         body[count++] = parse_statement(p);
     }
 
     expect_separator(p, SEP_RBRACE);
 
-    return create_function_decl(name, body, count);
+    return make_function_decl(name, body, count);
 }
 
 // --- Public API ---
@@ -127,18 +127,18 @@ Parser parser_create(token_list* tokens) {
     };
 }
 
-AstProgram* parse_program(Parser* p) {
+AstProgram parse_program(Parser* p) {
     int capacity = 4;
     int count = 0;
-    AstDeclaration** decls = malloc(sizeof(AstDeclaration*) * capacity);
+    AstDeclaration* decls = malloc(sizeof(AstDeclaration) * capacity);
 
     while (!at_end(p)) {
         if (count >= capacity) {
             capacity *= 2;
-            decls = realloc(decls, sizeof(AstDeclaration*) * capacity);
+            decls = realloc(decls, sizeof(AstDeclaration) * capacity);
         }
         decls[count++] = parse_declaration(p);
     }
 
-    return create_program(decls, count);
+    return make_program(decls, count);
 }

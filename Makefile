@@ -59,7 +59,8 @@ tests/test_str:
 	@# dummy target
 
 clean:
-	rm -f $(OBJS) $(TARGET) $(TEST_TARGETS)
-	rm -rf tests/*.dSYM
+	find . -name "*.o" -delete
+	rm -f $(TARGET) $(TEST_TARGETS)
+	find . -name "*.dSYM" -type d -exec rm -rf {} +
 
 .PHONY: all test clean

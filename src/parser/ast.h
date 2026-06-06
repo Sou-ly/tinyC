@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-// --- AstExpressionessions ---
+// --- Expressions ---
 
 typedef enum {
     UNARY_NOT,
@@ -39,21 +39,19 @@ typedef enum {
     STMT_EXPR
 } AstStatementKind;
 
-typedef struct AstStatement AstStatement;
-
-struct AstStatement {
+typedef struct {
     AstStatementKind kind;
     union {
         struct { AstExpression* expr; } ret;
         struct { AstExpression* expr; } expr_stmt;
     };
-};
+} AstStatement;
 
-AstStatement* create_return_stmt(AstExpression* expr);
-AstStatement* create_expr_stmt(AstExpression* expr);
+AstStatement make_return_stmt(AstExpression* expr);
+AstStatement make_expr_stmt(AstExpression* expr);
 void destroy_stmt(AstStatement* stmt);
 
-// --- AstDeclarationarations ---
+// --- Declarations ---
 
 typedef enum {
     DECL_FUNCTION
@@ -61,7 +59,7 @@ typedef enum {
 
 typedef struct {
 	char* name;
-	AstStatement** body;
+	AstStatement* body;
 	int num_stmts;
 } AstFunction;
 
@@ -72,15 +70,15 @@ typedef struct {
     };
 } AstDeclaration;
 
-AstDeclaration* create_function_decl(char* name, AstStatement** body, int num_stmts);
+AstDeclaration make_function_decl(char* name, AstStatement* body, int num_stmts);
 void destroy_decl(AstDeclaration* decl);
 
-// --- AstProgram ---
+// --- Program ---
 
 typedef struct {
-    AstDeclaration** decls;
+    AstDeclaration* decls;
     int num_decls;
 } AstProgram;
 
-AstProgram* create_program(AstDeclaration** decls, int num_decls);
+AstProgram make_program(AstDeclaration* decls, int num_decls);
 void destroy_program(AstProgram* program);

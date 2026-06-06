@@ -58,19 +58,19 @@ static void codegen_instr(IrInstruction* ir_instr, x86_Instr** instrs, int* coun
     exit(1);
 }
 
-static x86_Function* codegen_function(IrFunction* ir_fn) {
+static x86_Function codegen_function(IrFunction* ir_fn) {
     x86_Instr* instrs = NULL;
     int num_instrs = 0;
     for (int i = 0; i < ir_fn->size; i++) {
         codegen_instr(&ir_fn->instructions[i], &instrs, &num_instrs);
     }
-    return create_x86_function(ir_fn->name, instrs, num_instrs);
+    return make_x86_function(ir_fn->name, instrs, num_instrs);
 }
 
-x86_Program* codegen(IrProgram* program) {
-    x86_Function** functions = malloc(sizeof(x86_Function*) * program->size);
+x86_Program codegen(IrProgram* program) {
+    x86_Function* functions = malloc(sizeof(x86_Function) * program->size);
     for (int i = 0; i < program->size; i++) {
         functions[i] = codegen_function(&program->functions[i]);
     }
-    return create_x86_program(functions, program->size);
+    return make_x86_program(functions, program->size);
 }

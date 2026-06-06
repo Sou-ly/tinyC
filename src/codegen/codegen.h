@@ -4,4 +4,4 @@
 #include "../ir/ir.h"
 
 // Translate IR to assembly AST.
-x86_Program* codegen(IrProgram* program);
+x86_Program codegen(IrProgram* program);

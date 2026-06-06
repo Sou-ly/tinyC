@@ -39,25 +39,23 @@ void test_create_binary_expr() {
 }
 
 void test_create_return_stmt() {
-    AstStatement* s = create_return_stmt(create_int_expr(2));
-    assert(s != NULL);
-    assert(s->kind == STMT_RETURN);
-    assert(s->ret.expr->int_lit.value == 2);
-    destroy_stmt(s);
+    AstStatement s = make_return_stmt(create_int_expr(2));
+    assert(s.kind == STMT_RETURN);
+    assert(s.ret.expr->int_lit.value == 2);
+    destroy_stmt(&s);
     printf("  PASS: test_create_return_stmt\n");
 }
 
 void test_create_function_decl() {
-    AstStatement** body = malloc(sizeof(AstStatement*));
-    body[0] = create_return_stmt(create_int_expr(0));
+    AstStatement* body = malloc(sizeof(AstStatement));
+    body[0] = make_return_stmt(create_int_expr(0));
 
-    AstDeclaration* fn = create_function_decl("main", body, 1);
-    assert(fn != NULL);
-    assert(fn->kind == DECL_FUNCTION);
-    assert(strcmp(fn->function.name, "main") == 0);
-    assert(fn->function.num_stmts == 1);
-    assert(fn->function.body[0]->kind == STMT_RETURN);
-    destroy_decl(fn);
+    AstDeclaration fn = make_function_decl("main", body, 1);
+    assert(fn.kind == DECL_FUNCTION);
+    assert(strcmp(fn.function.name, "main") == 0);
+    assert(fn.function.num_stmts == 1);
+    assert(fn.function.body[0].kind == STMT_RETURN);
+    destroy_decl(&fn);
     printf("  PASS: test_create_function_decl\n");
 }
 
@@ -78,18 +76,17 @@ void test_parse_return_2() {
     token_list_push(&tokens, (token){TOK_SEPARATOR, {.sep = SEP_RBRACE},     3, 1});
 
     Parser parser = parser_create(&tokens);
-    AstProgram* prog = parse_program(&parser);
+    AstProgram prog = parse_program(&parser);
 
-    assert(prog != NULL);
-    assert(prog->num_decls == 1);
-    assert(prog->decls[0]->kind == DECL_FUNCTION);
-    assert(strcmp(prog->decls[0]->function.name, "main") == 0);
-    assert(prog->decls[0]->function.num_stmts == 1);
-    assert(prog->decls[0]->function.body[0]->kind == STMT_RETURN);
-    assert(prog->decls[0]->function.body[0]->ret.expr->kind == EXPR_INT);
-    assert(prog->decls[0]->function.body[0]->ret.expr->int_lit.value == 2);
+    assert(prog.num_decls == 1);
+    assert(prog.decls[0].kind == DECL_FUNCTION);
+    assert(strcmp(prog.decls[0].function.name, "main") == 0);
+    assert(prog.decls[0].function.num_stmts == 1);
+    assert(prog.decls[0].function.body[0].kind == STMT_RETURN);
+    assert(prog.decls[0].function.body[0].ret.expr->kind == EXPR_INT);
+    assert(prog.decls[0].function.body[0].ret.expr->int_lit.value == 2);
 
-    destroy_program(prog);
+    destroy_program(&prog);
     free(tokens.items);
     printf("  PASS: test_parse_return_2\n");
 }

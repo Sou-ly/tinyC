@@ -8,15 +8,15 @@
 // --- helpers ---
 
 // Wrap a list of statements into a single-function ("main") program.
-static AstProgram* program_of(AstStatement** stmts, int num_stmts) {
-    AstDeclaration** decls = malloc(sizeof(AstDeclaration*));
-    decls[0] = create_function_decl("main", stmts, num_stmts);
-    return create_program(decls, 1);
+static AstProgram program_of(AstStatement* stmts, int num_stmts) {
+    AstDeclaration* decls = malloc(sizeof(AstDeclaration));
+    decls[0] = make_function_decl("main", stmts, num_stmts);
+    return make_program(decls, 1);
 }
 
 // Wrap a single statement into a one-statement "main" program.
-static AstProgram* program_of_stmt(AstStatement* stmt) {
-    AstStatement** body = malloc(sizeof(AstStatement*));
+static AstProgram program_of_stmt(AstStatement stmt) {
+    AstStatement* body = malloc(sizeof(AstStatement));
     body[0] = stmt;
     return program_of(body, 1);
 }
@@ -42,8 +42,8 @@ static void free_ir_program(IrProgram* program) {
 
 // int main() { return 2; }
 void test_emit_return_constant() {
-    AstProgram* ast = program_of_stmt(create_return_stmt(create_int_expr(2)));
-    IrProgram ir = emit_ir(ast);
+    AstProgram ast = program_of_stmt(make_return_stmt(create_int_expr(2)));
+    IrProgram ir = emit_ir(&ast);
 
     assert(ir.size == 1);
     IrFunction* fn = &ir.functions[0];
@@ -56,28 +56,28 @@ void test_emit_return_constant() {
     assert(ret->ret.val.int_val == 2);
 
     free_ir_program(&ir);
-    destroy_program(ast);
+    destroy_program(&ast);
     printf("  PASS: test_emit_return_constant\n");
 }
 
 // The IR function name must be an independent copy of the AST name.
 void test_emit_name_is_owned_copy() {
-    AstProgram* ast = program_of_stmt(create_return_stmt(create_int_expr(0)));
-    IrProgram ir = emit_ir(ast);
+    AstProgram ast = program_of_stmt(make_return_stmt(create_int_expr(0)));
+    IrProgram ir = emit_ir(&ast);
 
-    assert(ir.functions[0].name != ast->decls[0]->function.name);
+    assert(ir.functions[0].name != ast.decls[0].function.name);
     assert(strcmp(ir.functions[0].name, "main") == 0);
 
     free_ir_program(&ir);
-    destroy_program(ast);
+    destroy_program(&ast);
     printf("  PASS: test_emit_name_is_owned_copy\n");
 }
 
 // int main() { return -5; }  ->  unary NEG into a temp, then return the temp.
 void test_emit_return_negate() {
-    AstProgram* ast = program_of_stmt(
-        create_return_stmt(create_unary_expr(UNARY_MINUS, create_int_expr(5))));
-    IrProgram ir = emit_ir(ast);
+    AstProgram ast = program_of_stmt(
+        make_return_stmt(create_unary_expr(UNARY_MINUS, create_int_expr(5))));
+    IrProgram ir = emit_ir(&ast);
 
     IrFunction* fn = &ir.functions[0];
     assert(fn->size == 2);
@@ -96,15 +96,15 @@ void test_emit_return_negate() {
     assert(strcmp(ret->ret.val.name, unary->unary.dst.name) == 0);
 
     free_ir_program(&ir);
-    destroy_program(ast);
+    destroy_program(&ast);
     printf("  PASS: test_emit_return_negate\n");
 }
 
 // int main() { return ~3; }  ->  NOT maps to the complement op.
 void test_emit_return_complement() {
-    AstProgram* ast = program_of_stmt(
-        create_return_stmt(create_unary_expr(UNARY_NOT, create_int_expr(3))));
-    IrProgram ir = emit_ir(ast);
+    AstProgram ast = program_of_stmt(
+        make_return_stmt(create_unary_expr(UNARY_NOT, create_int_expr(3))));
+    IrProgram ir = emit_ir(&ast);
 
     IrFunction* fn = &ir.functions[0];
     assert(fn->size == 2);
@@ -113,7 +113,7 @@ void test_emit_return_complement() {
     assert(fn->instructions[0].unary.src.int_val == 3);
 
     free_ir_program(&ir);
-    destroy_program(ast);
+    destroy_program(&ast);
     printf("  PASS: test_emit_return_complement\n");
 }
 
@@ -121,8 +121,8 @@ void test_emit_return_complement() {
 void test_emit_nested_unary() {
     AstExpression* inner = create_unary_expr(UNARY_NOT, create_int_expr(5));
     AstExpression* outer = create_unary_expr(UNARY_MINUS, inner);
-    AstProgram* ast = program_of_stmt(create_return_stmt(outer));
-    IrProgram ir = emit_ir(ast);
+    AstProgram ast = program_of_stmt(make_return_stmt(outer));
+    IrProgram ir = emit_ir(&ast);
 
     IrFunction* fn = &ir.functions[0];
     assert(fn->size == 3);
@@ -143,40 +143,40 @@ void test_emit_nested_unary() {
     assert(strcmp(in2->ret.val.name, in1->unary.dst.name) == 0);
 
     free_ir_program(&ir);
-    destroy_program(ast);
+    destroy_program(&ast);
     printf("  PASS: test_emit_nested_unary\n");
 }
 
 // A bare-constant expression statement produces no instruction.
 // int main() { 5; return 0; }  ->  only the return is emitted.
 void test_emit_expr_statement_no_instruction() {
-    AstStatement** body = malloc(2 * sizeof(AstStatement*));
-    body[0] = create_expr_stmt(create_int_expr(5));
-    body[1] = create_return_stmt(create_int_expr(0));
-    AstProgram* ast = program_of(body, 2);
-    IrProgram ir = emit_ir(ast);
+    AstStatement* body = malloc(2 * sizeof(AstStatement));
+    body[0] = make_expr_stmt(create_int_expr(5));
+    body[1] = make_return_stmt(create_int_expr(0));
+    AstProgram ast = program_of(body, 2);
+    IrProgram ir = emit_ir(&ast);
 
     IrFunction* fn = &ir.functions[0];
     assert(fn->size == 1);
     assert(fn->instructions[0].type == IR_RETURN);
 
     free_ir_program(&ir);
-    destroy_program(ast);
+    destroy_program(&ast);
     printf("  PASS: test_emit_expr_statement_no_instruction\n");
 }
 
 // A program with more than one function lowers each independently.
 void test_emit_multiple_functions() {
-    AstStatement** body_a = malloc(sizeof(AstStatement*));
-    body_a[0] = create_return_stmt(create_int_expr(1));
-    AstStatement** body_b = malloc(sizeof(AstStatement*));
-    body_b[0] = create_return_stmt(create_int_expr(2));
+    AstStatement* body_a = malloc(sizeof(AstStatement));
+    body_a[0] = make_return_stmt(create_int_expr(1));
+    AstStatement* body_b = malloc(sizeof(AstStatement));
+    body_b[0] = make_return_stmt(create_int_expr(2));
 
-    AstDeclaration** decls = malloc(2 * sizeof(AstDeclaration*));
-    decls[0] = create_function_decl("foo", body_a, 1);
-    decls[1] = create_function_decl("bar", body_b, 1);
-    AstProgram* ast = create_program(decls, 2);
-    IrProgram ir = emit_ir(ast);
+    AstDeclaration* decls = malloc(2 * sizeof(AstDeclaration));
+    decls[0] = make_function_decl("foo", body_a, 1);
+    decls[1] = make_function_decl("bar", body_b, 1);
+    AstProgram ast = make_program(decls, 2);
+    IrProgram ir = emit_ir(&ast);
 
     assert(ir.size == 2);
     assert(strcmp(ir.functions[0].name, "foo") == 0);
@@ -185,7 +185,7 @@ void test_emit_multiple_functions() {
     assert(ir.functions[1].instructions[0].ret.val.int_val == 2);
 
     free_ir_program(&ir);
-    destroy_program(ast);
+    destroy_program(&ast);
     printf("  PASS: test_emit_multiple_functions\n");
 }
 

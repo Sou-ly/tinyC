@@ -41,10 +41,11 @@ typedef struct {
     IrInstruction* instructions;
 	int size;
 } IrFunction;
-    
+
 typedef struct {
     IrFunction* functions;
     int size;
 } IrProgram;
 
 IrProgram emit_ir(const AstProgram* ast_program);
+void destroy_ir(IrProgram* program);
