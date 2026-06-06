@@ -25,12 +25,16 @@ typedef enum {
 typedef enum {
 	OP_PLUS,
 	OP_MINUS,
+    OP_STAR,
+    OP_FSLASH,
+    OP_PERCENT,
 	OP_EQ,
 	OP_NEQ,
 	OP_AND,
 	OP_OR,
     OP_NOT,
-    OP_DECR
+    OP_DECR,
+    OP_INCR
 } token_operator;
 
 typedef enum {

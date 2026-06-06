@@ -13,11 +13,11 @@ void token_free(token *t) {
 
 const char *token_kind_name(token_kind kind) {
 	switch (kind) {
-		case TOK_SEPARATOR:   return "separator";
-		case TOK_OPERATOR:    return "operator";
-		case TOK_KEYWORD:     return "keyword";
-		case TOK_IDENTIFIER:  return "identifier";
-		case TOK_INT_LITERAL: return "int literal";
+		case TOK_SEPARATOR:     return "separator";
+		case TOK_OPERATOR:      return "operator";
+		case TOK_KEYWORD:       return "keyword";
+		case TOK_IDENTIFIER:    return "identifier";
+		case TOK_INT_LITERAL:   return "int literal";
 	}
 	return "<unknown>";
 }
@@ -36,14 +36,18 @@ const char *separator_name(token_separator s) {
 
 const char *operator_name(token_operator o) {
 	switch (o) {
-		case OP_PLUS:  return "+";
-		case OP_MINUS: return "-";
-		case OP_EQ:    return "==";
-		case OP_NEQ:   return "!=";
-		case OP_AND:   return "&&";
-		case OP_OR:    return "||";
-		case OP_NOT:   return "~";
-		case OP_DECR:  return "--";
+		case OP_PLUS:       return "+";
+		case OP_MINUS:      return "-";
+        case OP_STAR:       return "*";
+		case OP_PERCENT:    return "%";
+		case OP_FSLASH:     return "/";
+		case OP_NOT:        return "~";
+		case OP_EQ:         return "==";
+		case OP_NEQ:        return "!=";
+		case OP_AND:        return "&&";
+		case OP_OR:         return "||";
+		case OP_DECR:       return "--";
+        case OP_INCR:       return "++"; 
 	}
 	return "<unknown>";
 }
@@ -92,11 +96,18 @@ static int operator_lookup(const char *source, size_t i, size_t *advance) {
 		if (source[i] == '&' && source[i + 1] == '&') { *advance = 2; return OP_AND; }
 		if (source[i] == '|' && source[i + 1] == '|') { *advance = 2; return OP_OR; }
 		if (source[i] == '-' && source[i + 1] == '-') { *advance = 2; return OP_DECR; }
+		if (source[i] == '+' && source[i + 1] == '+') { *advance = 2; return OP_DECR; }
 	}
 	// single-char operators
-	if (source[i] == '+') { *advance = 1; return OP_PLUS; }
-	if (source[i] == '-') { *advance = 1; return OP_MINUS; }
-	if (source[i] == '~') { *advance = 1; return OP_NOT; }
+    switch (source[i]) {
+	    case '+': *advance = 1; return OP_PLUS; 
+	    case '-': *advance = 1; return OP_MINUS;
+	    case '~': *advance = 1; return OP_NOT;
+	    case '*': *advance = 1; return OP_STAR;
+        case '%': *advance = 1; return OP_PERCENT;
+        case '/': *advance = 1; return OP_FSLASH;
+    }
+    
 	return -1;
 }
 

@@ -41,14 +41,18 @@ void test_separator_name_unknown() {
 // ---- operator_name ----
 
 void test_operator_name() {
-	assert(strcmp(operator_name(OP_PLUS),  "+")  == 0);
-	assert(strcmp(operator_name(OP_MINUS), "-")  == 0);
-	assert(strcmp(operator_name(OP_EQ),    "==") == 0);
-	assert(strcmp(operator_name(OP_NEQ),   "!=") == 0);
-	assert(strcmp(operator_name(OP_AND),   "&&") == 0);
-	assert(strcmp(operator_name(OP_OR),    "||") == 0);
-	assert(strcmp(operator_name(OP_NOT),   "~")  == 0);
-	assert(strcmp(operator_name(OP_DECR),  "--") == 0);
+	assert(strcmp(operator_name(OP_PLUS),       "+")  == 0);
+	assert(strcmp(operator_name(OP_MINUS),      "-")  == 0);
+	assert(strcmp(operator_name(OP_STAR),       "*")  == 0);
+	assert(strcmp(operator_name(OP_PERCENT),    "%")  == 0);
+	assert(strcmp(operator_name(OP_FSLASH),     "/")  == 0);
+	assert(strcmp(operator_name(OP_EQ),         "==") == 0);
+	assert(strcmp(operator_name(OP_NEQ),        "!=") == 0);
+	assert(strcmp(operator_name(OP_AND),        "&&") == 0);
+	assert(strcmp(operator_name(OP_OR),         "||") == 0);
+	assert(strcmp(operator_name(OP_NOT),        "~")  == 0);
+	assert(strcmp(operator_name(OP_DECR),       "--") == 0);
+	assert(strcmp(operator_name(OP_INCR),       "++") == 0);
 	printf("  PASS: operator_name\n");
 }
 
