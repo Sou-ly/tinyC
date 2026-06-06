@@ -96,7 +96,7 @@ static int operator_lookup(const char *source, size_t i, size_t *advance) {
 	// single-char operators
 	if (source[i] == '+') { *advance = 1; return OP_PLUS; }
 	if (source[i] == '-') { *advance = 1; return OP_MINUS; }
-	if (source[i] == '~') { *advance = 1; return OP_MINUS; }
+	if (source[i] == '~') { *advance = 1; return OP_NOT; }
 	return -1;
 }
 

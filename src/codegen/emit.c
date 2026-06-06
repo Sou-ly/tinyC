@@ -1,4 +1,5 @@
 #include "emit.h"
+#include <string.h>
 
 static const char* reg_name(x86_Reg reg) {
     switch (reg) {
@@ -11,24 +12,48 @@ static const char* reg_name(x86_Reg reg) {
 static void emit_operand(x86_Operand* op, FILE* out) {
     switch (op->kind) {
         case x86_REG:
-            fprintf(out, "%s", reg_name(op->reg));
+            fprintf(out, "%%%s", reg_name(op->reg));
             break;
         case x86_IMM:
-            fprintf(out, "#%d", op->imm);
+            fprintf(out, "$%d", op->imm);
+            break;
+        case x86_STACK:
+            fprintf(out, "%d(%%rbp)", op->stack);
+            break;
+        case x86_ID:
+            fprintf(out, "<pseudo:%s>", op->identifier);
             break;
     }
+}
+
+static const char* unop_name(x86_Unop op) {
+    switch (op) {
+        case x86_NEG: return "negl";
+        case x86_NOT: return "notl";
+    }
+    return "???";
 }
 
 static void emit_instr(x86_Instr* instr, FILE* out) {
     switch (instr->kind) {
         case x86_MOV:
-            fprintf(out, "    mov ");
-            emit_operand(&instr->mov.dst, out);
-            fprintf(out, ", ");
+            fprintf(out, "    movl ");
             emit_operand(&instr->mov.src, out);
+            fprintf(out, ", ");
+            emit_operand(&instr->mov.dst, out);
             fprintf(out, "\n");
             break;
+        case x86_UNOP:
+            fprintf(out, "    %s ", unop_name(instr->unop.unop));
+            emit_operand(&instr->unop.operand, out);
+            fprintf(out, "\n");
+            break;
+        case x86_ALLOC:
+            fprintf(out, "    subq $%d, %%rsp\n", instr->alloc_stack.size);
+            break;
         case x86_RET:
+            fprintf(out, "    movq %%rbp, %%rsp\n");
+            fprintf(out, "    popq %%rbp\n");
             fprintf(out, "    ret\n");
             break;
     }
@@ -37,10 +62,14 @@ static void emit_instr(x86_Instr* instr, FILE* out) {
 void emit_asm(x86_Program* prog, FILE* out) {
     for (int i = 0; i < prog->num_functions; i++) {
         x86_Function* fn = &prog->functions[i];
-        fprintf(out, ".global _%s\n", fn->name);
+        if (strcmp(fn->name, "main") == 0) {
+            fprintf(out, ".global _%s\n", fn->name);
+        }
         fprintf(out, "_%s:\n", fn->name);
-        for (int j = 0; j < fn->num_instrs; j++) {
-            emit_instr(&fn->instrs[j], out);
+        fprintf(out, "    pushq %%rbp\n");
+        fprintf(out, "    movq %%rsp, %%rbp\n");
+        for (x86_Instr* instr = fn->instrs.head; instr; instr = instr->next) {
+            emit_instr(instr, out);
         }
         fprintf(out, "\n");
     }

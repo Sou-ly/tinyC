@@ -104,7 +104,7 @@ int main(int argc, char* argv[]) {
     IrProgram ir_program = emit_ir(&program);
 
     if (stage == STAGE_IR) {
-        destroyi_ir(&ir_program);
+        destroy_ir(&ir_program);
         destroy_program(&program);
         token_list_destroy(&tokens);
         return 0;
@@ -113,6 +113,10 @@ int main(int argc, char* argv[]) {
     // --- Codegen ---
 
     x86_Program asm_prog = codegen(&ir_program);
+    for (int i = 0; i < asm_prog.num_functions; i++){
+        int stack_offset = rename_registers(&asm_prog.functions[i]);
+        allocate_stack(&asm_prog.functions[i], stack_offset);
+    }
 
     // Build the .s output path from the source path
     size_t src_len = strlen(source_path);

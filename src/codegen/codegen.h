@@ -5,3 +5,9 @@
 
 // Translate IR to assembly AST.
 x86_Program codegen(IrProgram* program);
+
+// Second pass:  
+int rename_registers(x86_Function* function);
+
+// Third pass: 
+int allocate_stack(x86_Function* function, int stack_offset);
