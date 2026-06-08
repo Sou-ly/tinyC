@@ -18,7 +18,7 @@ AstExp* create_unary_exp(AstUnopType op_type, AstExp* operand) {
     return e;
 }
 
-AstExp* create_binop_exp(AstAstBinopType op_type, AstExp* lhs, AstExp* rhs) {
+AstExp* create_binop_exp(AstBinopType op_type, AstExp* lhs, AstExp* rhs) {
     AstExp* e = malloc(sizeof(AstExp));
     e->kind = EXP_BINOP;
     e->binop.op_type = op_type;
