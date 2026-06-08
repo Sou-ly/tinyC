@@ -34,14 +34,26 @@ static IrUnopType convert_ir_unary(AstUnopType ast_op) {
 	exit(1);
 }
 
-static IrVal emit_ir_expession(const AstExp* exp, IrFunction* ir_function) {
+static IrBinopType convert_ir_binop(AstBinopType ast_op) {
+	switch (ast_op) {
+		case BINOP_ADD:		return IR_ADD;
+		case BINOP_SUB:		return IR_SUB;
+		case BINOP_MUL:		return IR_MUL;
+		case BINOP_DIV:		return IR_DIV;
+		case BINOP_MOD:		return IR_MOD;
+	}
+	fprintf(stderr, "ir: unsupported binary operator\n");
+	exit(1);
+}
+
+static IrVal emit_ir_expression(const AstExp* exp, IrFunction* ir_function) {
 	switch (exp->kind) {
 		case EXP_INT: {
 			IrVal constant = { IR_CONSTANT, .int_val = exp->int_lit.value };
 			return constant;
 		}
 		case EXP_UNOP: {
-			IrVal src = emit_ir_expession(exp->unary.operand, ir_function);
+			IrVal src = emit_ir_expression(exp->unary.operand, ir_function);
 			IrVal dst = { IR_VARIABLE, .name = generate_temp_name() };
 			IrInstruction instruction = {
 				IR_UNOP,
@@ -50,20 +62,34 @@ static IrVal emit_ir_expession(const AstExp* exp, IrFunction* ir_function) {
 			append_ir_instruction(ir_function, instruction);
 			return dst;
 		}
+		case EXP_BINOP: {
+			// C standard: sub-expressions of the same operator are usually unsequenced
+			// here we evaluate LHS before RHS
+			// if either of them are a function call then theyre indeterminately sequenced
+			IrVal lhs = emit_ir_expression(exp->binop.lhs, ir_function);
+			IrVal rhs = emit_ir_expression(exp->binop.rhs, ir_function);
+			IrVal dst = { IR_VARIABLE, .name = generate_temp_name() };
+			IrInstruction instruction = {
+				IR_BINOP,
+				.binop = { convert_ir_binop(exp->binop.op_type), lhs, rhs, dst }
+			};
+			append_ir_instruction(ir_function, instruction);
+			return dst;	
+		}
 		default:
 			break;
 	}
-	fprintf(stderr, "ir: unsupported expession\n");
+	fprintf(stderr, "ir: unsupported expression\n");
 	exit(1);
 }
 
 static void emit_ir_statement(const AstStatement* stmt, IrFunction* ir_function) {
 	switch (stmt->kind) {
 		case STMT_EXP:
-			emit_ir_expession(stmt->exp_stmt.exp, ir_function);
+			emit_ir_expression(stmt->exp_stmt.exp, ir_function);
 			return;
 		case STMT_RETURN: {
-			IrVal val = emit_ir_expession(stmt->ret.exp, ir_function);
+			IrVal val = emit_ir_expression(stmt->ret.exp, ir_function);
 			IrInstruction ret_instr = { IR_RETURN, .ret = { val } };
 			append_ir_instruction(ir_function, ret_instr);
 			return;

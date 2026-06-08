@@ -4,7 +4,9 @@
 static const char* reg_name(x86_Reg reg) {
     switch (reg) {
         case x86_AX:  return "eax";
+        case x86_DX:  return "edx";
         case x86_R10: return "r10d";
+        case x86_R11: return "r11d";
     }
     return "???";
 }
@@ -34,6 +36,16 @@ static const char* unop_name(x86_Unop op) {
     return "???";
 }
 
+
+static const char* binop_name(x86_Binop op) {
+    switch (op) {
+        case x86_ADD: return "addl";
+        case x86_SUB: return "subl";
+        case x86_MUL: return "imull";
+    }
+    return "???";
+}
+
 static void emit_instr(x86_Instr* instr, FILE* out) {
     switch (instr->kind) {
         case x86_MOV:
@@ -47,6 +59,21 @@ static void emit_instr(x86_Instr* instr, FILE* out) {
             fprintf(out, "    %s ", unop_name(instr->unop.unop));
             emit_operand(&instr->unop.operand, out);
             fprintf(out, "\n");
+            break;
+        case x86_BINOP:
+            fprintf(out, "    %s ", binop_name(instr->binop.optype));
+            emit_operand(&instr->binop.rhs, out);
+            fprintf(out, ", ");
+            emit_operand(&instr->binop.dst, out);
+            fprintf(out, "\n");
+            break;
+        case x86_IDIV:
+            fprintf(out, "    idivl ");
+            emit_operand(&instr->idiv.operand, out);
+            fprintf(out, "\n");
+            break;
+        case x86_CDQ:
+            fprintf(out, "    cdq\n");
             break;
         case x86_ALLOC:
             fprintf(out, "    subq $%d, %%rsp\n", instr->alloc_stack.size);

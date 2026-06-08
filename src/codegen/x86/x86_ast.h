@@ -6,7 +6,9 @@
 
 typedef enum {
     x86_AX,
-    x86_R10
+	x86_DX,
+    x86_R10,
+    x86_R11
 } x86_Reg;
 
 typedef enum {
@@ -33,22 +35,34 @@ typedef enum {
     x86_NOT
 } x86_Unop;
 
+typedef enum {
+    x86_ADD,
+    x86_SUB,
+	x86_MUL,
+} x86_Binop;
+
 // --- Instructions (linked list) ---
 
 typedef enum {
     x86_MOV,
     x86_RET,
     x86_ALLOC,
-    x86_UNOP
+    x86_UNOP,
+    x86_BINOP,
+	x86_IDIV,
+	x86_CDQ
 } x86_InstrKind;
 
 typedef struct x86_Instr {
     x86_InstrKind kind;
     union {
-        // struct {}                                   ret
-        struct { x86_Unop unop; x86_Operand operand; } unop;
-        struct { x86_Operand dst; x86_Operand src; }   mov;
-        struct { int size; }                           alloc_stack;
+        struct { x86_Operand dst; x86_Operand src; }					mov;
+		struct { x86_Unop unop; x86_Operand operand; }					unop;
+        struct { x86_Binop optype; x86_Operand rhs; x86_Operand dst; }	binop;
+		struct { x86_Operand operand; }									idiv;
+		// struct {}													cdq;
+        struct { int size; }											alloc_stack;
+        // struct {}													ret;
     };
     struct x86_Instr* next;
 } x86_Instr;

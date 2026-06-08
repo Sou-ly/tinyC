@@ -24,8 +24,17 @@ typedef enum {
 } IrUnopType;
 
 typedef enum {
+    IR_ADD,
+	IR_SUB,
+	IR_MUL,
+	IR_DIV,
+	IR_MOD
+} IrBinopType;
+
+typedef enum {
     IR_RETURN,
-    IR_UNOP
+    IR_UNOP,
+	IR_BINOP
 } IrInstructionType;
 
 typedef struct {
@@ -33,6 +42,7 @@ typedef struct {
     union {
         struct { IrVal val; } ret;
         struct { IrUnopType op; IrVal src; IrVal dst; } unary;
+        struct { IrBinopType op; IrVal lhs; IrVal rhs; IrVal dst; } binop;
     };
 } IrInstruction;
 

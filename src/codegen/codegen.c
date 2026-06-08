@@ -16,8 +16,20 @@ static x86_Operand codegen_val(IrVal val) {
 
 static x86_Unop codegen_unop(IrUnopType op) {
     switch (op) {
-        case IR_NEG:  return x86_NEG;
-        case IR_COMP: return x86_NOT;
+        case IR_NEG:	return x86_NEG;
+        case IR_COMP: 	return x86_NOT;
+		default:		break;
+    }
+    fprintf(stderr, "codegen: unsupported unary op\n");
+    exit(1);
+}
+
+static x86_Binop codegen_binop(IrBinopType op) {
+    switch (op) {
+        case IR_ADD:	return x86_ADD;
+        case IR_SUB: 	return x86_SUB;
+		case IR_MUL: 	return x86_MUL;
+		default:		break;
     }
     fprintf(stderr, "codegen: unsupported unary op\n");
     exit(1);
@@ -47,7 +59,67 @@ static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
                 .operand = dst2
             }});
             return;
-        }
+		}
+		case IR_BINOP: {
+			switch (ir_instr->binop.op) {
+				case BINOP_DIV: {
+					x86_Operand dividend = codegen_val(ir_instr->binop.lhs);
+					x86_Operand divisor = codegen_val(ir_instr->binop.rhs);
+					x86_Operand dst = codegen_val(ir_instr->binop.dst);
+					x86_Operand eax = { x86_REG, .reg = x86_AX };
+					x86_instr_list_append(list, (x86_Instr) {.kind = x86_MOV, .mov = {
+						.dst = eax,
+						.src = divisor
+					}});
+					x86_instr_list_append(list, (x86_Instr) {.kind = x86_CDQ });
+					x86_instr_list_append(list, (x86_Instr) {.kind = x86_IDIV, .idiv = {
+						.operand = dividend
+					}});
+					x86_instr_list_append(list, (x86_Instr) {.kind = x86_MOV, .mov = {
+						.dst = dst,
+						.src = eax
+					}});
+					return;
+				}
+				case BINOP_MOD: {
+					x86_Operand dividend = codegen_val(ir_instr->binop.lhs);
+					x86_Operand divisor = codegen_val(ir_instr->binop.rhs);
+					x86_Operand dst = codegen_val(ir_instr->binop.dst);
+					x86_Operand eax = { x86_REG, .reg = x86_AX };
+					x86_Operand edx = { x86_REG, .reg = x86_DX };
+					x86_instr_list_append(list, (x86_Instr) {.kind = x86_MOV, .mov = {
+						.dst = eax,
+						.src = divisor
+					}});
+					x86_instr_list_append(list, (x86_Instr) {.kind = x86_CDQ });
+					x86_instr_list_append(list, (x86_Instr) {.kind = x86_IDIV, .idiv = {
+						.operand = dividend
+					}});
+					x86_instr_list_append(list, (x86_Instr) {.kind = x86_MOV, .mov = {
+						.dst = dst,
+						.src = edx
+					}});
+					return;
+				}
+				default: {
+					x86_Operand lhs = codegen_val(ir_instr->binop.lhs);
+					x86_Operand rhs = codegen_val(ir_instr->binop.rhs);
+					x86_Operand dst = codegen_val(ir_instr->binop.dst);
+					x86_instr_list_append(list, (x86_Instr) {.kind = x86_MOV, .mov = {
+						.dst = dst,
+						.src = lhs
+					}});
+					x86_instr_list_append(list, (x86_Instr) {.kind = x86_BINOP, .binop = {
+						.optype = codegen_binop(ir_instr->binop.op),
+						.rhs	= rhs,
+						.dst	= dst
+					}});
+					return;	
+				}
+			}
+		}
+		default:
+			break;
     }
     fprintf(stderr, "codegen: unsupported IR instruction type\n");
     exit(1);
@@ -138,7 +210,9 @@ int rename_registers(x86_Function* function) {
                 break;
         }
     }
-    return opmap.stack_offset;
+    int stack_offset = opmap.stack_offset;
+    operand_map_destroy(&opmap);
+    return stack_offset;
 }
 
 // stack_offset can be negative

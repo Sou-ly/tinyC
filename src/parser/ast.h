@@ -14,7 +14,8 @@ typedef enum {
     BINOP_ADD,
     BINOP_SUB,
 	BINOP_MUL,
-	BINOP_DIV
+	BINOP_DIV,
+	BINOP_MOD
 } AstBinopType;
 
 typedef enum {
