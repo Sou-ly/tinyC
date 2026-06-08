@@ -28,7 +28,7 @@ static void free_ir_program(IrProgram* program) {
         IrFunction* fn = &program->functions[f];
         for (int i = 0; i < fn->size; i++) {
             IrInstruction* ins = &fn->instructions[i];
-            if (ins->type == IR_UNARY && ins->unary.dst.kind == IR_VARIABLE) {
+            if (ins->type == IR_UNOP && ins->unary.dst.kind == IR_VARIABLE) {
                 free(ins->unary.dst.name);
             }
         }
@@ -42,7 +42,7 @@ static void free_ir_program(IrProgram* program) {
 
 // int main() { return 2; }
 void test_emit_return_constant() {
-    AstProgram ast = program_of_stmt(make_return_stmt(create_int_expr(2)));
+    AstProgram ast = program_of_stmt(make_return_stmt(create_int_exp(2)));
     IrProgram ir = emit_ir(&ast);
 
     assert(ir.size == 1);
@@ -62,7 +62,7 @@ void test_emit_return_constant() {
 
 // The IR function name must be an independent copy of the AST name.
 void test_emit_name_is_owned_copy() {
-    AstProgram ast = program_of_stmt(make_return_stmt(create_int_expr(0)));
+    AstProgram ast = program_of_stmt(make_return_stmt(create_int_exp(0)));
     IrProgram ir = emit_ir(&ast);
 
     assert(ir.functions[0].name != ast.decls[0].function.name);
@@ -76,14 +76,14 @@ void test_emit_name_is_owned_copy() {
 // int main() { return -5; }  ->  unary NEG into a temp, then return the temp.
 void test_emit_return_negate() {
     AstProgram ast = program_of_stmt(
-        make_return_stmt(create_unary_expr(UNARY_MINUS, create_int_expr(5))));
+        make_return_stmt(create_unary_exp(UNOP_MINUS, create_int_exp(5))));
     IrProgram ir = emit_ir(&ast);
 
     IrFunction* fn = &ir.functions[0];
     assert(fn->size == 2);
 
     IrInstruction* unary = &fn->instructions[0];
-    assert(unary->type == IR_UNARY);
+    assert(unary->type == IR_UNOP);
     assert(unary->unary.op == IR_NEG);
     assert(unary->unary.src.kind == IR_CONSTANT);
     assert(unary->unary.src.int_val == 5);
@@ -103,12 +103,12 @@ void test_emit_return_negate() {
 // int main() { return ~3; }  ->  NOT maps to the complement op.
 void test_emit_return_complement() {
     AstProgram ast = program_of_stmt(
-        make_return_stmt(create_unary_expr(UNARY_NOT, create_int_expr(3))));
+        make_return_stmt(create_unary_exp(UNOP_NOT, create_int_exp(3))));
     IrProgram ir = emit_ir(&ast);
 
     IrFunction* fn = &ir.functions[0];
     assert(fn->size == 2);
-    assert(fn->instructions[0].type == IR_UNARY);
+    assert(fn->instructions[0].type == IR_UNOP);
     assert(fn->instructions[0].unary.op == IR_COMP);
     assert(fn->instructions[0].unary.src.int_val == 3);
 
@@ -119,8 +119,8 @@ void test_emit_return_complement() {
 
 // int main() { return -(~5); }  ->  two temps chained, then return the outer.
 void test_emit_nested_unary() {
-    AstExpression* inner = create_unary_expr(UNARY_NOT, create_int_expr(5));
-    AstExpression* outer = create_unary_expr(UNARY_MINUS, inner);
+    AstExp* inner = create_unary_exp(UNOP_NOT, create_int_exp(5));
+    AstExp* outer = create_unary_exp(UNOP_MINUS, inner);
     AstProgram ast = program_of_stmt(make_return_stmt(outer));
     IrProgram ir = emit_ir(&ast);
 
@@ -131,10 +131,10 @@ void test_emit_nested_unary() {
     IrInstruction* in1 = &fn->instructions[1];  // -t0 -> t1
     IrInstruction* in2 = &fn->instructions[2];  // return t1
 
-    assert(in0->type == IR_UNARY && in0->unary.op == IR_COMP);
+    assert(in0->type == IR_UNOP && in0->unary.op == IR_COMP);
     assert(in0->unary.src.kind == IR_CONSTANT && in0->unary.src.int_val == 5);
 
-    assert(in1->type == IR_UNARY && in1->unary.op == IR_NEG);
+    assert(in1->type == IR_UNOP && in1->unary.op == IR_NEG);
     // The outer op consumes the inner op's result.
     assert(in1->unary.src.kind == IR_VARIABLE);
     assert(strcmp(in1->unary.src.name, in0->unary.dst.name) == 0);
@@ -151,8 +151,8 @@ void test_emit_nested_unary() {
 // int main() { 5; return 0; }  ->  only the return is emitted.
 void test_emit_expr_statement_no_instruction() {
     AstStatement* body = malloc(2 * sizeof(AstStatement));
-    body[0] = make_expr_stmt(create_int_expr(5));
-    body[1] = make_return_stmt(create_int_expr(0));
+    body[0] = make_exp_stmt(create_int_exp(5));
+    body[1] = make_return_stmt(create_int_exp(0));
     AstProgram ast = program_of(body, 2);
     IrProgram ir = emit_ir(&ast);
 
@@ -168,9 +168,9 @@ void test_emit_expr_statement_no_instruction() {
 // A program with more than one function lowers each independently.
 void test_emit_multiple_functions() {
     AstStatement* body_a = malloc(sizeof(AstStatement));
-    body_a[0] = make_return_stmt(create_int_expr(1));
+    body_a[0] = make_return_stmt(create_int_exp(1));
     AstStatement* body_b = malloc(sizeof(AstStatement));
-    body_b[0] = make_return_stmt(create_int_expr(2));
+    body_b[0] = make_return_stmt(create_int_exp(2));
 
     AstDeclaration* decls = malloc(2 * sizeof(AstDeclaration));
     decls[0] = make_function_decl("foo", body_a, 1);

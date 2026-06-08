@@ -25,7 +25,7 @@ static void append_ir_instruction(IrFunction* function, IrInstruction instructio
 	function->instructions[function->size - 1] = instruction;
 }
 
-static IrUnopType convert_ir_unary(UnopType ast_op) {
+static IrUnopType convert_ir_unary(AstUnopType ast_op) {
 	switch (ast_op) {
 		case UNOP_NOT:		return IR_COMP;
 		case UNOP_MINUS:	return IR_NEG;

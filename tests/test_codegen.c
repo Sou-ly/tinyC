@@ -43,7 +43,7 @@ void test_create_x86_program() {
 
 // --- helpers ---
 
-static AstProgram make_test_program(AstExpression* expr) {
+static AstProgram make_test_program(AstExp* expr) {
     AstStatement* body = malloc(sizeof(AstStatement));
     body[0] = make_return_stmt(expr);
     AstDeclaration* decls = malloc(sizeof(AstDeclaration));
@@ -54,7 +54,7 @@ static AstProgram make_test_program(AstExpression* expr) {
 // --- codegen integration test ---
 
 void test_codegen_return_2() {
-    AstProgram program = make_test_program(create_int_expr(2));
+    AstProgram program = make_test_program(create_int_exp(2));
 
     IrProgram ir = emit_ir(&program);
     x86_Program asm_prog = codegen(&ir);
@@ -73,7 +73,7 @@ void test_codegen_return_2() {
 }
 
 void test_codegen_return_0() {
-    AstProgram program = make_test_program(create_int_expr(0));
+    AstProgram program = make_test_program(create_int_exp(0));
 
     IrProgram ir = emit_ir(&program);
     x86_Program asm_prog = codegen(&ir);
@@ -88,7 +88,7 @@ void test_codegen_return_0() {
 // --- emit integration test ---
 
 void test_emit_return_2() {
-    AstProgram program = make_test_program(create_int_expr(2));
+    AstProgram program = make_test_program(create_int_exp(2));
 
     IrProgram ir = emit_ir(&program);
     x86_Program asm_prog = codegen(&ir);
@@ -125,9 +125,9 @@ void test_emit_return_2() {
 
 void test_codegen_return_complement_neg2() {
     // Build AST: return ~(-2)
-    AstExpression* lit = create_int_expr(2);
-    AstExpression* neg = create_unary_expr(UNARY_MINUS, lit);
-    AstExpression* comp = create_unary_expr(UNARY_NOT, neg);
+    AstExp* lit = create_int_exp(2);
+    AstExp* neg = create_unary_exp(UNOP_MINUS, lit);
+    AstExp* comp = create_unary_exp(UNOP_NOT, neg);
     AstProgram program = make_test_program(comp);
 
     IrProgram ir = emit_ir(&program);
@@ -184,9 +184,9 @@ void test_codegen_return_complement_neg2() {
 }
 
 void test_emit_return_complement_neg2() {
-    AstExpression* lit = create_int_expr(2);
-    AstExpression* neg = create_unary_expr(UNARY_MINUS, lit);
-    AstExpression* comp = create_unary_expr(UNARY_NOT, neg);
+    AstExp* lit = create_int_exp(2);
+    AstExp* neg = create_unary_exp(UNOP_MINUS, lit);
+    AstExp* comp = create_unary_exp(UNOP_NOT, neg);
     AstProgram program = make_test_program(comp);
 
     IrProgram ir = emit_ir(&program);

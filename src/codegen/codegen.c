@@ -14,7 +14,7 @@ static x86_Operand codegen_val(IrVal val) {
     exit(1);
 }
 
-static x86_Unop codegen_unop(IrUnaryOpType op) {
+static x86_Unop codegen_unop(IrUnopType op) {
     switch (op) {
         case IR_NEG:  return x86_NEG;
         case IR_COMP: return x86_NOT;
@@ -34,7 +34,7 @@ static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
             x86_instr_list_append(list, (x86_Instr){.kind = x86_RET});
             return;
         }
-        case IR_UNARY: {
+        case IR_UNOP: {
             x86_Operand src = codegen_val(ir_instr->unary.src);
             x86_Operand dst = codegen_val(ir_instr->unary.dst);
             x86_instr_list_append(list, (x86_Instr){.kind = x86_MOV, .mov = {
