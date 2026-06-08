@@ -34,18 +34,18 @@ static IrUnaryOpType convert_ir_unary(UnaryOpType ast_op) {
 	exit(1);
 }
 
-static IrVal emit_ir_expression(const AstExpression* expr, IrFunction* ir_function) {
-	switch (expr->kind) {
+static IrVal emit_ir_expession(const AstExp* exp, IrFunction* ir_function) {
+	switch (exp->kind) {
 		case EXPR_INT: {
-			IrVal constant = { IR_CONSTANT, .int_val = expr->int_lit.value };
+			IrVal constant = { IR_CONSTANT, .int_val = exp->int_lit.value };
 			return constant;
 		}
 		case EXPR_UNARY: {
-			IrVal src = emit_ir_expression(expr->unary.operand, ir_function);
+			IrVal src = emit_ir_expession(exp->unary.operand, ir_function);
 			IrVal dst = { IR_VARIABLE, .name = generate_temp_name() };
 			IrInstruction instruction = {
 				IR_UNARY,
-				.unary = { convert_ir_unary(expr->unary.op_type), src, dst }
+				.unary = { convert_ir_unary(exp->unary.op_type), src, dst }
 			};
 			append_ir_instruction(ir_function, instruction);
 			return dst;
@@ -53,17 +53,17 @@ static IrVal emit_ir_expression(const AstExpression* expr, IrFunction* ir_functi
 		default:
 			break;
 	}
-	fprintf(stderr, "ir: unsupported expression\n");
+	fprintf(stderr, "ir: unsupported expession\n");
 	exit(1);
 }
 
 static void emit_ir_statement(const AstStatement* stmt, IrFunction* ir_function) {
 	switch (stmt->kind) {
 		case STMT_EXPR:
-			emit_ir_expression(stmt->expr_stmt.expr, ir_function);
+			emit_ir_expession(stmt->exp_stmt.exp, ir_function);
 			return;
 		case STMT_RETURN: {
-			IrVal val = emit_ir_expression(stmt->ret.expr, ir_function);
+			IrVal val = emit_ir_expession(stmt->ret.exp, ir_function);
 			IrInstruction ret_instr = { IR_RETURN, .ret = { val } };
 			append_ir_instruction(ir_function, ret_instr);
 			return;

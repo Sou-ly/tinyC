@@ -8,47 +8,47 @@
 
 // --- AST unit tests ---
 
-void test_create_int_expr() {
-    AstExpression* e = create_int_expr(42);
+void test_create_int_exp() {
+    AstExp* e = create_int_exp(42);
     assert(e != NULL);
     assert(e->kind == EXPR_INT);
     assert(e->int_lit.value == 42);
-    destroy_expr(e);
-    printf("  PASS: test_create_int_expr\n");
+    destroy_exp(e);
+    printf("  PASS: test_create_int_exp\n");
 }
 
-void test_create_unary_expr() {
-    AstExpression* e = create_unary_expr(UNARY_MINUS, create_int_expr(5));
+void test_create_unary_exp() {
+    AstExp* e = create_unary_exp(UNARY_MINUS, create_int_exp(5));
     assert(e != NULL);
     assert(e->kind == EXPR_UNARY);
     assert(e->unary.op_type == UNARY_MINUS);
     assert(e->unary.operand->int_lit.value == 5);
-    destroy_expr(e);
-    printf("  PASS: test_create_unary_expr\n");
+    destroy_exp(e);
+    printf("  PASS: test_create_unary_exp\n");
 }
 
-void test_create_binary_expr() {
-    AstExpression* e = create_binary_expr('+', create_int_expr(3), create_int_expr(7));
+void test_create_binary_exp() {
+    AstExp* e = create_binary_exp('+', create_int_exp(3), create_int_exp(7));
     assert(e != NULL);
     assert(e->kind == EXPR_BINARY);
     assert(e->binary.op == '+');
     assert(e->binary.lhs->int_lit.value == 3);
     assert(e->binary.rhs->int_lit.value == 7);
-    destroy_expr(e);
-    printf("  PASS: test_create_binary_expr\n");
+    destroy_exp(e);
+    printf("  PASS: test_create_binary_exp\n");
 }
 
 void test_create_return_stmt() {
-    AstStatement s = make_return_stmt(create_int_expr(2));
+    AstStatement s = make_return_stmt(create_int_exp(2));
     assert(s.kind == STMT_RETURN);
-    assert(s.ret.expr->int_lit.value == 2);
+    assert(s.ret.exp->int_lit.value == 2);
     destroy_stmt(&s);
     printf("  PASS: test_create_return_stmt\n");
 }
 
 void test_create_function_decl() {
     AstStatement* body = malloc(sizeof(AstStatement));
-    body[0] = make_return_stmt(create_int_expr(0));
+    body[0] = make_return_stmt(create_int_exp(0));
 
     AstDeclaration fn = make_function_decl("main", body, 1);
     assert(fn.kind == DECL_FUNCTION);
@@ -83,8 +83,8 @@ void test_parse_return_2() {
     assert(strcmp(prog.decls[0].function.name, "main") == 0);
     assert(prog.decls[0].function.num_stmts == 1);
     assert(prog.decls[0].function.body[0].kind == STMT_RETURN);
-    assert(prog.decls[0].function.body[0].ret.expr->kind == EXPR_INT);
-    assert(prog.decls[0].function.body[0].ret.expr->int_lit.value == 2);
+    assert(prog.decls[0].function.body[0].ret.exp->kind == EXPR_INT);
+    assert(prog.decls[0].function.body[0].ret.exp->int_lit.value == 2);
 
     destroy_program(&prog);
     free(tokens.items);
@@ -93,9 +93,9 @@ void test_parse_return_2() {
 
 int main(void) {
     printf("Running parser tests...\n");
-    test_create_int_expr();
-    test_create_unary_expr();
-    test_create_binary_expr();
+    test_create_int_exp();
+    test_create_unary_exp();
+    test_create_binary_exp();
     test_create_return_stmt();
     test_create_function_decl();
     test_parse_return_2();

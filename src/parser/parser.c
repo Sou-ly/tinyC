@@ -36,36 +36,36 @@ static void expect_separator(Parser* p, token_separator sep) {
 
 // --- Parsing ---
 
-static AstExpression* parse_expression(Parser* p) {
+static AstExp* parse_exp(Parser* p) {
     token* tok = current(p);
     switch (tok->kind) {
         case TOK_INT_LITERAL: {
             int val = tok->as.int_val;
             advance(p);
-            return create_int_expr(val);
+            return create_int_exp(val);
         }
         case TOK_OPERATOR:
             if (tok->as.op == OP_NOT) {
                 advance(p);
-                return create_unary_expr(UNARY_NOT, parse_expression(p));
+                return create_unary_exp(UNARY_NOT, parse_exp(p));
             } else if (tok->as.op == OP_MINUS) {
                 advance(p);
-                return create_unary_expr(UNARY_MINUS, parse_expression(p));
+                return create_unary_exp(UNARY_MINUS, parse_exp(p));
             }
             break;
         case TOK_SEPARATOR:
             if (tok->as.sep == SEP_LPAR) {
                 advance(p);
-                AstExpression* expr = parse_expression(p);
+                AstExp* exp = parse_exp(p);
                 expect_separator(p, SEP_RPAR);
-                return expr;
+                return exp;
             }
             break;
         default:
             break;
     }
 
-    fprintf(stderr, "parse error at %zu:%zu: expected expression\n",
+    fprintf(stderr, "parse error at %zu:%zu: expected exp\n",
             current(p)->line, current(p)->col);
     exit(1);
 }
@@ -73,9 +73,9 @@ static AstExpression* parse_expression(Parser* p) {
 static AstStatement parse_statement(Parser* p) {
     if (current(p)->kind == TOK_KEYWORD && current(p)->as.kw == KW_RETURN) {
         advance(p); // consume 'return'
-        AstExpression* expr = parse_expression(p);
+        AstExp* exp = parse_exp(p);
         expect_separator(p, SEP_SEMICOLON);
-        return make_return_stmt(expr);
+        return make_return_stmt(exp);
     }
 
     fprintf(stderr, "parse error at %zu:%zu: expected statement\n",

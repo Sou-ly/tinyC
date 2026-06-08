@@ -14,23 +14,23 @@ typedef enum {
     EXPR_INT,
     EXPR_UNARY,
     EXPR_BINARY
-} AstExpressionKind;
+} AstExpKind;
 
-typedef struct AstExpression AstExpression;
+typedef struct AstExp AstExp;
 
-struct AstExpression {
-    AstExpressionKind kind;
+struct AstExp {
+    AstExpKind kind;
     union {
         struct { int value; } int_lit;
-        struct { UnaryOpType op_type; AstExpression* operand; } unary;
-        struct { char op; AstExpression* lhs; AstExpression* rhs; } binary;
+        struct { UnaryOpType op_type; AstExp* operand; } unary;
+        struct { char op; AstExp* lhs; AstExp* rhs; } binary;
     };
 };
 
-AstExpression* create_int_expr(int value);
-AstExpression* create_unary_expr(UnaryOpType op_type, AstExpression* operand);
-AstExpression* create_binary_expr(char op, AstExpression* lhs, AstExpression* rhs);
-void destroy_expr(AstExpression* expr);
+AstExp* create_int_exp(int value);
+AstExp* create_unary_exp(UnaryOpType op_type, AstExp* operand);
+AstExp* create_binary_exp(char op, AstExp* lhs, AstExp* rhs);
+void destroy_exp(AstExp* exp);
 
 // --- Statements ---
 
@@ -42,13 +42,13 @@ typedef enum {
 typedef struct {
     AstStatementKind kind;
     union {
-        struct { AstExpression* expr; } ret;
-        struct { AstExpression* expr; } expr_stmt;
+        struct { AstExp* exp; } ret;
+        struct { AstExp* exp; } exp_stmt;
     };
 } AstStatement;
 
-AstStatement make_return_stmt(AstExpression* expr);
-AstStatement make_expr_stmt(AstExpression* expr);
+AstStatement make_return_stmt(AstExp* exp);
+AstStatement make_exp_stmt(AstExp* exp);
 void destroy_stmt(AstStatement* stmt);
 
 // --- Declarations ---

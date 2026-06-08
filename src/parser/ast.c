@@ -3,23 +3,23 @@
 
 // --- Expressions ---
 
-AstExpression* create_int_expr(int value) {
-    AstExpression* e = malloc(sizeof(AstExpression));
+AstExp* create_int_exp(int value) {
+    AstExp* e = malloc(sizeof(AstExp));
     e->kind = EXPR_INT;
     e->int_lit.value = value;
     return e;
 }
 
-AstExpression* create_unary_expr(UnaryOpType op_type, AstExpression* operand) {
-    AstExpression* e = malloc(sizeof(AstExpression));
+AstExp* create_unary_exp(UnaryOpType op_type, AstExp* operand) {
+    AstExp* e = malloc(sizeof(AstExp));
     e->kind = EXPR_UNARY;
     e->unary.op_type = op_type;
     e->unary.operand = operand;
     return e;
 }
 
-AstExpression* create_binary_expr(char op, AstExpression* lhs, AstExpression* rhs) {
-    AstExpression* e = malloc(sizeof(AstExpression));
+AstExp* create_binary_exp(char op, AstExp* lhs, AstExp* rhs) {
+    AstExp* e = malloc(sizeof(AstExp));
     e->kind = EXPR_BINARY;
     e->binary.op = op;
     e->binary.lhs = lhs;
@@ -27,39 +27,39 @@ AstExpression* create_binary_expr(char op, AstExpression* lhs, AstExpression* rh
     return e;
 }
 
-void destroy_expr(AstExpression* expr) {
-    if (!expr) return;
-    switch (expr->kind) {
+void destroy_exp(AstExp* exp) {
+    if (!exp) return;
+    switch (exp->kind) {
         case EXPR_UNARY:
-            destroy_expr(expr->unary.operand);
+            destroy_exp(exp->unary.operand);
             break;
         case EXPR_BINARY:
-            destroy_expr(expr->binary.lhs);
-            destroy_expr(expr->binary.rhs);
+            destroy_exp(exp->binary.lhs);
+            destroy_exp(exp->binary.rhs);
             break;
         case EXPR_INT:
             break;
     }
-    free(expr);
+    free(exp);
 }
 
 // --- Statements ---
 
-AstStatement make_return_stmt(AstExpression* expr) {
-    return (AstStatement){ .kind = STMT_RETURN, .ret = { expr } };
+AstStatement make_return_stmt(AstExp* exp) {
+    return (AstStatement){ .kind = STMT_RETURN, .ret = { exp } };
 }
 
-AstStatement make_expr_stmt(AstExpression* expr) {
-    return (AstStatement){ .kind = STMT_EXPR, .expr_stmt = { expr } };
+AstStatement make_exp_stmt(AstExp* exp) {
+    return (AstStatement){ .kind = STMT_EXPR, .exp_stmt = { exp } };
 }
 
 void destroy_stmt(AstStatement* stmt) {
     switch (stmt->kind) {
         case STMT_RETURN:
-            destroy_expr(stmt->ret.expr);
+            destroy_exp(stmt->ret.exp);
             break;
         case STMT_EXPR:
-            destroy_expr(stmt->expr_stmt.expr);
+            destroy_exp(stmt->exp_stmt.exp);
             break;
     }
 }
