@@ -25,10 +25,10 @@ static void append_ir_instruction(IrFunction* function, IrInstruction instructio
 	function->instructions[function->size - 1] = instruction;
 }
 
-static IrUnaryOpType convert_ir_unary(UnaryOpType ast_op) {
+static IrUnopType convert_ir_unary(UnopType ast_op) {
 	switch (ast_op) {
-		case UNARY_NOT:		return IR_COMP;
-		case UNARY_MINUS:	return IR_NEG;
+		case UNOP_NOT:		return IR_COMP;
+		case UNOP_MINUS:	return IR_NEG;
 	}
 	fprintf(stderr, "ir: unsupported unary operator\n");
 	exit(1);
@@ -36,15 +36,15 @@ static IrUnaryOpType convert_ir_unary(UnaryOpType ast_op) {
 
 static IrVal emit_ir_expession(const AstExp* exp, IrFunction* ir_function) {
 	switch (exp->kind) {
-		case EXPR_INT: {
+		case EXP_INT: {
 			IrVal constant = { IR_CONSTANT, .int_val = exp->int_lit.value };
 			return constant;
 		}
-		case EXPR_UNARY: {
+		case EXP_UNOP: {
 			IrVal src = emit_ir_expession(exp->unary.operand, ir_function);
 			IrVal dst = { IR_VARIABLE, .name = generate_temp_name() };
 			IrInstruction instruction = {
-				IR_UNARY,
+				IR_UNOP,
 				.unary = { convert_ir_unary(exp->unary.op_type), src, dst }
 			};
 			append_ir_instruction(ir_function, instruction);
@@ -59,7 +59,7 @@ static IrVal emit_ir_expession(const AstExp* exp, IrFunction* ir_function) {
 
 static void emit_ir_statement(const AstStatement* stmt, IrFunction* ir_function) {
 	switch (stmt->kind) {
-		case STMT_EXPR:
+		case STMT_EXP:
 			emit_ir_expession(stmt->exp_stmt.exp, ir_function);
 			return;
 		case STMT_RETURN: {
@@ -122,7 +122,7 @@ void destroy_ir(IrProgram* program){
                 case IR_RETURN:
                     destroy_val(instruction.ret.val);
                     break;
-                case IR_UNARY:
+                case IR_UNOP:
                     destroy_val(instruction.unary.dst); 
                     destroy_val(instruction.unary.src);
                     break;

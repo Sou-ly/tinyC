@@ -6,14 +6,21 @@
 // --- Expressions ---
 
 typedef enum {
-    UNARY_NOT,
-    UNARY_MINUS
-} UnaryOpType;
+    UNOP_NOT,
+    UNOP_MINUS
+} AstUnopType;
 
 typedef enum {
-    EXPR_INT,
-    EXPR_UNARY,
-    EXPR_BINARY
+    BINOP_ADD,
+    BINOP_SUB,
+	BINOP_MUL,
+	BINOP_DIV
+} AstBinopType;
+
+typedef enum {
+	EXP_INT,
+	EXP_UNOP,
+	EXP_BINOP
 } AstExpKind;
 
 typedef struct AstExp AstExp;
@@ -22,21 +29,21 @@ struct AstExp {
     AstExpKind kind;
     union {
         struct { int value; } int_lit;
-        struct { UnaryOpType op_type; AstExp* operand; } unary;
-        struct { char op; AstExp* lhs; AstExp* rhs; } binary;
+        struct { AstUnopType op_type; AstExp* operand; } unary;
+        struct { AstBinopType op_type; AstExp* lhs; AstExp* rhs; } binop;
     };
 };
 
 AstExp* create_int_exp(int value);
-AstExp* create_unary_exp(UnaryOpType op_type, AstExp* operand);
-AstExp* create_binary_exp(char op, AstExp* lhs, AstExp* rhs);
+AstExp* create_unary_exp(AstUnopType op_type, AstExp* operand);
+AstExp* create_binop_exp(AstBinopType op_type, AstExp* lhs, AstExp* rhs);
 void destroy_exp(AstExp* exp);
 
 // --- Statements ---
 
 typedef enum {
     STMT_RETURN,
-    STMT_EXPR
+    STMT_EXP
 } AstStatementKind;
 
 typedef struct {

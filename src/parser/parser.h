@@ -5,8 +5,7 @@
 #include "../list.h"
 
 typedef struct {
-    token* tokens;
-    int num_tokens;
+    token_list* tokens;
     int pos;
 } Parser;
 

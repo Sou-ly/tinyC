@@ -21,18 +21,18 @@ typedef struct {
 typedef enum {
     IR_COMP,
     IR_NEG
-} IrUnaryOpType;
+} IrUnopType;
 
 typedef enum {
     IR_RETURN,
-    IR_UNARY
+    IR_UNOP
 } IrInstructionType;
 
 typedef struct {
     IrInstructionType type;
     union {
         struct { IrVal val; } ret;
-        struct { IrUnaryOpType op; IrVal src; IrVal dst; } unary;
+        struct { IrUnopType op; IrVal src; IrVal dst; } unary;
     };
 } IrInstruction;
 
