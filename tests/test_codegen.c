@@ -218,6 +218,241 @@ void test_emit_return_complement_neg2() {
     printf("  PASS: test_emit_return_complement_neg2\n");
 }
 
+// --- binop codegen tests ---
+
+// The arithmetic binops (add/sub/mul) all lower the same way:
+//   mov  dst, lhs
+//   <op> rhs, dst
+// Only the x86 opcode differs, so we drive them from a table.
+void test_codegen_binop_arithmetic() {
+    struct { AstBinopType ast_op; x86_Binop x86_op; } cases[] = {
+        { BINOP_ADD, x86_ADD },
+        { BINOP_SUB, x86_SUB },
+        { BINOP_MUL, x86_MUL },
+    };
+    for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
+        AstProgram program = make_test_program(
+            create_binop_exp(cases[c].ast_op,
+                             create_int_exp(4), create_int_exp(5)));
+        IrProgram ir = emit_ir(&program);
+        x86_Program asm_prog = codegen(&ir);
+
+        x86_Instr* i = asm_prog.functions[0].instrs.head;
+
+        // mov dst, $4   (lhs copied into the destination temp)
+        assert(i != NULL && i->kind == x86_MOV);
+        assert(i->mov.dst.kind == x86_ID);
+        assert(i->mov.src.kind == x86_IMM && i->mov.src.imm == 4);
+        i = i->next;
+
+        // <op> $5, dst
+        assert(i != NULL && i->kind == x86_BINOP);
+        assert(i->binop.optype == cases[c].x86_op);
+        assert(i->binop.rhs.kind == x86_IMM && i->binop.rhs.imm == 5);
+        assert(i->binop.dst.kind == x86_ID);
+        i = i->next;
+
+        // mov %eax, dst  (return lowering)
+        assert(i != NULL && i->kind == x86_MOV);
+        assert(i->mov.dst.kind == x86_REG && i->mov.dst.reg == x86_AX);
+        i = i->next;
+
+        assert(i != NULL && i->kind == x86_RET);
+        assert(i->next == NULL);
+
+        destroy_x86_program(&asm_prog);
+        destroy_program(&program);
+    }
+    printf("  PASS: test_codegen_binop_arithmetic\n");
+}
+
+// int main() { return 6 / 3; }  lowers division through eax/cdq/idiv:
+//   mov  %eax, dividend   (lhs)
+//   cdq
+//   idivl divisor         (rhs)
+//   mov  dst, %eax        (quotient is in eax)
+void test_codegen_binop_div() {
+    AstProgram program = make_test_program(
+        create_binop_exp(BINOP_DIV, create_int_exp(6), create_int_exp(3)));
+    IrProgram ir = emit_ir(&program);
+    x86_Program asm_prog = codegen(&ir);
+
+    x86_Instr* i = asm_prog.functions[0].instrs.head;
+
+    // mov %eax, $6  (lhs / dividend loaded into eax)
+    assert(i != NULL && i->kind == x86_MOV);
+    assert(i->mov.dst.kind == x86_REG && i->mov.dst.reg == x86_AX);
+    assert(i->mov.src.kind == x86_IMM && i->mov.src.imm == 6);
+    i = i->next;
+
+    // cdq
+    assert(i != NULL && i->kind == x86_CDQ);
+    i = i->next;
+
+    // idivl $3  (rhs / divisor is the idiv operand)
+    assert(i != NULL && i->kind == x86_IDIV);
+    assert(i->idiv.operand.kind == x86_IMM && i->idiv.operand.imm == 3);
+    i = i->next;
+
+    // mov dst, %eax  (quotient read from eax)
+    assert(i != NULL && i->kind == x86_MOV);
+    assert(i->mov.dst.kind == x86_ID);
+    assert(i->mov.src.kind == x86_REG && i->mov.src.reg == x86_AX);
+    i = i->next;
+
+    // return lowering + ret
+    assert(i != NULL && i->kind == x86_MOV);
+    i = i->next;
+    assert(i != NULL && i->kind == x86_RET);
+
+    destroy_x86_program(&asm_prog);
+    destroy_program(&program);
+    printf("  PASS: test_codegen_binop_div\n");
+}
+
+// int main() { return 7 % 2; }  is identical to division except the result is
+// taken from edx (the remainder register) instead of eax.
+void test_codegen_binop_mod() {
+    AstProgram program = make_test_program(
+        create_binop_exp(BINOP_MOD, create_int_exp(7), create_int_exp(2)));
+    IrProgram ir = emit_ir(&program);
+    x86_Program asm_prog = codegen(&ir);
+
+    x86_Instr* i = asm_prog.functions[0].instrs.head;
+
+    // mov %eax, $7  (lhs / dividend)
+    assert(i != NULL && i->kind == x86_MOV);
+    assert(i->mov.dst.kind == x86_REG && i->mov.dst.reg == x86_AX);
+    assert(i->mov.src.kind == x86_IMM && i->mov.src.imm == 7);
+    i = i->next;
+
+    // cdq
+    assert(i != NULL && i->kind == x86_CDQ);
+    i = i->next;
+
+    // idivl $2  (rhs / divisor)
+    assert(i != NULL && i->kind == x86_IDIV);
+    assert(i->idiv.operand.kind == x86_IMM && i->idiv.operand.imm == 2);
+    i = i->next;
+
+    // mov dst, %edx  (remainder read from edx)
+    assert(i != NULL && i->kind == x86_MOV);
+    assert(i->mov.dst.kind == x86_ID);
+    assert(i->mov.src.kind == x86_REG && i->mov.src.reg == x86_DX);
+
+    destroy_x86_program(&asm_prog);
+    destroy_program(&program);
+    printf("  PASS: test_codegen_binop_mod\n");
+}
+
+// --- emit tests for the new instruction kinds ---
+
+// Build an x86 function by hand exercising every new emit path (binop opcodes,
+// idivl, cdq) and every register name (eax, edx, r10d, r11d), then check the
+// rendered assembly text.
+void test_emit_binop_and_div_instructions() {
+    x86_InstrList instrs = x86_instr_list_new();
+    // addl $1, %eax
+    x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_BINOP, .binop = {
+        .optype = x86_ADD,
+        .rhs = (x86_Operand){.kind = x86_IMM, .imm = 1},
+        .dst = (x86_Operand){.kind = x86_REG, .reg = x86_AX}}});
+    // subl %r10d, %r11d
+    x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_BINOP, .binop = {
+        .optype = x86_SUB,
+        .rhs = (x86_Operand){.kind = x86_REG, .reg = x86_R10},
+        .dst = (x86_Operand){.kind = x86_REG, .reg = x86_R11}}});
+    // imull %edx, %eax
+    x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_BINOP, .binop = {
+        .optype = x86_MUL,
+        .rhs = (x86_Operand){.kind = x86_REG, .reg = x86_DX},
+        .dst = (x86_Operand){.kind = x86_REG, .reg = x86_AX}}});
+    // cdq
+    x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_CDQ});
+    // idivl %r10d
+    x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_IDIV, .idiv = {
+        .operand = (x86_Operand){.kind = x86_REG, .reg = x86_R10}}});
+    x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_RET});
+
+    x86_Function* functions = malloc(sizeof(x86_Function));
+    functions[0] = make_x86_function("main", instrs);
+    x86_Program prog = make_x86_program(functions, 1);
+
+    char* buf = NULL;
+    size_t buf_size = 0;
+    FILE* out = open_memstream(&buf, &buf_size);
+    emit_asm(&prog, out);
+    fclose(out);
+
+    assert(strstr(buf, "addl $1, %eax") != NULL);
+    assert(strstr(buf, "subl %r10d, %r11d") != NULL);
+    assert(strstr(buf, "imull %edx, %eax") != NULL);
+    assert(strstr(buf, "cdq") != NULL);
+    assert(strstr(buf, "idivl %r10d") != NULL);
+    // No opcode/register should fall through to the "???" placeholders.
+    assert(strstr(buf, "???") == NULL);
+
+    free(buf);
+    destroy_x86_program(&prog);
+    printf("  PASS: test_emit_binop_and_div_instructions\n");
+}
+
+// After register renaming, no binop/idiv operand should still be a pseudo.
+// (rename_registers must visit x86_BINOP and x86_IDIV operands.)
+void test_rename_binop_clears_pseudos() {
+    AstProgram program = make_test_program(
+        create_binop_exp(BINOP_ADD, create_int_exp(1), create_int_exp(2)));
+    IrProgram ir = emit_ir(&program);
+    x86_Program asm_prog = codegen(&ir);
+
+    rename_registers(&asm_prog.functions[0]);
+
+    for (x86_Instr* i = asm_prog.functions[0].instrs.head; i; i = i->next) {
+        if (i->kind == x86_BINOP) {
+            assert(i->binop.rhs.kind != x86_ID);
+            assert(i->binop.dst.kind != x86_ID);
+        }
+        if (i->kind == x86_IDIV) {
+            assert(i->idiv.operand.kind != x86_ID);
+        }
+        if (i->kind == x86_MOV) {
+            assert(i->mov.src.kind != x86_ID);
+            assert(i->mov.dst.kind != x86_ID);
+        }
+    }
+
+    destroy_x86_program(&asm_prog);
+    destroy_program(&program);
+    printf("  PASS: test_rename_binop_clears_pseudos\n");
+}
+
+// End-to-end: a division program renders cdq + idivl through the full pipeline
+// and leaves no pseudo-registers behind.
+void test_emit_div_program() {
+    AstProgram program = make_test_program(
+        create_binop_exp(BINOP_DIV, create_int_exp(8), create_int_exp(4)));
+    IrProgram ir = emit_ir(&program);
+    x86_Program asm_prog = codegen(&ir);
+
+    int stack_offset = rename_registers(&asm_prog.functions[0]);
+    allocate_stack(&asm_prog.functions[0], stack_offset);
+
+    char* buf = NULL;
+    size_t buf_size = 0;
+    FILE* out = open_memstream(&buf, &buf_size);
+    emit_asm(&asm_prog, out);
+    fclose(out);
+
+    assert(strstr(buf, "cdq") != NULL);
+    assert(strstr(buf, "idivl") != NULL);
+    assert(strstr(buf, "<pseudo:") == NULL);
+
+    free(buf);
+    destroy_x86_program(&asm_prog);
+    destroy_program(&program);
+    printf("  PASS: test_emit_div_program\n");
+}
+
 int main(void) {
     printf("Running codegen tests...\n");
     test_create_x86_function();
@@ -227,6 +462,12 @@ int main(void) {
     test_emit_return_2();
     test_codegen_return_complement_neg2();
     test_emit_return_complement_neg2();
+    test_codegen_binop_arithmetic();
+    test_codegen_binop_div();
+    test_codegen_binop_mod();
+    test_emit_binop_and_div_instructions();
+    test_rename_binop_clears_pseudos();
+    test_emit_div_program();
     printf("All codegen tests passed!\n");
     return 0;
 }

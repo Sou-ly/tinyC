@@ -31,6 +31,9 @@ static void free_ir_program(IrProgram* program) {
             if (ins->type == IR_UNOP && ins->unary.dst.kind == IR_VARIABLE) {
                 free(ins->unary.dst.name);
             }
+            if (ins->type == IR_BINOP && ins->binop.dst.kind == IR_VARIABLE) {
+                free(ins->binop.dst.name);
+            }
         }
         free(fn->instructions);
         free(fn->name);
@@ -189,6 +192,144 @@ void test_emit_multiple_functions() {
     printf("  PASS: test_emit_multiple_functions\n");
 }
 
+// int main() { return 1 + 2; }
+//   t0 = add 1, 2
+//   return t0
+void test_emit_binop_add() {
+    AstProgram ast = program_of_stmt(make_return_stmt(
+        create_binop_exp(BINOP_ADD, create_int_exp(1), create_int_exp(2))));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.functions[0];
+    assert(fn->size == 2);
+
+    IrInstruction* binop = &fn->instructions[0];
+    assert(binop->type == IR_BINOP);
+    assert(binop->binop.op == IR_ADD);
+    assert(binop->binop.lhs.kind == IR_CONSTANT);
+    assert(binop->binop.lhs.int_val == 1);
+    assert(binop->binop.rhs.kind == IR_CONSTANT);
+    assert(binop->binop.rhs.int_val == 2);
+    assert(binop->binop.dst.kind == IR_VARIABLE);
+
+    IrInstruction* ret = &fn->instructions[1];
+    assert(ret->type == IR_RETURN);
+    assert(ret->ret.val.kind == IR_VARIABLE);
+    // The return value is exactly the temp produced by the binop.
+    assert(strcmp(ret->ret.val.name, binop->binop.dst.name) == 0);
+
+    free_ir_program(&ir);
+    destroy_program(&ast);
+    printf("  PASS: test_emit_binop_add\n");
+}
+
+// Each AST binary operator must lower to its matching IR opcode.
+void test_emit_binop_all_ops() {
+    struct { AstBinopType ast_op; IrBinopType ir_op; } cases[] = {
+        { BINOP_ADD, IR_ADD },
+        { BINOP_SUB, IR_SUB },
+        { BINOP_MUL, IR_MUL },
+        { BINOP_DIV, IR_DIV },
+        { BINOP_MOD, IR_MOD },
+    };
+    for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
+        AstProgram ast = program_of_stmt(make_return_stmt(
+            create_binop_exp(cases[c].ast_op,
+                             create_int_exp(7), create_int_exp(3))));
+        IrProgram ir = emit_ir(&ast);
+
+        IrInstruction* binop = &ir.functions[0].instructions[0];
+        assert(binop->type == IR_BINOP);
+        assert(binop->binop.op == cases[c].ir_op);
+        assert(binop->binop.lhs.int_val == 7);
+        assert(binop->binop.rhs.int_val == 3);
+
+        free_ir_program(&ir);
+        destroy_program(&ast);
+    }
+    printf("  PASS: test_emit_binop_all_ops\n");
+}
+
+// int main() { return (1 + 2) * 3; }
+// LHS is fully evaluated before RHS, so the inner add is emitted first and the
+// outer multiply consumes that temp as its left operand.
+void test_emit_binop_nested_lhs_first() {
+    AstExp* inner = create_binop_exp(BINOP_ADD,
+                                     create_int_exp(1), create_int_exp(2));
+    AstExp* outer = create_binop_exp(BINOP_MUL, inner, create_int_exp(3));
+    AstProgram ast = program_of_stmt(make_return_stmt(outer));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.functions[0];
+    assert(fn->size == 3);
+
+    IrInstruction* add = &fn->instructions[0];   // (1 + 2) -> t0
+    IrInstruction* mul = &fn->instructions[1];   // t0 * 3  -> t1
+    IrInstruction* ret = &fn->instructions[2];   // return t1
+
+    assert(add->type == IR_BINOP && add->binop.op == IR_ADD);
+    assert(add->binop.lhs.int_val == 1 && add->binop.rhs.int_val == 2);
+
+    assert(mul->type == IR_BINOP && mul->binop.op == IR_MUL);
+    // The multiply's left operand is the add's result temp; its right is 3.
+    assert(mul->binop.lhs.kind == IR_VARIABLE);
+    assert(strcmp(mul->binop.lhs.name, add->binop.dst.name) == 0);
+    assert(mul->binop.rhs.kind == IR_CONSTANT && mul->binop.rhs.int_val == 3);
+
+    assert(ret->type == IR_RETURN);
+    assert(strcmp(ret->ret.val.name, mul->binop.dst.name) == 0);
+
+    free_ir_program(&ir);
+    destroy_program(&ast);
+    printf("  PASS: test_emit_binop_nested_lhs_first\n");
+}
+
+// int main() { return 1 + (2 * 3); }
+// The RHS sub-expression is lowered first (it is the deeper operand evaluated
+// when we recurse into the right child), and the outer add keeps 1 as its
+// constant left operand and the multiply temp as its right operand.
+void test_emit_binop_rhs_subexpression() {
+    AstExp* inner = create_binop_exp(BINOP_MUL,
+                                     create_int_exp(2), create_int_exp(3));
+    AstExp* outer = create_binop_exp(BINOP_ADD, create_int_exp(1), inner);
+    AstProgram ast = program_of_stmt(make_return_stmt(outer));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.functions[0];
+    assert(fn->size == 3);
+
+    IrInstruction* mul = &fn->instructions[0];   // (2 * 3) -> t0
+    IrInstruction* add = &fn->instructions[1];   // 1 + t0  -> t1
+
+    assert(mul->type == IR_BINOP && mul->binop.op == IR_MUL);
+    assert(add->type == IR_BINOP && add->binop.op == IR_ADD);
+    assert(add->binop.lhs.kind == IR_CONSTANT && add->binop.lhs.int_val == 1);
+    assert(add->binop.rhs.kind == IR_VARIABLE);
+    assert(strcmp(add->binop.rhs.name, mul->binop.dst.name) == 0);
+
+    free_ir_program(&ir);
+    destroy_program(&ast);
+    printf("  PASS: test_emit_binop_rhs_subexpression\n");
+}
+
+// A binop's result temp must be a distinct name from any nested temp.
+void test_emit_binop_distinct_temps() {
+    AstExp* inner = create_binop_exp(BINOP_SUB,
+                                     create_int_exp(9), create_int_exp(4));
+    AstExp* outer = create_binop_exp(BINOP_DIV, inner, create_int_exp(2));
+    AstProgram ast = program_of_stmt(make_return_stmt(outer));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.functions[0];
+    IrInstruction* sub = &fn->instructions[0];
+    IrInstruction* div = &fn->instructions[1];
+    assert(strcmp(sub->binop.dst.name, div->binop.dst.name) != 0);
+
+    free_ir_program(&ir);
+    destroy_program(&ast);
+    printf("  PASS: test_emit_binop_distinct_temps\n");
+}
+
 int main(void) {
     printf("Running IR tests...\n");
     test_emit_return_constant();
@@ -198,6 +339,11 @@ int main(void) {
     test_emit_nested_unary();
     test_emit_expr_statement_no_instruction();
     test_emit_multiple_functions();
+    test_emit_binop_add();
+    test_emit_binop_all_ops();
+    test_emit_binop_nested_lhs_first();
+    test_emit_binop_rhs_subexpression();
+    test_emit_binop_distinct_temps();
     printf("All IR tests passed!\n");
     return 0;
 }

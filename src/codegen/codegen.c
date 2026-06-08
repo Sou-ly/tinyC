@@ -62,18 +62,21 @@ static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
 		}
 		case IR_BINOP: {
 			switch (ir_instr->binop.op) {
-				case BINOP_DIV: {
+				case IR_DIV: {
+					// lhs / rhs: load the dividend (lhs) into eax, sign-extend
+					// into edx:eax with cdq, then divide by the divisor (rhs).
+					// The quotient ends up in eax.
 					x86_Operand dividend = codegen_val(ir_instr->binop.lhs);
 					x86_Operand divisor = codegen_val(ir_instr->binop.rhs);
 					x86_Operand dst = codegen_val(ir_instr->binop.dst);
 					x86_Operand eax = { x86_REG, .reg = x86_AX };
 					x86_instr_list_append(list, (x86_Instr) {.kind = x86_MOV, .mov = {
 						.dst = eax,
-						.src = divisor
+						.src = dividend
 					}});
 					x86_instr_list_append(list, (x86_Instr) {.kind = x86_CDQ });
 					x86_instr_list_append(list, (x86_Instr) {.kind = x86_IDIV, .idiv = {
-						.operand = dividend
+						.operand = divisor
 					}});
 					x86_instr_list_append(list, (x86_Instr) {.kind = x86_MOV, .mov = {
 						.dst = dst,
@@ -81,7 +84,9 @@ static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
 					}});
 					return;
 				}
-				case BINOP_MOD: {
+				case IR_MOD: {
+					// lhs % rhs: same setup as division, but the remainder is
+					// left in edx.
 					x86_Operand dividend = codegen_val(ir_instr->binop.lhs);
 					x86_Operand divisor = codegen_val(ir_instr->binop.rhs);
 					x86_Operand dst = codegen_val(ir_instr->binop.dst);
@@ -89,11 +94,11 @@ static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
 					x86_Operand edx = { x86_REG, .reg = x86_DX };
 					x86_instr_list_append(list, (x86_Instr) {.kind = x86_MOV, .mov = {
 						.dst = eax,
-						.src = divisor
+						.src = dividend
 					}});
 					x86_instr_list_append(list, (x86_Instr) {.kind = x86_CDQ });
 					x86_instr_list_append(list, (x86_Instr) {.kind = x86_IDIV, .idiv = {
-						.operand = dividend
+						.operand = divisor
 					}});
 					x86_instr_list_append(list, (x86_Instr) {.kind = x86_MOV, .mov = {
 						.dst = dst,
@@ -205,6 +210,13 @@ int rename_registers(x86_Function* function) {
                 break;
             case x86_UNOP:
                 instr->unop.operand = operand_map_put(&opmap, instr->unop.operand);
+                break;
+            case x86_BINOP:
+                instr->binop.rhs = operand_map_put(&opmap, instr->binop.rhs);
+                instr->binop.dst = operand_map_put(&opmap, instr->binop.dst);
+                break;
+            case x86_IDIV:
+                instr->idiv.operand = operand_map_put(&opmap, instr->idiv.operand);
                 break;
             default:
                 break;
