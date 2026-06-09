@@ -32,6 +32,9 @@ typedef enum {
 	OP_NEQ,
 	OP_AND,
 	OP_OR,
+	OP_XOR,
+	OP_LSHIFT,
+	OP_RSHIFT,
     OP_NOT,
     OP_DECR,
     OP_INCR

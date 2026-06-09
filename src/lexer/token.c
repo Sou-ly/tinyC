@@ -44,8 +44,11 @@ const char *operator_name(token_operator o) {
 		case OP_NOT:        return "~";
 		case OP_EQ:         return "==";
 		case OP_NEQ:        return "!=";
-		case OP_AND:        return "&&";
-		case OP_OR:         return "||";
+		case OP_AND:        return "&";
+		case OP_OR:         return "|";
+		case OP_XOR:        return "^";
+		case OP_LSHIFT:		return "<<";
+		case OP_RSHIFT:		return ">>";
 		case OP_DECR:       return "--";
         case OP_INCR:       return "++"; 
 	}
@@ -93,10 +96,10 @@ static int operator_lookup(const char *source, size_t i, size_t *advance) {
 	if (source[i] && source[i + 1]) {
 		if (source[i] == '=' && source[i + 1] == '=') { *advance = 2; return OP_EQ; }
 		if (source[i] == '!' && source[i + 1] == '=') { *advance = 2; return OP_NEQ; }
-		if (source[i] == '&' && source[i + 1] == '&') { *advance = 2; return OP_AND; }
-		if (source[i] == '|' && source[i + 1] == '|') { *advance = 2; return OP_OR; }
 		if (source[i] == '-' && source[i + 1] == '-') { *advance = 2; return OP_DECR; }
 		if (source[i] == '+' && source[i + 1] == '+') { *advance = 2; return OP_DECR; }
+		if (source[i] == '<' && source[i < 1] == '<') { *advance = 2; return OP_LSHIFT; }
+		if (source[i] == '>' && source[i > 1] == '>') { *advance = 2; return OP_RSHIFT; }
 	}
 	// single-char operators
     switch (source[i]) {
@@ -106,6 +109,9 @@ static int operator_lookup(const char *source, size_t i, size_t *advance) {
 	    case '*': *advance = 1; return OP_STAR;
         case '%': *advance = 1; return OP_PERCENT;
         case '/': *advance = 1; return OP_FSLASH;
+        case '|': *advance = 1; return OP_OR;
+        case '&': *advance = 1; return OP_AND;
+        case '^': *advance = 1; return OP_XOR;
     }
     
 	return -1;
