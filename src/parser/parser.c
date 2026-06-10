@@ -4,6 +4,22 @@
 
 // --- Utilities ---
 
+static int precedence(token* tok) {
+	switch (tok->as.op) {
+		case OP_STAR:		return 50;
+		case OP_FSLASH:		return 50;
+		case OP_PERCENT:	return 50;
+		case OP_PLUS:		return 45;
+		case OP_MINUS:		return 45;
+		case OP_LSHIFT:		return 40;
+		case OP_RSHIFT:		return 40;
+		case OP_AND:		return 30;
+		case OP_XOR:		return 25;
+		case OP_OR:			return 20;
+		default:			return 0;
+	}
+}
+
 static token* current(Parser* p) {
     return &p->tokens->items[p->pos];
 }
@@ -36,7 +52,7 @@ static void expect_separator(Parser* p, token_separator sep) {
 
 // --- Parsing ---
 
-static AstExp* parse_exp(Parser* p);
+static AstExp* parse_exp(Parser* p, int min_prec);
 
 // factor ::= int | ("!" | "-") factor | "(" exp ")"
 static AstExp* parse_factor(Parser* p) {
@@ -59,7 +75,7 @@ static AstExp* parse_factor(Parser* p) {
         case TOK_SEPARATOR:
             if (tok->as.sep == SEP_LPAR) {
                 advance(p);
-                AstExp* exp = parse_exp(p);
+                AstExp* exp = parse_exp(p, 0);
                 expect_separator(p, SEP_RPAR);
                 return exp;
             }
@@ -73,28 +89,36 @@ static AstExp* parse_factor(Parser* p) {
     exit(1);
 }
 
-// term ::= factor { ("*" | "/") factor }
-static AstExp* parse_term(Parser* p) {
-    AstExp* lhs = parse_factor(p);
-    while (!at_end(p) && current(p)->kind == TOK_OPERATOR &&
-           (current(p)->as.op == OP_STAR || current(p)->as.op == OP_FSLASH)) {
-        AstBinopType op = current(p)->as.op == OP_STAR ? BINOP_MUL : BINOP_DIV;
-        advance(p);
-        AstExp* rhs = parse_factor(p);
-        lhs = create_binop_exp(op, lhs, rhs);
-    }
-    return lhs;
+static bool is_binop(token* tok) {
+	if (tok == NULL || tok->kind != TOK_OPERATOR) {
+		return false;
+	}
+	switch (tok->as.op) {
+		case OP_PLUS:
+		case OP_MINUS:
+    	case OP_STAR:
+    	case OP_FSLASH:
+    	case OP_PERCENT:
+		case OP_AND:
+		case OP_OR:
+		case OP_XOR:
+		case OP_LSHIFT:
+		case OP_RSHIFT:
+			return true;
+		default:
+			return false;
+	}
 }
 
-// exp ::= term { ("+" | "-") term }
-static AstExp* parse_exp(Parser* p) {
-    AstExp* lhs = parse_term(p);
-    while (!at_end(p) && current(p)->kind == TOK_OPERATOR &&
-           (current(p)->as.op == OP_PLUS || current(p)->as.op == OP_MINUS)) {
+static AstExp* parse_exp(Parser* p, int min_prec) {
+    AstExp* lhs = parse_factor(p);
+	token* tok = current(p);
+    while (is_binop(tok) && precedence(tok) >= min_prec) {
         AstBinopType op = current(p)->as.op == OP_PLUS ? BINOP_ADD : BINOP_SUB;
-        advance(p);
-        AstExp* rhs = parse_term(p);
+        AstExp* rhs = parse_exp(p, precedence(tok) + 1);
         lhs = create_binop_exp(op, lhs, rhs);
+        advance(p);
+		tok = current(p);
     }
     return lhs;
 }
@@ -102,7 +126,7 @@ static AstExp* parse_exp(Parser* p) {
 static AstStatement parse_statement(Parser* p) {
     if (current(p)->kind == TOK_KEYWORD && current(p)->as.kw == KW_RETURN) {
         advance(p); // consume 'return'
-        AstExp* exp = parse_exp(p);
+        AstExp* exp = parse_exp(p, 0);
         expect_separator(p, SEP_SEMICOLON);
         return make_return_stmt(exp);
     }

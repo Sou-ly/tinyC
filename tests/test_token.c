@@ -48,9 +48,12 @@ void test_operator_name() {
 	assert(strcmp(operator_name(OP_FSLASH),     "/")  == 0);
 	assert(strcmp(operator_name(OP_EQ),         "==") == 0);
 	assert(strcmp(operator_name(OP_NEQ),        "!=") == 0);
-	assert(strcmp(operator_name(OP_AND),        "&&") == 0);
-	assert(strcmp(operator_name(OP_OR),         "||") == 0);
+	assert(strcmp(operator_name(OP_AND),        "&") == 0);
+	assert(strcmp(operator_name(OP_OR),         "|") == 0);
+	assert(strcmp(operator_name(OP_XOR),        "^") == 0);
 	assert(strcmp(operator_name(OP_NOT),        "~")  == 0);
+	assert(strcmp(operator_name(OP_RSHIFT),     ">>") == 0);
+	assert(strcmp(operator_name(OP_LSHIFT),     "<<") == 0);
 	assert(strcmp(operator_name(OP_DECR),       "--") == 0);
 	assert(strcmp(operator_name(OP_INCR),       "++") == 0);
 	printf("  PASS: operator_name\n");
@@ -183,7 +186,7 @@ void test_tokenize_separators() {
 
 void test_tokenize_operators() {
 	token_list tl = token_list_create(8);
-	assert(tokenize("+ - == != && ||", &tl) == ERR_OK);
+	assert(tokenize("+ - == != & |", &tl) == ERR_OK);
 	assert(tl.count == 6);
 	assert(tl.items[0].as.op == OP_PLUS);
 	assert(tl.items[1].as.op == OP_MINUS);

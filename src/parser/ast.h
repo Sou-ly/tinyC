@@ -15,7 +15,12 @@ typedef enum {
     BINOP_SUB,
 	BINOP_MUL,
 	BINOP_DIV,
-	BINOP_MOD
+	BINOP_MOD,
+	BINOP_AND,
+	BINOP_OR,
+	BINOP_XOR,
+	BINOP_LSHIFT,
+	BINOP_RSHIFT
 } AstBinopType;
 
 typedef enum {
