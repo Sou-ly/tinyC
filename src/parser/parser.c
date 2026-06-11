@@ -3,6 +3,27 @@
 #include <string.h>
 
 // --- Utilities ---
+//
+static bool is_binop(token* tok) {
+	if (tok == NULL || tok->kind != TOK_OPERATOR) {
+		return false;
+	}
+	switch (tok->as.op) {
+		case OP_PLUS:
+		case OP_MINUS:
+    	case OP_STAR:
+    	case OP_FSLASH:
+    	case OP_PERCENT:
+		case OP_AND:
+		case OP_OR:
+		case OP_XOR:
+		case OP_LSHIFT:
+		case OP_RSHIFT:
+			return true;
+		default:
+			return false;
+	}
+}
 
 static int precedence(token* tok) {
 	switch (tok->as.op) {
@@ -16,8 +37,28 @@ static int precedence(token* tok) {
 		case OP_AND:		return 30;
 		case OP_XOR:		return 25;
 		case OP_OR:			return 20;
-		default:			return 0;
+		default:			break;
 	}
+	fprintf(stderr, "precedence: unrecognized token operator");
+	exit(1);
+}
+
+static AstBinopType tok_to_binop(token_operator op) {
+	switch (op) {
+		case OP_PLUS:		return BINOP_ADD;
+		case OP_MINUS:		return BINOP_SUB;
+    	case OP_STAR:		return BINOP_MUL;
+    	case OP_FSLASH:		return BINOP_DIV;
+    	case OP_PERCENT:	return BINOP_MOD;
+		case OP_AND:		return BINOP_AND;
+		case OP_OR:			return BINOP_OR;
+		case OP_XOR:		return BINOP_XOR;
+		case OP_LSHIFT:		return BINOP_LSHIFT;
+		case OP_RSHIFT:		return BINOP_RSHIFT;
+		default:			break;
+	}
+	fprintf(stderr, "binop: unrecognized token operator");
+	exit(1);
 }
 
 static token* current(Parser* p) {
@@ -89,35 +130,16 @@ static AstExp* parse_factor(Parser* p) {
     exit(1);
 }
 
-static bool is_binop(token* tok) {
-	if (tok == NULL || tok->kind != TOK_OPERATOR) {
-		return false;
-	}
-	switch (tok->as.op) {
-		case OP_PLUS:
-		case OP_MINUS:
-    	case OP_STAR:
-    	case OP_FSLASH:
-    	case OP_PERCENT:
-		case OP_AND:
-		case OP_OR:
-		case OP_XOR:
-		case OP_LSHIFT:
-		case OP_RSHIFT:
-			return true;
-		default:
-			return false;
-	}
-}
 
 static AstExp* parse_exp(Parser* p, int min_prec) {
     AstExp* lhs = parse_factor(p);
 	token* tok = current(p);
     while (is_binop(tok) && precedence(tok) >= min_prec) {
-        AstBinopType op = current(p)->as.op == OP_PLUS ? BINOP_ADD : BINOP_SUB;
-        AstExp* rhs = parse_exp(p, precedence(tok) + 1);
+        AstBinopType op = tok_to_binop(current(p)->as.op);
+		int prec = precedence(tok);
+		advance(p);
+        AstExp* rhs = parse_exp(p, prec + 1);
         lhs = create_binop_exp(op, lhs, rhs);
-        advance(p);
 		tok = current(p);
     }
     return lhs;
