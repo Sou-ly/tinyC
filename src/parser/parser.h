@@ -5,11 +5,11 @@
 #include "../list.h"
 
 typedef struct {
-    token_list* tokens;
+    TokenList* tokens;
     int pos;
 } Parser;
 
-Parser parser_create(token_list* tokens);
+Parser parser_create(TokenList* tokens);
 
 // Parse a full program (one or more declarations).
 AstProgram parse_program(Parser* p);

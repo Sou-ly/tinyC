@@ -4,29 +4,29 @@
 #include <stdlib.h>
 #include "../src/list.h"
 
-// Categorical tokens leave .text NULL. Identifiers/literals strdup the
-// spelling — pushing transfers ownership to the list, which frees on destroy.
+// Identifiers strdup their spelling — pushing transfers ownership to the
+// list, which frees it on destroy.
 
-static token tok_kw(token_keyword kw) {
-	return (token){ .kind = TOK_KEYWORD, .as.kw = kw };
+static Token tok_kw(TokenKeyword kw) {
+	return (Token){ .kind = TOK_KEYWORD, .kw = kw };
 }
-static token tok_sep(token_separator s) {
-	return (token){ .kind = TOK_SEPARATOR, .as.sep = s };
+static Token tok_sep(TokenSeparator s) {
+	return (Token){ .kind = TOK_SEPARATOR, .sep = s };
 }
-static token tok_op(token_operator o) {
-	return (token){ .kind = TOK_OPERATOR, .as.op = o };
+static Token tok_op(TokenOperator o) {
+	return (Token){ .kind = TOK_OPERATOR, .op = o };
 }
-static token tok_ident(const char *name) {
-	return (token){ .kind = TOK_IDENTIFIER, .as.ident = strdup(name) };
+static Token tok_ident(const char *name) {
+	return (Token){ .kind = TOK_IDENTIFIER, .ident = strdup(name) };
 }
-static token tok_int(const char *spelling) {
-	return (token){ .kind = TOK_INT_LITERAL, .as.literal = strdup(spelling) };
+static Token tok_int(int value) {
+	return (Token){ .kind = TOK_INT_LITERAL, .int_val = value };
 }
 
-// ---- token_list tests ----
+// ---- TokenList tests ----
 
 void test_token_list_create() {
-	token_list tl = token_list_create(4);
+	TokenList tl = token_list_create(4);
 	assert(tl.items != NULL);
 	assert(tl.count == 0);
 	assert(tl.capacity == 4);
@@ -35,102 +35,102 @@ void test_token_list_create() {
 }
 
 void test_token_list_push_keyword() {
-	token_list tl = token_list_create(4);
-	token_list_push(&tl, tok_kw(KW_INT));
+	TokenList tl = token_list_create(4);
+	token_list_push(&tl, tok_kw(TOK_INT));
 	assert(tl.count == 1);
 	assert(tl.items[0].kind == TOK_KEYWORD);
-	assert(tl.items[0].as.kw == KW_INT);
+	assert(tl.items[0].kw == TOK_INT);
 	token_list_destroy(&tl);
 	printf("  PASS: token_list_push_keyword\n");
 }
 
 void test_token_list_push_separator() {
-	token_list tl = token_list_create(4);
-	token_list_push(&tl, tok_sep(SEP_LPAR));
+	TokenList tl = token_list_create(4);
+	token_list_push(&tl, tok_sep(TOK_LPAR));
 	assert(tl.count == 1);
 	assert(tl.items[0].kind == TOK_SEPARATOR);
-	assert(tl.items[0].as.sep == SEP_LPAR);
+	assert(tl.items[0].sep == TOK_LPAR);
 	token_list_destroy(&tl);
 	printf("  PASS: token_list_push_separator\n");
 }
 
 void test_token_list_push_operator() {
-	token_list tl = token_list_create(4);
-	token_list_push(&tl, tok_op(OP_EQ));
+	TokenList tl = token_list_create(4);
+	token_list_push(&tl, tok_op(TOK_EQ));
 	assert(tl.count == 1);
 	assert(tl.items[0].kind == TOK_OPERATOR);
-	assert(tl.items[0].as.op == OP_EQ);
+	assert(tl.items[0].op == TOK_EQ);
 	token_list_destroy(&tl);
 	printf("  PASS: token_list_push_operator\n");
 }
 
 void test_token_list_push_identifier() {
-	token_list tl = token_list_create(4);
+	TokenList tl = token_list_create(4);
 	token_list_push(&tl, tok_ident("main"));
 	assert(tl.count == 1);
 	assert(tl.items[0].kind == TOK_IDENTIFIER);
-	assert(strcmp(tl.items[0].as.ident, "main") == 0);
+	assert(strcmp(tl.items[0].ident, "main") == 0);
 	token_list_destroy(&tl);
 	printf("  PASS: token_list_push_identifier\n");
 }
 
 void test_token_list_push_int_literal() {
-	token_list tl = token_list_create(4);
-	token_list_push(&tl, tok_int("42"));
+	TokenList tl = token_list_create(4);
+	token_list_push(&tl, tok_int(42));
 	assert(tl.count == 1);
 	assert(tl.items[0].kind == TOK_INT_LITERAL);
-	assert(strcmp(tl.items[0].as.literal, "42") == 0);
+	assert(tl.items[0].int_val == 42);
 	token_list_destroy(&tl);
 	printf("  PASS: token_list_push_int_literal\n");
 }
 
 void test_token_list_push_mixed() {
-	token_list tl = token_list_create(4);
-	token_list_push(&tl, tok_kw(KW_INT));
+	TokenList tl = token_list_create(4);
+	token_list_push(&tl, tok_kw(TOK_INT));
 	token_list_push(&tl, tok_ident("main"));
-	token_list_push(&tl, tok_sep(SEP_LPAR));
+	token_list_push(&tl, tok_sep(TOK_LPAR));
 	assert(tl.count == 3);
-	assert(tl.items[0].kind == TOK_KEYWORD && tl.items[0].as.kw == KW_INT);
-	assert(tl.items[1].kind == TOK_IDENTIFIER && strcmp(tl.items[1].as.ident, "main") == 0);
-	assert(tl.items[2].kind == TOK_SEPARATOR && tl.items[2].as.sep == SEP_LPAR);
+	assert(tl.items[0].kind == TOK_KEYWORD && tl.items[0].kw == TOK_INT);
+	assert(tl.items[1].kind == TOK_IDENTIFIER && strcmp(tl.items[1].ident, "main") == 0);
+	assert(tl.items[2].kind == TOK_SEPARATOR && tl.items[2].sep == TOK_LPAR);
 	token_list_destroy(&tl);
 	printf("  PASS: token_list_push_mixed\n");
 }
 
 void test_token_list_push_triggers_realloc() {
-	token_list tl = token_list_create(2);
-	token_list_push(&tl, tok_kw(KW_INT));
-	token_list_push(&tl, tok_kw(KW_RETURN));
+	TokenList tl = token_list_create(2);
+	token_list_push(&tl, tok_kw(TOK_INT));
+	token_list_push(&tl, tok_kw(TOK_RETURN));
 	// triggers realloc
-	token_list_push(&tl, tok_sep(SEP_LPAR));
+	token_list_push(&tl, tok_sep(TOK_LPAR));
 	assert(tl.count == 3);
 	assert(tl.capacity == 4);
-	assert(tl.items[0].as.kw == KW_INT);
-	assert(tl.items[1].as.kw == KW_RETURN);
-	assert(tl.items[2].as.sep == SEP_LPAR);
+	assert(tl.items[0].kw == TOK_INT);
+	assert(tl.items[1].kw == TOK_RETURN);
+	assert(tl.items[2].sep == TOK_LPAR);
 	token_list_destroy(&tl);
 	printf("  PASS: token_list_push_triggers_realloc\n");
 }
 
 void test_token_list_push_many_reallocs() {
-	token_list tl = token_list_create(1);
+	TokenList tl = token_list_create(1);
 	for (int i = 0; i < 100; i++) {
-		token_list_push(&tl, tok_sep(SEP_SEMICOLON));
+		token_list_push(&tl, tok_sep(TOK_SEMICOLON));
 	}
 	assert(tl.count == 100);
 	assert(tl.capacity >= 100);
 	for (int i = 0; i < 100; i++) {
 		assert(tl.items[i].kind == TOK_SEPARATOR);
-		assert(tl.items[i].as.sep == SEP_SEMICOLON);
+		assert(tl.items[i].sep == TOK_SEMICOLON);
 	}
 	token_list_destroy(&tl);
 	printf("  PASS: token_list_push_many_reallocs\n");
 }
 
 void test_token_list_destroy() {
-	token_list tl = token_list_create(4);
-	token_list_push(&tl, tok_kw(KW_INT));
-	token_list_push(&tl, tok_kw(KW_RETURN));
+	TokenList tl = token_list_create(4);
+	token_list_push(&tl, tok_kw(TOK_INT));
+	token_list_push(&tl, tok_kw(TOK_RETURN));
 	token_list_destroy(&tl);
 	assert(tl.items == NULL);
 	assert(tl.count == 0);
@@ -139,51 +139,51 @@ void test_token_list_destroy() {
 }
 
 void test_token_list_destroy_frees_owned_text() {
-	// Tokens with str text — destroy must free each. Run under valgrind to
-	// confirm no leak; here we mostly verify it doesn't crash or double-free.
-	token_list tl = token_list_create(4);
+	// Identifier tokens own their spelling — destroy must free each. Run under
+	// valgrind to confirm no leak; here we mostly verify no crash/double-free.
+	TokenList tl = token_list_create(4);
 	token_list_push(&tl, tok_ident("foo"));
-	token_list_push(&tl, tok_int("42"));
+	token_list_push(&tl, tok_int(42));
 	token_list_push(&tl, tok_ident("bar"));
-	assert(strcmp(tl.items[0].as.ident, "foo") == 0);
-	assert(strcmp(tl.items[1].as.literal, "42") == 0);
-	assert(strcmp(tl.items[2].as.ident, "bar") == 0);
+	assert(strcmp(tl.items[0].ident, "foo") == 0);
+	assert(tl.items[1].int_val == 42);
+	assert(strcmp(tl.items[2].ident, "bar") == 0);
 	token_list_destroy(&tl);
 	printf("  PASS: token_list_destroy_frees_owned_text\n");
 }
 
 void test_token_list_preserves_order() {
 	// int main ( void ) { return 2 ; }
-	token_list tl = token_list_create(2);
-	token_list_push(&tl, tok_kw(KW_INT));
+	TokenList tl = token_list_create(2);
+	token_list_push(&tl, tok_kw(TOK_INT));
 	token_list_push(&tl, tok_ident("main"));
-	token_list_push(&tl, tok_sep(SEP_LPAR));
-	token_list_push(&tl, tok_kw(KW_VOID));
-	token_list_push(&tl, tok_sep(SEP_RPAR));
-	token_list_push(&tl, tok_sep(SEP_LBRACE));
-	token_list_push(&tl, tok_kw(KW_RETURN));
-	token_list_push(&tl, tok_int("2"));
-	token_list_push(&tl, tok_sep(SEP_SEMICOLON));
-	token_list_push(&tl, tok_sep(SEP_RBRACE));
+	token_list_push(&tl, tok_sep(TOK_LPAR));
+	token_list_push(&tl, tok_kw(TOK_VOID));
+	token_list_push(&tl, tok_sep(TOK_RPAR));
+	token_list_push(&tl, tok_sep(TOK_LBRACE));
+	token_list_push(&tl, tok_kw(TOK_RETURN));
+	token_list_push(&tl, tok_int(2));
+	token_list_push(&tl, tok_sep(TOK_SEMICOLON));
+	token_list_push(&tl, tok_sep(TOK_RBRACE));
 	assert(tl.count == 10);
-	assert(tl.items[0].kind == TOK_KEYWORD     && tl.items[0].as.kw  == KW_INT);
-	assert(tl.items[1].kind == TOK_IDENTIFIER  && strcmp(tl.items[1].as.ident, "main") == 0);
-	assert(tl.items[2].kind == TOK_SEPARATOR   && tl.items[2].as.sep == SEP_LPAR);
-	assert(tl.items[3].kind == TOK_KEYWORD     && tl.items[3].as.kw  == KW_VOID);
-	assert(tl.items[4].kind == TOK_SEPARATOR   && tl.items[4].as.sep == SEP_RPAR);
-	assert(tl.items[5].kind == TOK_SEPARATOR   && tl.items[5].as.sep == SEP_LBRACE);
-	assert(tl.items[6].kind == TOK_KEYWORD     && tl.items[6].as.kw  == KW_RETURN);
-	assert(tl.items[7].kind == TOK_INT_LITERAL && strcmp(tl.items[7].as.literal, "2") == 0);
-	assert(tl.items[8].kind == TOK_SEPARATOR   && tl.items[8].as.sep == SEP_SEMICOLON);
-	assert(tl.items[9].kind == TOK_SEPARATOR   && tl.items[9].as.sep == SEP_RBRACE);
+	assert(tl.items[0].kind == TOK_KEYWORD     && tl.items[0].kw  == TOK_INT);
+	assert(tl.items[1].kind == TOK_IDENTIFIER  && strcmp(tl.items[1].ident, "main") == 0);
+	assert(tl.items[2].kind == TOK_SEPARATOR   && tl.items[2].sep == TOK_LPAR);
+	assert(tl.items[3].kind == TOK_KEYWORD     && tl.items[3].kw  == TOK_VOID);
+	assert(tl.items[4].kind == TOK_SEPARATOR   && tl.items[4].sep == TOK_RPAR);
+	assert(tl.items[5].kind == TOK_SEPARATOR   && tl.items[5].sep == TOK_LBRACE);
+	assert(tl.items[6].kind == TOK_KEYWORD     && tl.items[6].kw  == TOK_RETURN);
+	assert(tl.items[7].kind == TOK_INT_LITERAL && tl.items[7].int_val == 2);
+	assert(tl.items[8].kind == TOK_SEPARATOR   && tl.items[8].sep == TOK_SEMICOLON);
+	assert(tl.items[9].kind == TOK_SEPARATOR   && tl.items[9].sep == TOK_RBRACE);
 	token_list_destroy(&tl);
 	printf("  PASS: token_list_preserves_order\n");
 }
 
-// ---- string_list tests ----
+// ---- StringList tests ----
 
 void test_string_list_create() {
-	string_list sl = string_list_create(4);
+	StringList sl = string_list_create(4);
 	assert(sl.items != NULL);
 	assert(sl.count == 0);
 	assert(sl.capacity == 4);
@@ -192,7 +192,7 @@ void test_string_list_create() {
 }
 
 void test_string_list_push_single() {
-	string_list sl = string_list_create(4);
+	StringList sl = string_list_create(4);
 	string_list_push(&sl, "hello");
 	assert(sl.count == 1);
 	assert(strcmp(sl.items[0], "hello") == 0);
@@ -201,7 +201,7 @@ void test_string_list_push_single() {
 }
 
 void test_string_list_push_multiple() {
-	string_list sl = string_list_create(4);
+	StringList sl = string_list_create(4);
 	string_list_push(&sl, "int");
 	string_list_push(&sl, "main");
 	string_list_push(&sl, "return");
@@ -214,7 +214,7 @@ void test_string_list_push_multiple() {
 }
 
 void test_string_list_push_triggers_realloc() {
-	string_list sl = string_list_create(2);
+	StringList sl = string_list_create(2);
 	string_list_push(&sl, "a");
 	string_list_push(&sl, "b");
 	string_list_push(&sl, "c");
@@ -228,7 +228,7 @@ void test_string_list_push_triggers_realloc() {
 }
 
 void test_string_list_push_many_reallocs() {
-	string_list sl = string_list_create(1);
+	StringList sl = string_list_create(1);
 	for (int i = 0; i < 100; i++) {
 		string_list_push(&sl, "tok");
 	}
@@ -242,7 +242,7 @@ void test_string_list_push_many_reallocs() {
 }
 
 void test_string_list_destroy() {
-	string_list sl = string_list_create(4);
+	StringList sl = string_list_create(4);
 	string_list_push(&sl, "x");
 	string_list_push(&sl, "y");
 	string_list_destroy(&sl);
@@ -254,7 +254,7 @@ void test_string_list_destroy() {
 
 void test_string_list_stores_pointers_not_copies() {
 	char buf[] = "hello";
-	string_list sl = string_list_create(4);
+	StringList sl = string_list_create(4);
 	string_list_push(&sl, buf);
 	buf[0] = 'H';
 	assert(strcmp(sl.items[0], "Hello") == 0);
@@ -263,7 +263,7 @@ void test_string_list_stores_pointers_not_copies() {
 }
 
 int main() {
-	printf("token_list tests:\n");
+	printf("TokenList tests:\n");
 	test_token_list_create();
 	test_token_list_push_keyword();
 	test_token_list_push_separator();

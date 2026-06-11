@@ -112,7 +112,7 @@ str str_trim(str s) {
 	return str_from_len(s.data + start, end - start);
 }
 
-size_t str_split(str s, const char *delimiters, string_list *out) {
+size_t str_split(str s, const char *delimiters, StringList *out) {
 	if (s.len == 0) return 0;
 
 	size_t count = 0;

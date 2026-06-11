@@ -211,7 +211,7 @@ void test_str_trim_no_whitespace() {
 
 void test_str_split_spaces() {
 	str s = str_from("int main void");
-	string_list sl = string_list_create(4);
+	StringList sl = string_list_create(4);
 	size_t count = str_split(s, " ", &sl);
 	assert(count == 3);
 	assert(sl.count == 3);
@@ -230,7 +230,7 @@ void test_str_split_spaces() {
 
 void test_str_split_multiple_delimiters() {
 	str s = str_from("int\tmain\n{return 0;}");
-	string_list sl = string_list_create(4);
+	StringList sl = string_list_create(4);
 	size_t count = str_split(s, " \t\n", &sl);
 	assert(count == 4);
 	str t0 = str_from(sl.items[0]);
@@ -250,7 +250,7 @@ void test_str_split_multiple_delimiters() {
 
 void test_str_split_empty() {
 	str s = str_from("");
-	string_list sl = string_list_create(4);
+	StringList sl = string_list_create(4);
 	size_t count = str_split(s, " ", &sl);
 	assert(count == 0);
 	assert(sl.count == 0);
@@ -261,7 +261,7 @@ void test_str_split_empty() {
 
 void test_str_split_no_delimiters_found() {
 	str s = str_from("hello");
-	string_list sl = string_list_create(4);
+	StringList sl = string_list_create(4);
 	size_t count = str_split(s, ",", &sl);
 	assert(count == 1);
 	str t0 = str_from(sl.items[0]);
@@ -275,7 +275,7 @@ void test_str_split_no_delimiters_found() {
 
 void test_str_split_leading_trailing() {
 	str s = str_from("  hello  world  ");
-	string_list sl = string_list_create(4);
+	StringList sl = string_list_create(4);
 	size_t count = str_split(s, " ", &sl);
 	assert(count == 2);
 	str t0 = str_from(sl.items[0]);

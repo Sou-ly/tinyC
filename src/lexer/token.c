@@ -5,13 +5,7 @@
 #include "token.h"
 #include "../list.h"
 
-void token_free(token *t) {
-	if (!t) return;
-	if (t->kind == TOK_IDENTIFIER)
-		free(t->as.ident);
-}
-
-const char *token_kind_name(token_kind kind) {
+const char *token_kind_name(TokenKind kind) {
 	switch (kind) {
 		case TOK_SEPARATOR:     return "separator";
 		case TOK_OPERATOR:      return "operator";
@@ -22,55 +16,55 @@ const char *token_kind_name(token_kind kind) {
 	return "<unknown>";
 }
 
-const char *separator_name(token_separator s) {
+const char *separator_name(TokenSeparator s) {
 	switch (s) {
-		case SEP_LPAR:      return "(";
-		case SEP_RPAR:      return ")";
-		case SEP_LBRACE:    return "{";
-		case SEP_RBRACE:    return "}";
-		case SEP_COMMA:     return ",";
-		case SEP_SEMICOLON: return ";";
+		case TOK_LPAR:      return "(";
+		case TOK_RPAR:      return ")";
+		case TOK_LBRACE:    return "{";
+		case TOK_RBRACE:    return "}";
+		case TOK_COMMA:     return ",";
+		case TOK_SEMICOLON: return ";";
 	}
 	return "<unknown>";
 }
 
-const char *operator_name(token_operator o) {
+const char *operator_name(TokenOperator o) {
 	switch (o) {
-		case OP_PLUS:       return "+";
-		case OP_MINUS:      return "-";
-        case OP_STAR:       return "*";
-		case OP_PERCENT:    return "%";
-		case OP_FSLASH:     return "/";
-		case OP_NOT:        return "~";
-		case OP_EQ:         return "==";
-		case OP_NEQ:        return "!=";
-		case OP_AND:        return "&";
-		case OP_OR:         return "|";
-		case OP_XOR:        return "^";
-		case OP_LSHIFT:		return "<<";
-		case OP_RSHIFT:		return ">>";
-		case OP_DECR:       return "--";
-        case OP_INCR:       return "++"; 
+		case TOK_PLUS:      return "+";
+		case TOK_MINUS:     return "-";
+		case TOK_STAR:      return "*";
+		case TOK_PERCENT:   return "%";
+		case TOK_FSLASH:    return "/";
+		case TOK_NOT:       return "~";
+		case TOK_EQ:        return "==";
+		case TOK_NEQ:       return "!=";
+		case TOK_AND:       return "&";
+		case TOK_OR:        return "|";
+		case TOK_XOR:       return "^";
+		case TOK_LSHIFT:    return "<<";
+		case TOK_RSHIFT:    return ">>";
+		case TOK_DECR:      return "--";
+		case TOK_INCR:      return "++";
 	}
 	return "<unknown>";
 }
 
-const char *keyword_name(token_keyword k) {
+const char *keyword_name(TokenKeyword k) {
 	switch (k) {
-		case KW_IF:     return "if";
-		case KW_INT:    return "int";
-		case KW_RETURN: return "return";
-		case KW_VOID:   return "void";
+		case TOK_IF:     return "if";
+		case TOK_INT:    return "int";
+		case TOK_RETURN: return "return";
+		case TOK_VOID:   return "void";
 	}
 	return "<unknown>";
 }
 
 static int keyword_lookup(const char *word) {
-	static const struct { const char *name; token_keyword kw; } table[] = {
-		{ "if",     KW_IF     },
-		{ "int",    KW_INT    },
-		{ "return", KW_RETURN },
-		{ "void",   KW_VOID   },
+	static const struct { const char *name; TokenKeyword kw; } table[] = {
+		{ "if",     TOK_IF     },
+		{ "int",    TOK_INT    },
+		{ "return", TOK_RETURN },
+		{ "void",   TOK_VOID   },
 	};
 	for (size_t i = 0; i < sizeof table / sizeof table[0]; i++) {
 		if (strcmp(word, table[i].name) == 0)
@@ -81,12 +75,12 @@ static int keyword_lookup(const char *word) {
 
 static int separator_lookup(char c) {
 	switch (c) {
-		case '(': return SEP_LPAR;
-		case ')': return SEP_RPAR;
-		case '{': return SEP_LBRACE;
-		case '}': return SEP_RBRACE;
-		case ',': return SEP_COMMA;
-		case ';': return SEP_SEMICOLON;
+		case '(': return TOK_LPAR;
+		case ')': return TOK_RPAR;
+		case '{': return TOK_LBRACE;
+		case '}': return TOK_RBRACE;
+		case ',': return TOK_COMMA;
+		case ';': return TOK_SEMICOLON;
 	}
 	return -1;
 }
@@ -94,30 +88,30 @@ static int separator_lookup(char c) {
 static int operator_lookup(const char *source, size_t i, size_t *advance) {
 	// two-char operators first
 	if (source[i] && source[i + 1]) {
-		if (source[i] == '=' && source[i + 1] == '=') { *advance = 2; return OP_EQ; }
-		if (source[i] == '!' && source[i + 1] == '=') { *advance = 2; return OP_NEQ; }
-		if (source[i] == '-' && source[i + 1] == '-') { *advance = 2; return OP_DECR; }
-		if (source[i] == '+' && source[i + 1] == '+') { *advance = 2; return OP_DECR; }
-		if (source[i] == '<' && source[i < 1] == '<') { *advance = 2; return OP_LSHIFT; }
-		if (source[i] == '>' && source[i > 1] == '>') { *advance = 2; return OP_RSHIFT; }
+		if (source[i] == '=' && source[i + 1] == '=') { *advance = 2; return TOK_EQ; }
+		if (source[i] == '!' && source[i + 1] == '=') { *advance = 2; return TOK_NEQ; }
+		if (source[i] == '-' && source[i + 1] == '-') { *advance = 2; return TOK_DECR; }
+		if (source[i] == '+' && source[i + 1] == '+') { *advance = 2; return TOK_DECR; }
+		if (source[i] == '<' && source[i < 1] == '<') { *advance = 2; return TOK_LSHIFT; }
+		if (source[i] == '>' && source[i > 1] == '>') { *advance = 2; return TOK_RSHIFT; }
 	}
 	// single-char operators
-    switch (source[i]) {
-	    case '+': *advance = 1; return OP_PLUS; 
-	    case '-': *advance = 1; return OP_MINUS;
-	    case '~': *advance = 1; return OP_NOT;
-	    case '*': *advance = 1; return OP_STAR;
-        case '%': *advance = 1; return OP_PERCENT;
-        case '/': *advance = 1; return OP_FSLASH;
-        case '|': *advance = 1; return OP_OR;
-        case '&': *advance = 1; return OP_AND;
-        case '^': *advance = 1; return OP_XOR;
-    }
-    
+	switch (source[i]) {
+		case '+': *advance = 1; return TOK_PLUS;
+		case '-': *advance = 1; return TOK_MINUS;
+		case '~': *advance = 1; return TOK_NOT;
+		case '*': *advance = 1; return TOK_STAR;
+		case '%': *advance = 1; return TOK_PERCENT;
+		case '/': *advance = 1; return TOK_FSLASH;
+		case '|': *advance = 1; return TOK_OR;
+		case '&': *advance = 1; return TOK_AND;
+		case '^': *advance = 1; return TOK_XOR;
+	}
+
 	return -1;
 }
 
-lexer_err tokenize_file(FILE *src, struct token_list *tokens) {
+LexerErr tokenize_file(FILE *src, struct TokenList *tokens) {
 	fseek(src, 0, SEEK_END);
 	long len = ftell(src);
 	if (len < 0) return ERR_FILE_READ;
@@ -133,12 +127,12 @@ lexer_err tokenize_file(FILE *src, struct token_list *tokens) {
 	}
 	buf[nread] = '\0';
 
-	lexer_err err = tokenize(buf, tokens);
+	LexerErr err = tokenize(buf, tokens);
 	free(buf);
 	return err;
 }
 
-lexer_err tokenize(const char *source, struct token_list *tokens) {
+LexerErr tokenize(const char *source, struct TokenList *tokens) {
 	size_t i = 0;
 	while (source[i] != '\0') {
 		if (isalpha((unsigned char)source[i]) || source[i] == '_') {
@@ -152,11 +146,11 @@ lexer_err tokenize(const char *source, struct token_list *tokens) {
 
 			int kw = keyword_lookup(word);
 			if (kw >= 0) {
-				token t = { .kind = TOK_KEYWORD, .as.kw = kw };
+				Token t = { .kind = TOK_KEYWORD, .kw = kw };
 				token_list_push(tokens, t);
 				free(word);
 			} else {
-				token t = { .kind = TOK_IDENTIFIER, .as.ident = word };
+				Token t = { .kind = TOK_IDENTIFIER, .ident = word };
 				token_list_push(tokens, t);
 			}
 		} else if (isdigit((unsigned char)source[i])) {
@@ -166,7 +160,7 @@ lexer_err tokenize(const char *source, struct token_list *tokens) {
 				i++;
 			}
 
-			token t = { .kind = TOK_INT_LITERAL, .as.int_val = val };
+			Token t = { .kind = TOK_INT_LITERAL, .int_val = val };
 			token_list_push(tokens, t);
 		} else if (isspace((unsigned char)source[i])) {
 			i++;
@@ -174,13 +168,13 @@ lexer_err tokenize(const char *source, struct token_list *tokens) {
 			size_t advance = 0;
 			int op = operator_lookup(source, i, &advance);
 			if (op >= 0) {
-				token t = { .kind = TOK_OPERATOR, .as.op = op };
+				Token t = { .kind = TOK_OPERATOR, .op = op };
 				token_list_push(tokens, t);
 				i += advance;
 			} else {
 				int sep = separator_lookup(source[i]);
 				if (sep >= 0) {
-					token t = { .kind = TOK_SEPARATOR, .as.sep = sep };
+					Token t = { .kind = TOK_SEPARATOR, .sep = sep };
 					token_list_push(tokens, t);
 					i++;
 				} else {

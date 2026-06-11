@@ -11,41 +11,41 @@ typedef enum {
 	ERR_FILE_READ,
 	ERR_UNEXPECTED_CHAR,
 	ERR_NO_MEMORY,
-} lexer_err;
+} LexerErr;
 
 typedef enum {
-	SEP_LPAR,
-	SEP_RPAR,
-	SEP_LBRACE,
-	SEP_RBRACE,
-	SEP_COMMA,
-	SEP_SEMICOLON,
-} token_separator;
+	TOK_LPAR,
+	TOK_RPAR,
+	TOK_LBRACE,
+	TOK_RBRACE,
+	TOK_COMMA,
+	TOK_SEMICOLON,
+} TokenSeparator;
 
 typedef enum {
-	OP_PLUS,
-	OP_MINUS,
-    OP_STAR,
-    OP_FSLASH,
-    OP_PERCENT,
-	OP_EQ,
-	OP_NEQ,
-	OP_AND,
-	OP_OR,
-	OP_XOR,
-	OP_LSHIFT,
-	OP_RSHIFT,
-    OP_NOT,
-    OP_DECR,
-    OP_INCR
-} token_operator;
+	TOK_PLUS,
+	TOK_MINUS,
+	TOK_STAR,
+	TOK_FSLASH,
+	TOK_PERCENT,
+	TOK_EQ,
+	TOK_NEQ,
+	TOK_AND,
+	TOK_OR,
+	TOK_XOR,
+	TOK_LSHIFT,
+	TOK_RSHIFT,
+	TOK_NOT,
+	TOK_DECR,
+	TOK_INCR
+} TokenOperator;
 
 typedef enum {
-	KW_IF,
-	KW_INT,
-	KW_RETURN,
-	KW_VOID,
-} token_keyword;
+	TOK_IF,
+	TOK_INT,
+	TOK_RETURN,
+	TOK_VOID,
+} TokenKeyword;
 
 typedef enum {
 	TOK_SEPARATOR,
@@ -53,35 +53,32 @@ typedef enum {
 	TOK_KEYWORD,
 	TOK_IDENTIFIER,
 	TOK_INT_LITERAL,
-} token_kind;
+} TokenKind;
 
 typedef struct {
-	token_kind kind;
+	TokenKind kind;
 	union {
-		token_separator sep;
-		token_operator  op;
-		token_keyword   kw;
-		char           *ident;
-		char           *literal;
-		int             int_val;
-	} as;
+		TokenSeparator sep;
+		TokenOperator  op;
+		TokenKeyword   kw;
+		char          *ident;
+		int            int_val;
+	};
 	size_t line;
 	size_t col;
-} token;
-
-void token_free(token *t);
+} Token;
 
 // Display names for diagnostics. Out-of-range input returns "<unknown>".
 // Never use these as lookup keys — they're for error messages only.
-const char *token_kind_name(token_kind kind);
-const char *separator_name(token_separator s);
-const char *operator_name(token_operator o);
-const char *keyword_name(token_keyword k);
+const char *token_kind_name(TokenKind kind);
+const char *separator_name(TokenSeparator s);
+const char *operator_name(TokenOperator o);
+const char *keyword_name(TokenKeyword k);
 
-struct token_list;
+struct TokenList;
 
 // Lex a NUL-terminated source buffer.
-lexer_err tokenize(const char *source, struct token_list *tokens);
+LexerErr tokenize(const char *source, struct TokenList *tokens);
 
 // Convenience wrapper: read the file into memory, then tokenize.
-lexer_err tokenize_file(FILE *src, struct token_list *tokens);
+LexerErr tokenize_file(FILE *src, struct TokenList *tokens);

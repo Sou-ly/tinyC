@@ -74,7 +74,7 @@ int main(int argc, char* argv[]) {
         return 2;
     }
 
-    token_list tokens = token_list_create(32);
+    TokenList tokens = token_list_create(32);
     if (tokenize_file(src, &tokens) != ERR_OK) {
         fprintf(stderr, "Error: failed to tokenize %s\n", source_path);
         fclose(src);

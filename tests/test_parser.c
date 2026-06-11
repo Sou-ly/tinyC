@@ -63,17 +63,17 @@ void test_create_function_decl() {
 // Parses: int main() { return 2; }
 
 void test_parse_return_2() {
-    token_list tokens = token_list_create(8);
+    TokenList tokens = token_list_create(8);
 
-    token_list_push(&tokens, (token){TOK_KEYWORD,   {.kw = KW_INT},          1, 1});
-    token_list_push(&tokens, (token){TOK_IDENTIFIER, {.ident = strdup("main")}, 1, 5});
-    token_list_push(&tokens, (token){TOK_SEPARATOR, {.sep = SEP_LPAR},       1, 9});
-    token_list_push(&tokens, (token){TOK_SEPARATOR, {.sep = SEP_RPAR},       1, 10});
-    token_list_push(&tokens, (token){TOK_SEPARATOR, {.sep = SEP_LBRACE},     1, 12});
-    token_list_push(&tokens, (token){TOK_KEYWORD,   {.kw = KW_RETURN},       2, 5});
-    token_list_push(&tokens, (token){TOK_INT_LITERAL, {.int_val = 2},        2, 12});
-    token_list_push(&tokens, (token){TOK_SEPARATOR, {.sep = SEP_SEMICOLON},  2, 13});
-    token_list_push(&tokens, (token){TOK_SEPARATOR, {.sep = SEP_RBRACE},     3, 1});
+    token_list_push(&tokens, (Token){TOK_KEYWORD,   {.kw = TOK_INT},          1, 1});
+    token_list_push(&tokens, (Token){TOK_IDENTIFIER, {.ident = strdup("main")}, 1, 5});
+    token_list_push(&tokens, (Token){TOK_SEPARATOR, {.sep = TOK_LPAR},       1, 9});
+    token_list_push(&tokens, (Token){TOK_SEPARATOR, {.sep = TOK_RPAR},       1, 10});
+    token_list_push(&tokens, (Token){TOK_SEPARATOR, {.sep = TOK_LBRACE},     1, 12});
+    token_list_push(&tokens, (Token){TOK_KEYWORD,   {.kw = TOK_RETURN},       2, 5});
+    token_list_push(&tokens, (Token){TOK_INT_LITERAL, {.int_val = 2},        2, 12});
+    token_list_push(&tokens, (Token){TOK_SEPARATOR, {.sep = TOK_SEMICOLON},  2, 13});
+    token_list_push(&tokens, (Token){TOK_SEPARATOR, {.sep = TOK_RBRACE},     3, 1});
 
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
@@ -99,16 +99,16 @@ void test_parse_return_2() {
 
 #define COUNT_OF(array) (sizeof(array) / sizeof((array)[0]))
 
-static token make_int_token(int value) {
-    return (token){TOK_INT_LITERAL, {.int_val = value}, 1, 1};
+static Token make_int_token(int value) {
+    return (Token){TOK_INT_LITERAL, {.int_val = value}, 1, 1};
 }
 
-static token make_op_token(token_operator op) {
-    return (token){TOK_OPERATOR, {.op = op}, 1, 1};
+static Token make_op_token(TokenOperator op) {
+    return (Token){TOK_OPERATOR, {.op = op}, 1, 1};
 }
 
-static token make_sep_token(token_separator sep) {
-    return (token){TOK_SEPARATOR, {.sep = sep}, 1, 1};
+static Token make_sep_token(TokenSeparator sep) {
+    return (Token){TOK_SEPARATOR, {.sep = sep}, 1, 1};
 }
 
 static const char* binop_name(AstBinopType op) {
@@ -167,21 +167,21 @@ static bool exp_equals(const AstExp* a, const AstExp* b) {
 
 // Parses `int main() { return <exp_tokens>; }` and checks that the returned
 // expression matches `expected`. Takes ownership of `expected`.
-static void check_return_exp(const char* description, const token* exp_tokens,
+static void check_return_exp(const char* description, const Token* exp_tokens,
                              size_t num_exp_tokens, AstExp* expected) {
-    token_list tokens = token_list_create(num_exp_tokens + 8);
+    TokenList tokens = token_list_create(num_exp_tokens + 8);
 
-    token_list_push(&tokens, (token){TOK_KEYWORD,    {.kw = KW_INT},            1, 1});
-    token_list_push(&tokens, (token){TOK_IDENTIFIER, {.ident = strdup("main")}, 1, 1});
-    token_list_push(&tokens, make_sep_token(SEP_LPAR));
-    token_list_push(&tokens, make_sep_token(SEP_RPAR));
-    token_list_push(&tokens, make_sep_token(SEP_LBRACE));
-    token_list_push(&tokens, (token){TOK_KEYWORD,    {.kw = KW_RETURN},         1, 1});
+    token_list_push(&tokens, (Token){TOK_KEYWORD,    {.kw = TOK_INT},            1, 1});
+    token_list_push(&tokens, (Token){TOK_IDENTIFIER, {.ident = strdup("main")}, 1, 1});
+    token_list_push(&tokens, make_sep_token(TOK_LPAR));
+    token_list_push(&tokens, make_sep_token(TOK_RPAR));
+    token_list_push(&tokens, make_sep_token(TOK_LBRACE));
+    token_list_push(&tokens, (Token){TOK_KEYWORD,    {.kw = TOK_RETURN},         1, 1});
     for (size_t i = 0; i < num_exp_tokens; i++) {
         token_list_push(&tokens, exp_tokens[i]);
     }
-    token_list_push(&tokens, make_sep_token(SEP_SEMICOLON));
-    token_list_push(&tokens, make_sep_token(SEP_RBRACE));
+    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    token_list_push(&tokens, make_sep_token(TOK_RBRACE));
 
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
@@ -204,17 +204,17 @@ static void check_return_exp(const char* description, const token* exp_tokens,
 
 // '*' binds tighter than '+', on both sides.
 void test_precedence_mul_over_add() {
-    token left[] = {
-        make_int_token(1), make_op_token(OP_PLUS),
-        make_int_token(2), make_op_token(OP_STAR), make_int_token(3),
+    Token left[] = {
+        make_int_token(1), make_op_token(TOK_PLUS),
+        make_int_token(2), make_op_token(TOK_STAR), make_int_token(3),
     };
     check_return_exp("1 + 2 * 3;", left, COUNT_OF(left),
         create_binop_exp(BINOP_ADD, create_int_exp(1),
             create_binop_exp(BINOP_MUL, create_int_exp(2), create_int_exp(3))));
 
-    token right[] = {
-        make_int_token(2), make_op_token(OP_STAR), make_int_token(3),
-        make_op_token(OP_PLUS), make_int_token(4),
+    Token right[] = {
+        make_int_token(2), make_op_token(TOK_STAR), make_int_token(3),
+        make_op_token(TOK_PLUS), make_int_token(4),
     };
     check_return_exp("2 * 3 + 4", right, COUNT_OF(right),
         create_binop_exp(BINOP_ADD,
@@ -224,27 +224,27 @@ void test_precedence_mul_over_add() {
 
 // Same-precedence operators associate to the left.
 void test_precedence_left_associativity() {
-    token sub[] = {
-        make_int_token(10), make_op_token(OP_MINUS),
-        make_int_token(4), make_op_token(OP_MINUS), make_int_token(3),
+    Token sub[] = {
+        make_int_token(10), make_op_token(TOK_MINUS),
+        make_int_token(4), make_op_token(TOK_MINUS), make_int_token(3),
     };
     check_return_exp("10 - 4 - 3", sub, COUNT_OF(sub),
         create_binop_exp(BINOP_SUB,
             create_binop_exp(BINOP_SUB, create_int_exp(10), create_int_exp(4)),
             create_int_exp(3)));
 
-    token div_mod[] = {
-        make_int_token(8), make_op_token(OP_FSLASH),
-        make_int_token(4), make_op_token(OP_PERCENT), make_int_token(3),
+    Token div_mod[] = {
+        make_int_token(8), make_op_token(TOK_FSLASH),
+        make_int_token(4), make_op_token(TOK_PERCENT), make_int_token(3),
     };
     check_return_exp("8 / 4 % 3", div_mod, COUNT_OF(div_mod),
         create_binop_exp(BINOP_MOD,
             create_binop_exp(BINOP_DIV, create_int_exp(8), create_int_exp(4)),
             create_int_exp(3)));
 
-    token shift[] = {
-        make_int_token(1), make_op_token(OP_LSHIFT),
-        make_int_token(2), make_op_token(OP_LSHIFT), make_int_token(3),
+    Token shift[] = {
+        make_int_token(1), make_op_token(TOK_LSHIFT),
+        make_int_token(2), make_op_token(TOK_LSHIFT), make_int_token(3),
     };
     check_return_exp("1 << 2 << 3", shift, COUNT_OF(shift),
         create_binop_exp(BINOP_LSHIFT,
@@ -254,17 +254,17 @@ void test_precedence_left_associativity() {
 
 // Additive binds tighter than shifts.
 void test_precedence_add_over_shift() {
-    token lshift[] = {
-        make_int_token(1), make_op_token(OP_LSHIFT),
-        make_int_token(2), make_op_token(OP_PLUS), make_int_token(3),
+    Token lshift[] = {
+        make_int_token(1), make_op_token(TOK_LSHIFT),
+        make_int_token(2), make_op_token(TOK_PLUS), make_int_token(3),
     };
     check_return_exp("1 << 2 + 3", lshift, COUNT_OF(lshift),
         create_binop_exp(BINOP_LSHIFT, create_int_exp(1),
             create_binop_exp(BINOP_ADD, create_int_exp(2), create_int_exp(3))));
 
-    token rshift[] = {
-        make_int_token(1), make_op_token(OP_PLUS),
-        make_int_token(2), make_op_token(OP_RSHIFT), make_int_token(3),
+    Token rshift[] = {
+        make_int_token(1), make_op_token(TOK_PLUS),
+        make_int_token(2), make_op_token(TOK_RSHIFT), make_int_token(3),
     };
     check_return_exp("1 + 2 >> 3", rshift, COUNT_OF(rshift),
         create_binop_exp(BINOP_RSHIFT,
@@ -274,25 +274,25 @@ void test_precedence_add_over_shift() {
 
 // Bitwise tiers: shift > & > ^ > |.
 void test_precedence_bitwise_tiers() {
-    token shift_over_and[] = {
-        make_int_token(1), make_op_token(OP_AND),
-        make_int_token(2), make_op_token(OP_LSHIFT), make_int_token(3),
+    Token shift_over_and[] = {
+        make_int_token(1), make_op_token(TOK_AND),
+        make_int_token(2), make_op_token(TOK_LSHIFT), make_int_token(3),
     };
     check_return_exp("1 & 2 << 3", shift_over_and, COUNT_OF(shift_over_and),
         create_binop_exp(BINOP_AND, create_int_exp(1),
             create_binop_exp(BINOP_LSHIFT, create_int_exp(2), create_int_exp(3))));
 
-    token and_over_xor[] = {
-        make_int_token(1), make_op_token(OP_XOR),
-        make_int_token(2), make_op_token(OP_AND), make_int_token(3),
+    Token and_over_xor[] = {
+        make_int_token(1), make_op_token(TOK_XOR),
+        make_int_token(2), make_op_token(TOK_AND), make_int_token(3),
     };
     check_return_exp("1 ^ 2 & 3", and_over_xor, COUNT_OF(and_over_xor),
         create_binop_exp(BINOP_XOR, create_int_exp(1),
             create_binop_exp(BINOP_AND, create_int_exp(2), create_int_exp(3))));
 
-    token xor_over_or[] = {
-        make_int_token(1), make_op_token(OP_OR),
-        make_int_token(2), make_op_token(OP_XOR), make_int_token(3),
+    Token xor_over_or[] = {
+        make_int_token(1), make_op_token(TOK_OR),
+        make_int_token(2), make_op_token(TOK_XOR), make_int_token(3),
     };
     check_return_exp("1 | 2 ^ 3", xor_over_or, COUNT_OF(xor_over_or),
         create_binop_exp(BINOP_OR, create_int_exp(1),
@@ -302,13 +302,13 @@ void test_precedence_bitwise_tiers() {
 // One expression exercising every precedence tier at once:
 // 1 | 2 ^ 3 & 4 << 5 + 6 * 7  ==  (1 | (2 ^ (3 & (4 << (5 + (6 * 7))))))
 void test_precedence_full_chain() {
-    token chain[] = {
-        make_int_token(1), make_op_token(OP_OR),
-        make_int_token(2), make_op_token(OP_XOR),
-        make_int_token(3), make_op_token(OP_AND),
-        make_int_token(4), make_op_token(OP_LSHIFT),
-        make_int_token(5), make_op_token(OP_PLUS),
-        make_int_token(6), make_op_token(OP_STAR), make_int_token(7),
+    Token chain[] = {
+        make_int_token(1), make_op_token(TOK_OR),
+        make_int_token(2), make_op_token(TOK_XOR),
+        make_int_token(3), make_op_token(TOK_AND),
+        make_int_token(4), make_op_token(TOK_LSHIFT),
+        make_int_token(5), make_op_token(TOK_PLUS),
+        make_int_token(6), make_op_token(TOK_STAR), make_int_token(7),
     };
     check_return_exp("1 | 2 ^ 3 & 4 << 5 + 6 * 7", chain, COUNT_OF(chain),
         create_binop_exp(BINOP_OR, create_int_exp(1),
@@ -322,11 +322,11 @@ void test_precedence_full_chain() {
 
 // Parentheses override precedence.
 void test_precedence_parentheses() {
-    token grouped[] = {
-        make_sep_token(SEP_LPAR),
-        make_int_token(1), make_op_token(OP_OR), make_int_token(2),
-        make_sep_token(SEP_RPAR),
-        make_op_token(OP_AND), make_int_token(3),
+    Token grouped[] = {
+        make_sep_token(TOK_LPAR),
+        make_int_token(1), make_op_token(TOK_OR), make_int_token(2),
+        make_sep_token(TOK_RPAR),
+        make_op_token(TOK_AND), make_int_token(3),
     };
     check_return_exp("(1 | 2) & 3", grouped, COUNT_OF(grouped),
         create_binop_exp(BINOP_AND,
@@ -336,9 +336,9 @@ void test_precedence_parentheses() {
 
 // Unary minus binds tighter than any binary operator.
 void test_precedence_unary_over_binary() {
-    token negated[] = {
-        make_op_token(OP_MINUS), make_int_token(1),
-        make_op_token(OP_PLUS), make_int_token(2),
+    Token negated[] = {
+        make_op_token(TOK_MINUS), make_int_token(1),
+        make_op_token(TOK_PLUS), make_int_token(2),
     };
     check_return_exp("-1 + 2", negated, COUNT_OF(negated),
         create_binop_exp(BINOP_ADD,
