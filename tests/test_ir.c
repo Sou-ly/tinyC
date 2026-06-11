@@ -231,6 +231,11 @@ void test_emit_binop_all_ops() {
         { BINOP_MUL, IR_MUL },
         { BINOP_DIV, IR_DIV },
         { BINOP_MOD, IR_MOD },
+        { BINOP_AND, IR_AND },
+        { BINOP_OR, IR_OR },
+        { BINOP_XOR, IR_XOR },
+        { BINOP_LSHIFT, IR_LSHIFT },
+        { BINOP_RSHIFT, IR_RSHIFT },
     };
     for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
         AstProgram ast = program_of_stmt(make_return_stmt(
@@ -330,6 +335,46 @@ void test_emit_binop_distinct_temps() {
     printf("  PASS: test_emit_binop_distinct_temps\n");
 }
 
+// int main() { return (5 & 3) | (1 << 4); }
+// Both bitwise sub-expressions are lowered into temps before the outer OR,
+// which consumes the two temps as its operands.
+void test_emit_binop_bitwise_nested() {
+    AstExp* and_exp = create_binop_exp(BINOP_AND,
+                                       create_int_exp(5), create_int_exp(3));
+    AstExp* shl_exp = create_binop_exp(BINOP_LSHIFT,
+                                       create_int_exp(1), create_int_exp(4));
+    AstExp* or_exp = create_binop_exp(BINOP_OR, and_exp, shl_exp);
+    AstProgram ast = program_of_stmt(make_return_stmt(or_exp));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.functions[0];
+    assert(fn->size == 4);
+
+    IrInstruction* and_ins = &fn->instructions[0];  // 5 & 3   -> t0
+    IrInstruction* shl_ins = &fn->instructions[1];  // 1 << 4  -> t1
+    IrInstruction* or_ins  = &fn->instructions[2];  // t0 | t1 -> t2
+    IrInstruction* ret     = &fn->instructions[3];  // return t2
+
+    assert(and_ins->type == IR_BINOP && and_ins->binop.op == IR_AND);
+    assert(and_ins->binop.lhs.int_val == 5 && and_ins->binop.rhs.int_val == 3);
+
+    assert(shl_ins->type == IR_BINOP && shl_ins->binop.op == IR_LSHIFT);
+    assert(shl_ins->binop.lhs.int_val == 1 && shl_ins->binop.rhs.int_val == 4);
+
+    assert(or_ins->type == IR_BINOP && or_ins->binop.op == IR_OR);
+    assert(or_ins->binop.lhs.kind == IR_VARIABLE);
+    assert(strcmp(or_ins->binop.lhs.name, and_ins->binop.dst.name) == 0);
+    assert(or_ins->binop.rhs.kind == IR_VARIABLE);
+    assert(strcmp(or_ins->binop.rhs.name, shl_ins->binop.dst.name) == 0);
+
+    assert(ret->type == IR_RETURN);
+    assert(strcmp(ret->ret.val.name, or_ins->binop.dst.name) == 0);
+
+    free_ir_program(&ir);
+    destroy_program(&ast);
+    printf("  PASS: test_emit_binop_bitwise_nested\n");
+}
+
 int main(void) {
     printf("Running IR tests...\n");
     test_emit_return_constant();
@@ -344,6 +389,7 @@ int main(void) {
     test_emit_binop_nested_lhs_first();
     test_emit_binop_rhs_subexpression();
     test_emit_binop_distinct_temps();
+    test_emit_binop_bitwise_nested();
     printf("All IR tests passed!\n");
     return 0;
 }

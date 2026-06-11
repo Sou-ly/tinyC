@@ -26,10 +26,15 @@ static x86_Unop codegen_unop(IrUnopType op) {
 
 static x86_Binop codegen_binop(IrBinopType op) {
     switch (op) {
-        case IR_ADD:	return x86_ADD;
-        case IR_SUB: 	return x86_SUB;
-		case IR_MUL: 	return x86_MUL;
-		default:		break;
+        case IR_ADD:		return x86_ADD;
+        case IR_SUB: 		return x86_SUB;
+		case IR_MUL: 		return x86_MUL;
+        case IR_AND:		return x86_AND;
+        case IR_OR: 		return x86_OR;
+		case IR_XOR: 		return x86_XOR;
+		case IR_RSHIFT: 	return x86_RSHIFT;
+		case IR_LSHIFT: 	return x86_LSHIFT;
+		default:			break;
     }
     fprintf(stderr, "codegen: unsupported unary op\n");
     exit(1);

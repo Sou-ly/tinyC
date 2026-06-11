@@ -39,6 +39,13 @@ typedef enum {
     x86_ADD,
     x86_SUB,
 	x86_MUL,
+	x86_DIV,
+	x86_MOD,
+	x86_AND,
+	x86_OR,
+	x86_XOR,
+	x86_LSHIFT,
+	x86_RSHIFT
 } x86_Binop;
 
 // --- Instructions (linked list) ---

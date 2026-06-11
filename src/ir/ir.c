@@ -41,6 +41,11 @@ static IrBinopType convert_ir_binop(AstBinopType ast_op) {
 		case BINOP_MUL:		return IR_MUL;
 		case BINOP_DIV:		return IR_DIV;
 		case BINOP_MOD:		return IR_MOD;
+		case BINOP_AND:		return IR_AND;
+		case BINOP_OR:		return IR_OR;
+		case BINOP_XOR:		return IR_XOR;
+		case BINOP_LSHIFT:	return IR_LSHIFT;
+		case BINOP_RSHIFT:	return IR_RSHIFT;
 	}
 	fprintf(stderr, "ir: unsupported binary operator\n");
 	exit(1);

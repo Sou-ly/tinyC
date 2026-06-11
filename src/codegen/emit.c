@@ -33,17 +33,26 @@ static const char* unop_name(x86_Unop op) {
         case x86_NEG: return "negl";
         case x86_NOT: return "notl";
     }
-    return "???";
+	fprintf(stderr, "unrecognized unop\n");
+	exit(1);
 }
 
 
 static const char* binop_name(x86_Binop op) {
     switch (op) {
-        case x86_ADD: return "addl";
-        case x86_SUB: return "subl";
-        case x86_MUL: return "imull";
+		// note: AT&T synthax
+        case x86_ADD:		return "addl";
+        case x86_SUB: 		return "subl";
+        case x86_MUL: 		return "imull";
+		case x86_AND:		return "andl";
+		case x86_OR:		return "orl";
+		case x86_XOR:		return "xorl";
+		case x86_LSHIFT:	return "shll";
+		case x86_RSHIFT:	return "shrl";
+		default:			break;
     }
-    return "???";
+	fprintf(stderr, "unrecognized binop\n");
+	exit(1);
 }
 
 static void emit_instr(x86_Instr* instr, FILE* out) {

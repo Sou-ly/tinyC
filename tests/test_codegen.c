@@ -266,6 +266,54 @@ void test_codegen_binop_arithmetic() {
     printf("  PASS: test_codegen_binop_arithmetic\n");
 }
 
+// The bitwise binops (and/or/xor/shl/shr) lower through the same generic
+//   mov  dst, lhs
+//   <op> rhs, dst
+// pattern as the arithmetic ones; only the x86 opcode differs.
+void test_codegen_binop_bitwise() {
+    struct { AstBinopType ast_op; x86_Binop x86_op; } cases[] = {
+        { BINOP_AND, x86_AND },
+        { BINOP_OR, x86_OR },
+        { BINOP_XOR, x86_XOR },
+        { BINOP_LSHIFT, x86_LSHIFT },
+        { BINOP_RSHIFT, x86_RSHIFT },
+    };
+    for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
+        AstProgram program = make_test_program(
+            create_binop_exp(cases[c].ast_op,
+                             create_int_exp(12), create_int_exp(2)));
+        IrProgram ir = emit_ir(&program);
+        x86_Program asm_prog = codegen(&ir);
+
+        x86_Instr* i = asm_prog.functions[0].instrs.head;
+
+        // mov dst, $12   (lhs copied into the destination temp)
+        assert(i != NULL && i->kind == x86_MOV);
+        assert(i->mov.dst.kind == x86_ID);
+        assert(i->mov.src.kind == x86_IMM && i->mov.src.imm == 12);
+        i = i->next;
+
+        // <op> $2, dst
+        assert(i != NULL && i->kind == x86_BINOP);
+        assert(i->binop.optype == cases[c].x86_op);
+        assert(i->binop.rhs.kind == x86_IMM && i->binop.rhs.imm == 2);
+        assert(i->binop.dst.kind == x86_ID);
+        i = i->next;
+
+        // mov %eax, dst  (return lowering)
+        assert(i != NULL && i->kind == x86_MOV);
+        assert(i->mov.dst.kind == x86_REG && i->mov.dst.reg == x86_AX);
+        i = i->next;
+
+        assert(i != NULL && i->kind == x86_RET);
+        assert(i->next == NULL);
+
+        destroy_x86_program(&asm_prog);
+        destroy_program(&program);
+    }
+    printf("  PASS: test_codegen_binop_bitwise\n");
+}
+
 // int main() { return 6 / 3; }  lowers division through eax/cdq/idiv:
 //   mov  %eax, dividend   (lhs)
 //   cdq
@@ -397,6 +445,52 @@ void test_emit_binop_and_div_instructions() {
     printf("  PASS: test_emit_binop_and_div_instructions\n");
 }
 
+// Build an x86 function by hand exercising every bitwise opcode in AT&T
+// syntax, then check the rendered assembly text exactly.
+void test_emit_bitwise_instructions() {
+    struct { x86_Binop op; const char* rendered; } cases[] = {
+        { x86_AND,    "andl $5, %eax" },
+        { x86_OR,     "orl $5, %eax" },
+        { x86_XOR,    "xorl $5, %eax" },
+        { x86_LSHIFT, "shll $5, %eax" },
+        { x86_RSHIFT, "shrl $5, %eax" },
+    };
+
+    x86_InstrList instrs = x86_instr_list_new();
+    for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
+        x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_BINOP, .binop = {
+            .optype = cases[c].op,
+            .rhs = (x86_Operand){.kind = x86_IMM, .imm = 5},
+            .dst = (x86_Operand){.kind = x86_REG, .reg = x86_AX}}});
+    }
+    // xorl %r10d, %r11d  (register form)
+    x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_BINOP, .binop = {
+        .optype = x86_XOR,
+        .rhs = (x86_Operand){.kind = x86_REG, .reg = x86_R10},
+        .dst = (x86_Operand){.kind = x86_REG, .reg = x86_R11}}});
+    x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_RET});
+
+    x86_Function* functions = malloc(sizeof(x86_Function));
+    functions[0] = make_x86_function("main", instrs);
+    x86_Program prog = make_x86_program(functions, 1);
+
+    char* buf = NULL;
+    size_t buf_size = 0;
+    FILE* out = open_memstream(&buf, &buf_size);
+    emit_asm(&prog, out);
+    fclose(out);
+
+    for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
+        assert(strstr(buf, cases[c].rendered) != NULL);
+    }
+    assert(strstr(buf, "xorl %r10d, %r11d") != NULL);
+    assert(strstr(buf, "???") == NULL);
+
+    free(buf);
+    destroy_x86_program(&prog);
+    printf("  PASS: test_emit_bitwise_instructions\n");
+}
+
 // After register renaming, no binop/idiv operand should still be a pseudo.
 // (rename_registers must visit x86_BINOP and x86_IDIV operands.)
 void test_rename_binop_clears_pseudos() {
@@ -453,6 +547,46 @@ void test_emit_div_program() {
     printf("  PASS: test_emit_div_program\n");
 }
 
+// End-to-end: int main() { return ((5 & 3) | (1 << 2)) ^ (16 >> 1); }
+// exercises every bitwise opcode through the full pipeline (codegen, register
+// rename, stack allocation, emission) and leaves no pseudo-registers behind.
+void test_emit_bitwise_program() {
+    AstExp* and_exp = create_binop_exp(BINOP_AND,
+                                       create_int_exp(5), create_int_exp(3));
+    AstExp* shl_exp = create_binop_exp(BINOP_LSHIFT,
+                                       create_int_exp(1), create_int_exp(2));
+    AstExp* or_exp = create_binop_exp(BINOP_OR, and_exp, shl_exp);
+    AstExp* shr_exp = create_binop_exp(BINOP_RSHIFT,
+                                       create_int_exp(16), create_int_exp(1));
+    AstExp* xor_exp = create_binop_exp(BINOP_XOR, or_exp, shr_exp);
+    AstProgram program = make_test_program(xor_exp);
+
+    IrProgram ir = emit_ir(&program);
+    x86_Program asm_prog = codegen(&ir);
+
+    int stack_offset = rename_registers(&asm_prog.functions[0]);
+    allocate_stack(&asm_prog.functions[0], stack_offset);
+
+    char* buf = NULL;
+    size_t buf_size = 0;
+    FILE* out = open_memstream(&buf, &buf_size);
+    emit_asm(&asm_prog, out);
+    fclose(out);
+
+    assert(strstr(buf, "andl") != NULL);
+    assert(strstr(buf, "orl") != NULL);
+    assert(strstr(buf, "xorl") != NULL);
+    assert(strstr(buf, "shll") != NULL);
+    assert(strstr(buf, "shrl") != NULL);
+    assert(strstr(buf, "<pseudo:") == NULL);
+    assert(strstr(buf, "???") == NULL);
+
+    free(buf);
+    destroy_x86_program(&asm_prog);
+    destroy_program(&program);
+    printf("  PASS: test_emit_bitwise_program\n");
+}
+
 int main(void) {
     printf("Running codegen tests...\n");
     test_create_x86_function();
@@ -463,10 +597,13 @@ int main(void) {
     test_codegen_return_complement_neg2();
     test_emit_return_complement_neg2();
     test_codegen_binop_arithmetic();
+    test_codegen_binop_bitwise();
     test_codegen_binop_div();
     test_codegen_binop_mod();
     test_emit_binop_and_div_instructions();
+    test_emit_bitwise_instructions();
     test_rename_binop_clears_pseudos();
+    test_emit_bitwise_program();
     test_emit_div_program();
     printf("All codegen tests passed!\n");
     return 0;
