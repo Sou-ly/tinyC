@@ -64,6 +64,42 @@ static IrBinopType convert_ir_binop(AstBinopType ast_op) {
 	exit(1);
 }
 
+static IrVal emit_ir_expression(const AstExp* exp, IrFunction* ir_function);
+
+// emits && and ||: both evaluate operands left to right and jump to a
+// short-circuit label as soon as one operand decides the result.
+// && short-circuits to 0 when an operand is zero, || to 1 when non-zero.
+// jumps are built through .jump_zero regardless of jump_type, which is
+// fine since jump_zero and jump_not_zero have the same layout.
+static IrVal emit_ir_short_circuit(const AstExp* exp, IrFunction* ir_function) {
+	bool is_and = exp->binop.op_type == BINOP_LAND;
+	IrInstructionType jump_type = is_and ? IR_JUMP_ZERO : IR_JUMP_NOT_ZERO;
+	int short_circuit_value = is_and ? 0 : 1;
+	IrInstruction short_circuit_label = { IR_LABEL, .label = { generate_label_name() } };
+	IrInstruction end_label = { IR_LABEL, .label = { generate_label_name() } };
+	IrVal dst = { IR_VARIABLE, .name = generate_variable_name() };
+	// evaluate v1, short-circuit if it decides the result
+	IrVal lhs = emit_ir_expression(exp->binop.lhs, ir_function);
+	IrInstruction jump_lhs = { jump_type, .jump_zero = { lhs, short_circuit_label.label.identifier } };
+	append_ir_instruction(ir_function, jump_lhs);
+	// evaluate v2, short-circuit if it decides the result
+	IrVal rhs = emit_ir_expression(exp->binop.rhs, ir_function);
+	IrInstruction jump_rhs = { jump_type, .jump_zero = { rhs, short_circuit_label.label.identifier } };
+	append_ir_instruction(ir_function, jump_rhs);
+	// fall-through: result is the opposite of the short-circuit value
+	IrInstruction store_fallthrough = { IR_COPY, .copy = { { IR_CONSTANT, .int_val = !short_circuit_value }, dst } };
+	append_ir_instruction(ir_function, store_fallthrough);
+	IrInstruction jump_end = { IR_JUMP, .jump = { end_label.label.identifier } };
+	append_ir_instruction(ir_function, jump_end);
+	// short-circuit
+	append_ir_instruction(ir_function, short_circuit_label);
+	IrInstruction store_short_circuit = { IR_COPY, .copy = { { IR_CONSTANT, .int_val = short_circuit_value }, dst } };
+	append_ir_instruction(ir_function, store_short_circuit);
+	// end
+	append_ir_instruction(ir_function, end_label);
+	return dst;
+}
+
 static IrVal emit_ir_expression(const AstExp* exp, IrFunction* ir_function) {
 	switch (exp->kind) {
 		case EXP_INT: {
@@ -82,57 +118,8 @@ static IrVal emit_ir_expression(const AstExp* exp, IrFunction* ir_function) {
 		}
 		case EXP_BINOP: {
 			IrBinopType optype = convert_ir_binop(exp->binop.op_type);
-			if (optype == IR_LAND) {
-				IrInstruction false_label = { IR_LABEL, .label = { generate_label_name() } };
-				IrInstruction end_label = { IR_LABEL, .label = { generate_label_name() } };
-				IrVal dst = { IR_VARIABLE, .name = generate_variable_name() };
-				// evaluate v1
-				IrVal lhs = emit_ir_expression(exp->binop.lhs, ir_function);
-				// jumpIfZero(v1, false)
-				IrInstruction jump_zero_lhs = { IR_JUMP_ZERO, .jump_zero = { lhs, false_label.label.identifier } };
-				append_ir_instruction(ir_function, jump_zero_lhs);
-				// evaluate v2
-				IrVal rhs = emit_ir_expression(exp->binop.rhs, ir_function);
-				// jumpIfZero(v2, false)
-				IrInstruction jump_zero_rhs = { IR_JUMP_ZERO, .jump_zero = { rhs, false_label.label.identifier } };
-				append_ir_instruction(ir_function, jump_zero_rhs);
-				// return = 1
-				IrInstruction store_true = { IR_COPY, .copy = { { IR_CONSTANT, .int_val = 1 }, dst } };
-				append_ir_instruction(ir_function, store_true);
-				// jump(end)
-				IrInstruction jump_end = { IR_JUMP, .jump = { end_label.label.identifier } };
-				append_ir_instruction(ir_function, jump_end);
-				// false
-				append_ir_instruction(ir_function, false_label);
-				// return = 0
-				IrInstruction store_false = { IR_COPY, .copy = { { IR_CONSTANT, .int_val = 0 }, dst } };
-				append_ir_instruction(ir_function, store_false);
-				// end
-				append_ir_instruction(ir_function, end_label);
-				return dst;
-			}
-			if (optype == IR_LOR) {
-				IrInstruction end_label = { IR_LABEL, .label = { generate_label_name() } };
-				// result = 1
-				IrVal dst = { IR_VARIABLE, .name = generate_variable_name() };
-				IrInstruction store_true = { IR_COPY, .copy = { { IR_CONSTANT, .int_val = 1 }, dst } };
-				// evaluate v1
-				append_ir_instruction(ir_function, store_true);
-				IrVal lhs = emit_ir_expression(exp->binop.lhs, ir_function);
-				// JumpIfNotZero(v1, end)
-				IrInstruction jump_not_zero_lhs = { IR_JUMP_NOT_ZERO, .jump_not_zero = { lhs, end_label.label.identifier } };
-				append_ir_instruction(ir_function, jump_not_zero_lhs);
-				// evaluate v2
-				IrVal rhs = emit_ir_expression(exp->binop.rhs, ir_function);
-				// JumpIfNotZero(v2, end)
-				IrInstruction jump_not_zero_rhs = { IR_JUMP_NOT_ZERO, .jump_not_zero = { rhs, end_label.label.identifier } };
-				append_ir_instruction(ir_function, jump_not_zero_rhs);
-				// return = 0
-				IrInstruction store_false = { IR_COPY, .copy = { { IR_CONSTANT, .int_val = 0 }, dst } };
-				append_ir_instruction(ir_function, store_false);
-				// end
-				append_ir_instruction(ir_function, end_label);
-				return dst;
+			if (optype == IR_LAND || optype == IR_LOR) {
+				return emit_ir_short_circuit(exp, ir_function);
 			}
 			IrVal lhs = emit_ir_expression(exp->binop.lhs, ir_function);
 			IrVal rhs = emit_ir_expression(exp->binop.rhs, ir_function);

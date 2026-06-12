@@ -21,24 +21,57 @@ static AstProgram program_of_stmt(AstStatement stmt) {
     return program_of(body, 1);
 }
 
-// A temp's name is allocated once (at the producing instruction's dst) and
-// shallow-copied into later uses, so free it only where it was produced.
+// A temp's or label's name is allocated once and shallow-copied into later
+// uses (jump targets, copy dsts, return values), so collect the unique
+// pointers first to free each allocation exactly once.
 static void free_ir_program(IrProgram* program) {
     for (int f = 0; f < program->size; f++) {
         IrFunction* fn = &program->functions[f];
+        char** owned = malloc(fn->size * sizeof(char*));
+        int num_owned = 0;
         for (int i = 0; i < fn->size; i++) {
             IrInstruction* ins = &fn->instructions[i];
-            if (ins->type == IR_UNOP && ins->unary.dst.kind == IR_VARIABLE) {
-                free(ins->unary.dst.name);
+            char* name = NULL;
+            switch (ins->type) {
+                case IR_UNOP:
+                    if (ins->unary.dst.kind == IR_VARIABLE) name = ins->unary.dst.name;
+                    break;
+                case IR_BINOP:
+                    if (ins->binop.dst.kind == IR_VARIABLE) name = ins->binop.dst.name;
+                    break;
+                case IR_COPY:
+                    if (ins->copy.dst.kind == IR_VARIABLE) name = ins->copy.dst.name;
+                    break;
+                case IR_LABEL:
+                    name = ins->label.identifier;
+                    break;
+                default:
+                    break;
             }
-            if (ins->type == IR_BINOP && ins->binop.dst.kind == IR_VARIABLE) {
-                free(ins->binop.dst.name);
+            bool seen = false;
+            for (int o = 0; o < num_owned; o++) {
+                if (owned[o] == name) seen = true;
             }
+            if (name && !seen) owned[num_owned++] = name;
         }
+        for (int o = 0; o < num_owned; o++) {
+            free(owned[o]);
+        }
+        free(owned);
         free(fn->instructions);
         free(fn->name);
     }
     free(program->functions);
+}
+
+// jump_zero and jump_not_zero are distinct union members, so pick the right
+// one based on the instruction type.
+static IrVal jump_cond(const IrInstruction* ins) {
+    return ins->type == IR_JUMP_ZERO ? ins->jump_zero.cond : ins->jump_not_zero.cond;
+}
+
+static const char* jump_target(const IrInstruction* ins) {
+    return ins->type == IR_JUMP_ZERO ? ins->jump_zero.target : ins->jump_not_zero.target;
 }
 
 // --- tests ---
@@ -375,6 +408,84 @@ void test_emit_binop_bitwise_nested() {
     printf("  PASS: test_emit_binop_bitwise_nested\n");
 }
 
+// int main() { return 1 op 2; } for a short-circuiting op lowers to:
+//   jump(1, short)        conditional: JUMP_ZERO for &&, JUMP_NOT_ZERO for ||
+//   jump(2, short)
+//   dst = !short_circuit_value
+//   jump end
+// short:
+//   dst = short_circuit_value
+// end:
+//   return dst
+static void check_short_circuit(AstBinopType op, IrInstructionType cond_jump_type,
+                                int short_circuit_value) {
+    AstProgram ast = program_of_stmt(make_return_stmt(
+        create_binop_exp(op, create_int_exp(1), create_int_exp(2))));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.functions[0];
+    assert(fn->size == 8);
+
+    IrInstruction* jump_lhs    = &fn->instructions[0];
+    IrInstruction* jump_rhs    = &fn->instructions[1];
+    IrInstruction* store_fall  = &fn->instructions[2];
+    IrInstruction* jump_end    = &fn->instructions[3];
+    IrInstruction* short_label = &fn->instructions[4];
+    IrInstruction* store_short = &fn->instructions[5];
+    IrInstruction* end_label   = &fn->instructions[6];
+    IrInstruction* ret         = &fn->instructions[7];
+
+    assert(short_label->type == IR_LABEL);
+    assert(end_label->type == IR_LABEL);
+    assert(strcmp(short_label->label.identifier, end_label->label.identifier) != 0);
+
+    // both operands take the same conditional jump to the short-circuit label
+    assert(jump_lhs->type == cond_jump_type);
+    assert(jump_cond(jump_lhs).kind == IR_CONSTANT);
+    assert(jump_cond(jump_lhs).int_val == 1);
+    assert(strcmp(jump_target(jump_lhs), short_label->label.identifier) == 0);
+
+    assert(jump_rhs->type == cond_jump_type);
+    assert(jump_cond(jump_rhs).kind == IR_CONSTANT);
+    assert(jump_cond(jump_rhs).int_val == 2);
+    assert(strcmp(jump_target(jump_rhs), short_label->label.identifier) == 0);
+
+    // fall-through stores the opposite of the short-circuit value, then skips
+    // past the short-circuit store
+    assert(store_fall->type == IR_COPY);
+    assert(store_fall->copy.src.kind == IR_CONSTANT);
+    assert(store_fall->copy.src.int_val == !short_circuit_value);
+    assert(store_fall->copy.dst.kind == IR_VARIABLE);
+
+    assert(jump_end->type == IR_JUMP);
+    assert(strcmp(jump_end->jump.target, end_label->label.identifier) == 0);
+
+    // short-circuit stores its value into the same destination temp
+    assert(store_short->type == IR_COPY);
+    assert(store_short->copy.src.kind == IR_CONSTANT);
+    assert(store_short->copy.src.int_val == short_circuit_value);
+    assert(strcmp(store_short->copy.dst.name, store_fall->copy.dst.name) == 0);
+
+    assert(ret->type == IR_RETURN);
+    assert(ret->ret.val.kind == IR_VARIABLE);
+    assert(strcmp(ret->ret.val.name, store_fall->copy.dst.name) == 0);
+
+    free_ir_program(&ir);
+    destroy_program(&ast);
+}
+
+// int main() { return 1 && 2; }  ->  jump-if-zero to the 0-result label.
+void test_emit_logical_and_short_circuit() {
+    check_short_circuit(BINOP_LAND, IR_JUMP_ZERO, 0);
+    printf("  PASS: test_emit_logical_and_short_circuit\n");
+}
+
+// int main() { return 1 || 2; }  ->  jump-if-not-zero to the 1-result label.
+void test_emit_logical_or_short_circuit() {
+    check_short_circuit(BINOP_LOR, IR_JUMP_NOT_ZERO, 1);
+    printf("  PASS: test_emit_logical_or_short_circuit\n");
+}
+
 int main(void) {
     printf("Running IR tests...\n");
     test_emit_return_constant();
@@ -390,6 +501,8 @@ int main(void) {
     test_emit_binop_rhs_subexpression();
     test_emit_binop_distinct_temps();
     test_emit_binop_bitwise_nested();
+    test_emit_logical_and_short_circuit();
+    test_emit_logical_or_short_circuit();
     printf("All IR tests passed!\n");
     return 0;
 }
