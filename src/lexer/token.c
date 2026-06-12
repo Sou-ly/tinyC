@@ -35,16 +35,23 @@ const char *operator_name(TokenOperator o) {
 		case TOK_STAR:      return "*";
 		case TOK_PERCENT:   return "%";
 		case TOK_FSLASH:    return "/";
+		case TOK_DECR:      return "--";
+		case TOK_INCR:      return "++";
 		case TOK_NOT:       return "~";
-		case TOK_EQ:        return "==";
-		case TOK_NEQ:       return "!=";
 		case TOK_AND:       return "&";
 		case TOK_OR:        return "|";
 		case TOK_XOR:       return "^";
 		case TOK_LSHIFT:    return "<<";
 		case TOK_RSHIFT:    return ">>";
-		case TOK_DECR:      return "--";
-		case TOK_INCR:      return "++";
+		case TOK_LNOT:		return "!";
+		case TOK_LAND:		return "&&";
+		case TOK_LOR:		return "||";
+		case TOK_EQ:        return "==";
+		case TOK_NEQ:       return "!=";
+		case TOK_LESS:		return "<";
+		case TOK_GREATER:	return ">";
+		case TOK_LEQ:		return "<=";
+		case TOK_GEQ:		return ">=";
 	}
 	return "<unknown>";
 }
@@ -59,56 +66,57 @@ const char *keyword_name(TokenKeyword k) {
 	return "<unknown>";
 }
 
-static int keyword_lookup(const char *word) {
-	static const struct { const char *name; TokenKeyword kw; } table[] = {
-		{ "if",     TOK_IF     },
-		{ "int",    TOK_INT    },
-		{ "return", TOK_RETURN },
-		{ "void",   TOK_VOID   },
+static int keyword_lookup(const char *word, size_t len) {
+	static const struct { const char *name; size_t len; TokenKeyword kw; } table[] = {
+		{ "if",     2, TOK_IF     },
+		{ "int",    3, TOK_INT    },
+		{ "return", 6, TOK_RETURN },
+		{ "void",   4, TOK_VOID   },
 	};
 	for (size_t i = 0; i < sizeof table / sizeof table[0]; i++) {
-		if (strcmp(word, table[i].name) == 0)
+		if (table[i].len == len && strncmp(word, table[i].name, len) == 0)
 			return table[i].kw;
 	}
 	return -1;
 }
 
-static int separator_lookup(char c) {
-	switch (c) {
-		case '(': return TOK_LPAR;
-		case ')': return TOK_RPAR;
-		case '{': return TOK_LBRACE;
-		case '}': return TOK_RBRACE;
-		case ',': return TOK_COMMA;
-		case ';': return TOK_SEMICOLON;
-	}
-	return -1;
-}
+typedef struct {
+	const char *text;
+	size_t len;
+	TokenKind kind;
+	int value;
+} PunctEntry;
 
-static int operator_lookup(const char *source, size_t i, size_t *advance) {
-	// two-char operators first
-	if (source[i] && source[i + 1]) {
-		if (source[i] == '=' && source[i + 1] == '=') { *advance = 2; return TOK_EQ; }
-		if (source[i] == '!' && source[i + 1] == '=') { *advance = 2; return TOK_NEQ; }
-		if (source[i] == '-' && source[i + 1] == '-') { *advance = 2; return TOK_DECR; }
-		if (source[i] == '+' && source[i + 1] == '+') { *advance = 2; return TOK_DECR; }
-		if (source[i] == '<' && source[i < 1] == '<') { *advance = 2; return TOK_LSHIFT; }
-		if (source[i] == '>' && source[i > 1] == '>') { *advance = 2; return TOK_RSHIFT; }
-	}
-	// single-char operators
-	switch (source[i]) {
-		case '+': *advance = 1; return TOK_PLUS;
-		case '-': *advance = 1; return TOK_MINUS;
-		case '~': *advance = 1; return TOK_NOT;
-		case '*': *advance = 1; return TOK_STAR;
-		case '%': *advance = 1; return TOK_PERCENT;
-		case '/': *advance = 1; return TOK_FSLASH;
-		case '|': *advance = 1; return TOK_OR;
-		case '&': *advance = 1; return TOK_AND;
-		case '^': *advance = 1; return TOK_XOR;
-	}
+#define OP(s, v)  { s, sizeof(s) - 1, TOK_OPERATOR, v }
+#define SEP(s, v) { s, sizeof(s) - 1, TOK_SEPARATOR, v }
 
-	return -1;
+// Two-char operators must precede their one-char prefixes ("<<" before "<").
+static const PunctEntry punct_table[] = {
+	OP("++", TOK_INCR),   OP("--", TOK_DECR),
+	OP("<<", TOK_LSHIFT), OP(">>", TOK_RSHIFT),
+	OP("==", TOK_EQ),     OP("!=", TOK_NEQ),
+	OP("<=", TOK_LEQ),    OP(">=", TOK_GEQ),
+	OP("&&", TOK_LAND),   OP("||", TOK_LOR),
+	OP("+",  TOK_PLUS),   OP("-",  TOK_MINUS),
+	OP("*",  TOK_STAR),   OP("/",  TOK_FSLASH),
+	OP("%",  TOK_PERCENT),OP("~",  TOK_NOT),
+	OP("&",  TOK_AND),    OP("|",  TOK_OR),
+	OP("^",  TOK_XOR),    OP("!",  TOK_LNOT),
+	OP("<",  TOK_LESS),   OP(">",  TOK_GREATER),
+	SEP("(", TOK_LPAR),   SEP(")", TOK_RPAR),
+	SEP("{", TOK_LBRACE), SEP("}", TOK_RBRACE),
+	SEP(",", TOK_COMMA),  SEP(";", TOK_SEMICOLON),
+};
+
+#undef OP
+#undef SEP
+
+static const PunctEntry *punct_lookup(const char *source) {
+	for (size_t i = 0; i < sizeof punct_table / sizeof punct_table[0]; i++) {
+		if (strncmp(source, punct_table[i].text, punct_table[i].len) == 0)
+			return &punct_table[i];
+	}
+	return NULL;
 }
 
 LexerErr tokenize_file(FILE *src, struct TokenList *tokens) {
@@ -139,17 +147,16 @@ LexerErr tokenize(const char *source, struct TokenList *tokens) {
 			size_t start = i;
 			while (isalnum((unsigned char)source[i]) || source[i] == '_') i++;
 			size_t len = i - start;
-			char *word = malloc(len + 1);
-			if (!word) return ERR_NO_MEMORY;
-			memcpy(word, source + start, len);
-			word[len] = '\0';
 
-			int kw = keyword_lookup(word);
+			int kw = keyword_lookup(source + start, len);
 			if (kw >= 0) {
 				Token t = { .kind = TOK_KEYWORD, .kw = kw };
 				token_list_push(tokens, t);
-				free(word);
 			} else {
+				char *word = malloc(len + 1);
+				if (!word) return ERR_NO_MEMORY;
+				memcpy(word, source + start, len);
+				word[len] = '\0';
 				Token t = { .kind = TOK_IDENTIFIER, .ident = word };
 				token_list_push(tokens, t);
 			}
@@ -165,22 +172,15 @@ LexerErr tokenize(const char *source, struct TokenList *tokens) {
 		} else if (isspace((unsigned char)source[i])) {
 			i++;
 		} else {
-			size_t advance = 0;
-			int op = operator_lookup(source, i, &advance);
-			if (op >= 0) {
-				Token t = { .kind = TOK_OPERATOR, .op = op };
-				token_list_push(tokens, t);
-				i += advance;
-			} else {
-				int sep = separator_lookup(source[i]);
-				if (sep >= 0) {
-					Token t = { .kind = TOK_SEPARATOR, .sep = sep };
-					token_list_push(tokens, t);
-					i++;
-				} else {
-					return ERR_UNEXPECTED_CHAR;
-				}
-			}
+			const PunctEntry *p = punct_lookup(source + i);
+			if (!p) return ERR_UNEXPECTED_CHAR;
+			Token t = { .kind = p->kind };
+			if (p->kind == TOK_OPERATOR)
+				t.op = p->value;
+			else
+				t.sep = p->value;
+			token_list_push(tokens, t);
+			i += p->len;
 		}
 	}
 	return ERR_OK;

@@ -5,12 +5,12 @@
 
 #include "../parser/ast.h"
 
-typedef enum {
+typedef enum IrValKind {
     IR_CONSTANT,
     IR_VARIABLE
 } IrValKind;
 
-typedef struct {
+typedef struct IrVal {
     IrValKind kind;
     union {
         char* name;
@@ -18,12 +18,13 @@ typedef struct {
     };
 } IrVal;
 
-typedef enum {
+typedef enum IrUnopType {
     IR_COMP,
-    IR_NEG
+    IR_NEG,
+	IR_NOT
 } IrUnopType;
 
-typedef enum {
+typedef enum IrBinopType {
     IR_ADD,
 	IR_SUB,
 	IR_MUL,
@@ -33,21 +34,39 @@ typedef enum {
 	IR_OR,
 	IR_XOR,
 	IR_LSHIFT,
-	IR_RSHIFT
+	IR_RSHIFT,
+	IR_EQ,
+	IR_NEQ,
+	IR_LAND,
+	IR_LOR,
+	IR_LESS,
+	IR_GREATER,
+	IR_LEQ,
+	IR_GEQ
 } IrBinopType;
 
-typedef enum {
+typedef enum IrInstructionType {
     IR_RETURN,
     IR_UNOP,
-	IR_BINOP
+	IR_BINOP,
+	IR_COPY,
+	IR_JUMP,
+	IR_JUMP_ZERO,
+	IR_JUMP_NOT_ZERO,
+	IR_LABEL
 } IrInstructionType;
 
 typedef struct {
     IrInstructionType type;
     union {
         struct { IrVal val; } ret;
-        struct { IrUnopType op; IrVal src; IrVal dst; } unary;
+        struct { IrUnopType op; IrVal src; IrVal dst; }				unary;
         struct { IrBinopType op; IrVal lhs; IrVal rhs; IrVal dst; } binop;
+		struct { IrVal src; IrVal dst; }							copy;
+		struct { char* target; }									jump;
+		struct { IrVal cond; char* target; }						jump_zero;
+		struct { IrVal cond; char* target; } 						jump_not_zero;
+		struct { char* identifier; }								label;
     };
 } IrInstruction;
 

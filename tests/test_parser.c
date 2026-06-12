@@ -123,6 +123,14 @@ static const char* binop_name(AstBinopType op) {
         case BINOP_XOR:    return "^";
         case BINOP_LSHIFT: return "<<";
         case BINOP_RSHIFT: return ">>";
+        case BINOP_LAND:   return "&&";
+        case BINOP_LOR:    return "||";
+        case BINOP_EQ:     return "==";
+        case BINOP_NEQ:    return "!=";
+        case BINOP_LESS:   return "<";
+        case BINOP_GREATER:return ">";
+        case BINOP_LEQ:    return "<=";
+        case BINOP_GEQ:    return ">=";
     }
     return "<unknown>";
 }
@@ -133,7 +141,7 @@ static void print_exp(const AstExp* exp) {
             printf("%d", exp->int_lit.value);
             break;
         case EXP_UNOP:
-            printf("(%s ", exp->unary.op_type == UNOP_NOT ? "!" : "-");
+            printf("(%s ", exp->unary.op_type == UNOP_COMP ? "!" : "-");
             print_exp(exp->unary.operand);
             printf(")");
             break;

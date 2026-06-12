@@ -19,6 +19,14 @@ static bool is_binop(Token* tok) {
 		case TOK_XOR:
 		case TOK_LSHIFT:
 		case TOK_RSHIFT:
+		case TOK_LAND:
+		case TOK_LOR:
+		case TOK_EQ:
+		case TOK_NEQ:
+		case TOK_LESS:
+		case TOK_GREATER:
+		case TOK_LEQ:
+		case TOK_GEQ:
 			return true;
 		default:
 			return false;
@@ -28,15 +36,23 @@ static bool is_binop(Token* tok) {
 static int precedence(Token* tok) {
 	switch (tok->op) {
 		case TOK_STAR:		return 50;
-		case TOK_FSLASH:		return 50;
+		case TOK_FSLASH:	return 50;
 		case TOK_PERCENT:	return 50;
 		case TOK_PLUS:		return 45;
 		case TOK_MINUS:		return 45;
-		case TOK_LSHIFT:		return 40;
-		case TOK_RSHIFT:		return 40;
-		case TOK_AND:		return 30;
-		case TOK_XOR:		return 25;
-		case TOK_OR:			return 20;
+		case TOK_LSHIFT:	return 40;
+		case TOK_RSHIFT:	return 40;
+		case TOK_LESS:		return 35;
+		case TOK_GREATER:	return 35;
+		case TOK_LEQ:		return 35;
+		case TOK_GEQ:		return 35;
+		case TOK_EQ:		return 30;
+		case TOK_NEQ:		return 30;
+		case TOK_AND:		return 25;
+		case TOK_XOR:		return 20;
+		case TOK_OR:		return 15;
+		case TOK_LAND:		return 10;
+		case TOK_LOR:		return 5;
 		default:			break;
 	}
 	fprintf(stderr, "precedence: unrecognized token operator");
@@ -48,16 +64,35 @@ static AstBinopType tok_to_binop(TokenOperator op) {
 		case TOK_PLUS:		return BINOP_ADD;
 		case TOK_MINUS:		return BINOP_SUB;
     	case TOK_STAR:		return BINOP_MUL;
-    	case TOK_FSLASH:		return BINOP_DIV;
+    	case TOK_FSLASH:	return BINOP_DIV;
     	case TOK_PERCENT:	return BINOP_MOD;
 		case TOK_AND:		return BINOP_AND;
-		case TOK_OR:			return BINOP_OR;
+		case TOK_OR:		return BINOP_OR;
 		case TOK_XOR:		return BINOP_XOR;
-		case TOK_LSHIFT:		return BINOP_LSHIFT;
-		case TOK_RSHIFT:		return BINOP_RSHIFT;
+		case TOK_LSHIFT:	return BINOP_LSHIFT;
+		case TOK_RSHIFT:	return BINOP_RSHIFT;
+		case TOK_LAND:		return BINOP_LAND;
+		case TOK_LOR:		return BINOP_LOR;
+		case TOK_EQ:		return BINOP_EQ;
+		case TOK_NEQ:		return BINOP_NEQ;
+		case TOK_LESS:		return BINOP_LESS;
+		case TOK_GREATER:	return BINOP_GREATER;
+		case TOK_LEQ:		return BINOP_LEQ;
+		case TOK_GEQ:		return BINOP_GEQ;
 		default:			break;
 	}
 	fprintf(stderr, "binop: unrecognized token operator");
+	exit(1);
+}
+
+static AstUnopType tok_to_unop(TokenOperator op) {
+	switch (op) {
+		case TOK_NOT:		return UNOP_COMP;
+		case TOK_MINUS:		return UNOP_MINUS;
+		case TOK_LNOT:		return UNOP_NOT;
+		default:			break;
+	}
+	fprintf(stderr, "unop: unrecognized token operator");
 	exit(1);
 }
 
@@ -105,14 +140,8 @@ static AstExp* parse_factor(Parser* p) {
             return create_int_exp(val);
         }
         case TOK_OPERATOR:
-            if (tok->op == TOK_NOT) {
-                advance(p);
-                return create_unary_exp(UNOP_NOT, parse_factor(p));
-            } else if (tok->op == TOK_MINUS) {
-                advance(p);
-                return create_unary_exp(UNOP_MINUS, parse_factor(p));
-            }
-            break;
+            advance(p);
+            return create_unary_exp(tok_to_unop(tok->op), parse_factor(p));
         case TOK_SEPARATOR:
             if (tok->sep == TOK_LPAR) {
                 advance(p);

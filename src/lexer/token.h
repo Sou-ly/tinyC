@@ -23,21 +23,31 @@ typedef enum {
 } TokenSeparator;
 
 typedef enum {
+	// arithmetic
 	TOK_PLUS,
 	TOK_MINUS,
 	TOK_STAR,
 	TOK_FSLASH,
 	TOK_PERCENT,
-	TOK_EQ,
-	TOK_NEQ,
+	TOK_DECR,
+	TOK_INCR,
+	// bitwise
 	TOK_AND,
 	TOK_OR,
 	TOK_XOR,
 	TOK_LSHIFT,
 	TOK_RSHIFT,
 	TOK_NOT,
-	TOK_DECR,
-	TOK_INCR
+	// logical
+	TOK_LNOT,
+	TOK_LAND,
+	TOK_LOR,
+	TOK_EQ,
+	TOK_NEQ,
+	TOK_LESS,
+	TOK_GREATER,
+	TOK_LEQ,
+	TOK_GEQ
 } TokenOperator;
 
 typedef enum {

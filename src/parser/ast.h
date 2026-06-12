@@ -6,21 +6,33 @@
 // --- Expressions ---
 
 typedef enum {
-    UNOP_NOT,
-    UNOP_MINUS
+    UNOP_COMP,
+    UNOP_MINUS,
+	UNOP_NOT
 } AstUnopType;
 
 typedef enum {
+	// arithmetic
     BINOP_ADD,
     BINOP_SUB,
 	BINOP_MUL,
 	BINOP_DIV,
 	BINOP_MOD,
+	// bitwise
 	BINOP_AND,
 	BINOP_OR,
 	BINOP_XOR,
 	BINOP_LSHIFT,
-	BINOP_RSHIFT
+	BINOP_RSHIFT,
+	// logical
+	BINOP_LAND,
+	BINOP_LOR,
+	BINOP_EQ,
+	BINOP_NEQ,
+	BINOP_LESS,
+	BINOP_GREATER,
+	BINOP_LEQ,
+	BINOP_GEQ
 } AstBinopType;
 
 typedef enum {
@@ -94,4 +106,5 @@ typedef struct {
 } AstProgram;
 
 AstProgram make_program(AstDeclaration* decls, int num_decls);
+char* to_string(AstProgram);
 void destroy_program(AstProgram* program);

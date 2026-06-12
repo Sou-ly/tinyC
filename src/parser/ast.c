@@ -97,3 +97,4 @@ void destroy_program(AstProgram* program) {
     }
     free(program->decls);
 }
+

@@ -127,7 +127,7 @@ void test_codegen_return_complement_neg2() {
     // Build AST: return ~(-2)
     AstExp* lit = create_int_exp(2);
     AstExp* neg = create_unary_exp(UNOP_MINUS, lit);
-    AstExp* comp = create_unary_exp(UNOP_NOT, neg);
+    AstExp* comp = create_unary_exp(UNOP_COMP, neg);
     AstProgram program = make_test_program(comp);
 
     IrProgram ir = emit_ir(&program);
@@ -186,7 +186,7 @@ void test_codegen_return_complement_neg2() {
 void test_emit_return_complement_neg2() {
     AstExp* lit = create_int_exp(2);
     AstExp* neg = create_unary_exp(UNOP_MINUS, lit);
-    AstExp* comp = create_unary_exp(UNOP_NOT, neg);
+    AstExp* comp = create_unary_exp(UNOP_COMP, neg);
     AstProgram program = make_test_program(comp);
 
     IrProgram ir = emit_ir(&program);

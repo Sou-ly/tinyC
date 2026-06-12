@@ -106,7 +106,7 @@ void test_emit_return_negate() {
 // int main() { return ~3; }  ->  NOT maps to the complement op.
 void test_emit_return_complement() {
     AstProgram ast = program_of_stmt(
-        make_return_stmt(create_unary_exp(UNOP_NOT, create_int_exp(3))));
+        make_return_stmt(create_unary_exp(UNOP_COMP, create_int_exp(3))));
     IrProgram ir = emit_ir(&ast);
 
     IrFunction* fn = &ir.functions[0];
@@ -122,7 +122,7 @@ void test_emit_return_complement() {
 
 // int main() { return -(~5); }  ->  two temps chained, then return the outer.
 void test_emit_nested_unary() {
-    AstExp* inner = create_unary_exp(UNOP_NOT, create_int_exp(5));
+    AstExp* inner = create_unary_exp(UNOP_COMP, create_int_exp(5));
     AstExp* outer = create_unary_exp(UNOP_MINUS, inner);
     AstProgram ast = program_of_stmt(make_return_stmt(outer));
     IrProgram ir = emit_ir(&ast);
