@@ -38,7 +38,9 @@ typedef enum {
 typedef enum {
 	EXP_INT,
 	EXP_UNOP,
-	EXP_BINOP
+	EXP_BINOP,
+	EXP_VAR,
+	EXP_ASSIGN
 } AstExpKind;
 
 typedef struct AstExp AstExp;
@@ -46,15 +48,19 @@ typedef struct AstExp AstExp;
 struct AstExp {
     AstExpKind kind;
     union {
-        struct { int value; } int_lit;
-        struct { AstUnopType op_type; AstExp* operand; } unary;
-        struct { AstBinopType op_type; AstExp* lhs; AstExp* rhs; } binop;
+        struct { int value; }											int_lit;
+        struct { AstUnopType op_type; AstExp* operand; }				unary;
+        struct { AstBinopType op_type; AstExp* lhs; AstExp* rhs; }		binop;
+		struct { char* identifier; }									variable;
+		struct { AstExp* lhs; AstExp* rhs }								assign;
     };
 };
 
 AstExp* create_int_exp(int value);
 AstExp* create_unary_exp(AstUnopType op_type, AstExp* operand);
 AstExp* create_binop_exp(AstBinopType op_type, AstExp* lhs, AstExp* rhs);
+AstExp* create_variable_exp(const char* identifier);
+AstExp* create_assign_exp(AstExp* lhs, AstExp* rhs);
 void destroy_exp(AstExp* exp);
 
 // --- Statements ---
