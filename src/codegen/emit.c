@@ -31,7 +31,7 @@ static void emit_operand(x86_Operand* op, FILE* out) {
 static const char* unop_name(x86_Unop op) {
     switch (op) {
         case x86_NEG: return "negl";
-        case x86_NOT: return "notl";
+        case x86_COMP: return "notl";
     }
 	fprintf(stderr, "unrecognized unop\n");
 	exit(1);
@@ -92,6 +92,23 @@ static void emit_instr(x86_Instr* instr, FILE* out) {
             fprintf(out, "    popq %%rbp\n");
             fprintf(out, "    ret\n");
             break;
+        case x86_CMP:
+            fprintf(out, "    cmpl ");
+            emit_operand(&instr->cmp.rhs, out);
+            fprintf(out, ", ");
+            emit_operand(&instr->cmp.dst, out);
+            fprintf(out, "\n");
+        case x86_JMP:
+            fprintf(out, "   jmp  %s\n", instr->jmp.target);
+        case x86_JMPCC:
+            fprintf(out, "   j%s  %s\n", emit_cond_code(instr->jmpcc.cond), instr->jmpcc.target);
+            fprintf(out, "\n");
+        case x86_SETCC:
+            fprintf(out, "   set%s ", emit_cond_code(instr->setcc.cond));
+            emit_operand(&instr->setcc.op, out);
+            fprintf(out, "\n");
+        case x86_LABEL:
+            fprintf(out, ".L%s:", instr->label.identifier);
     }
 }
 

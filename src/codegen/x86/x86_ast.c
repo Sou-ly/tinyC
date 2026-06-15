@@ -1,6 +1,74 @@
 #include "x86_ast.h"
 #include <string.h>
 
+// --- Operand constructors ---
+
+x86_Operand x86_operand_reg(x86_Reg reg) {
+    return (x86_Operand){ .kind = x86_REG, .reg = reg };
+}
+
+x86_Operand x86_operand_imm(int imm) {
+    return (x86_Operand){ .kind = x86_IMM, .imm = imm };
+}
+
+x86_Operand x86_operand_id(char* identifier) {
+    return (x86_Operand){ .kind = x86_ID, .identifier = identifier };
+}
+
+x86_Operand x86_operand_stack(int offset) {
+    return (x86_Operand){ .kind = x86_STACK, .stack = offset };
+}
+
+// --- Instruction constructors ---
+
+x86_Instr x86_mov(x86_Operand dst, x86_Operand src) {
+    return (x86_Instr){ .kind = x86_MOV, .mov = { .dst = dst, .src = src } };
+}
+
+x86_Instr x86_ret(void) {
+    return (x86_Instr){ .kind = x86_RET };
+}
+
+x86_Instr x86_alloc(int size) {
+    return (x86_Instr){ .kind = x86_ALLOC, .alloc_stack = { .size = size } };
+}
+
+x86_Instr x86_unary(x86_Unop op, x86_Operand operand) {
+    return (x86_Instr){ .kind = x86_UNOP, .unop = { .unop = op, .operand = operand } };
+}
+
+x86_Instr x86_binary(x86_Binop op, x86_Operand rhs, x86_Operand dst) {
+    return (x86_Instr){ .kind = x86_BINOP, .binop = { .optype = op, .rhs = rhs, .dst = dst } };
+}
+
+x86_Instr x86_idiv_instr(x86_Operand operand) {
+    return (x86_Instr){ .kind = x86_IDIV, .idiv = { .operand = operand } };
+}
+
+x86_Instr x86_cdq_instr(void) {
+    return (x86_Instr){ .kind = x86_CDQ };
+}
+
+x86_Instr x86_cmp_instr(x86_Operand lhs, x86_Operand rhs) {
+    return (x86_Instr){ .kind = x86_CMP, .cmp = { .lhs = lhs, .rhs = rhs } };
+}
+
+x86_Instr x86_jmp_instr(char* identifier) {
+    return (x86_Instr){ .kind = x86_JMP, .jmp = { .identifier = identifier } };
+}
+
+x86_Instr x86_jmpcc_instr(x86_ConditionCode cond, char* identifier) {
+    return (x86_Instr){ .kind = x86_JMPCC, .jmpcc = { .cond = cond, .identifier = identifier } };
+}
+
+x86_Instr x86_setcc_instr(x86_ConditionCode cond, x86_Operand op) {
+    return (x86_Instr){ .kind = x86_SETCC, .setcc = { .cond = cond, .op = op } };
+}
+
+x86_Instr x86_label_instr(char* identifier) {
+    return (x86_Instr){ .kind = x86_LABEL, .label = { .identifier = identifier } };
+}
+
 // --- Instruction List ---
 
 x86_InstrList x86_instr_list_new(void) {

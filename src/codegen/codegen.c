@@ -6,9 +6,9 @@
 static x86_Operand codegen_val(IrVal val) {
     switch (val.kind) {
         case IR_CONSTANT:
-            return (x86_Operand){.kind = x86_IMM, .imm = val.int_val};
+            return x86_operand_imm(val.int_val);
         case IR_VARIABLE:
-            return (x86_Operand){.kind = x86_ID, .identifier = strdup(val.name)};
+            return x86_operand_id(strdup(val.name));
     }
     fprintf(stderr, "codegen: unsupported IR value kind\n");
     exit(1);
@@ -17,7 +17,8 @@ static x86_Operand codegen_val(IrVal val) {
 static x86_Unop codegen_unop(IrUnopType op) {
     switch (op) {
         case IR_NEG:	return x86_NEG;
-        case IR_COMP: 	return x86_NOT;
+        case IR_COMP: 	return x86_COMP;
+        case IR_NOT: 	return x86_NOT;
 		default:		break;
     }
     fprintf(stderr, "codegen: unsupported unary op\n");
@@ -40,94 +41,111 @@ static x86_Binop codegen_binop(IrBinopType op) {
     exit(1);
 }
 
+static x86_ConditionCode codegen_cond(IrBinopType op) {
+    switch (op) {
+        case IR_EQ:         return x86_E;
+        case IR_NEQ:        return x86_NE;
+        case IR_LESS:       return x86_L;
+        case IR_GREATER:    return x86_G;
+        case IR_LEQ:        return x86_LE;
+        case IR_GEQ:        return x86_GE;
+        default:            break;
+    }
+    fprintf(stderr, "codegen: unsupported unary relational operator\n");
+    exit(1);
+}
+
 static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
     switch (ir_instr->type) {
         case IR_RETURN: {
             x86_Operand src = codegen_val(ir_instr->ret.val);
-            x86_instr_list_append(list, (x86_Instr){.kind = x86_MOV, .mov = {
-                .dst = (x86_Operand){.kind = x86_REG, .reg = x86_AX},
-                .src = src
-            }});
-            x86_instr_list_append(list, (x86_Instr){.kind = x86_RET});
+            x86_instr_list_append(list, x86_mov(x86_operand_reg(x86_AX), src));
+            x86_instr_list_append(list, x86_ret());
             return;
         }
         case IR_UNOP: {
             x86_Operand src = codegen_val(ir_instr->unary.src);
             x86_Operand dst = codegen_val(ir_instr->unary.dst);
-            x86_instr_list_append(list, (x86_Instr){.kind = x86_MOV, .mov = {
-                .dst = dst,
-                .src = src
-            }});
-            x86_Operand dst2 = codegen_val(ir_instr->unary.dst);
-            x86_instr_list_append(list, (x86_Instr){.kind = x86_UNOP, .unop = {
-                .unop = codegen_unop(ir_instr->unary.op),
-                .operand = dst2
-            }});
+            if (ir_instr->unary.op == IR_NOT) {
+                x86_instr_list_append(list, x86_cmp_instr(dst, x86_operand_imm(0)));
+                x86_instr_list_append(list, x86_mov(src, x86_operand_imm(0)));
+                x86_instr_list_append(list, x86_setcc_instr(x86_E, dst));
+            } else {
+                x86_instr_list_append(list, x86_mov(dst, src));
+                x86_Operand dst2 = codegen_val(ir_instr->unary.dst);
+                x86_instr_list_append(list, x86_unary(codegen_unop(ir_instr->unary.op), dst2));
+            }
             return;
 		}
 		case IR_BINOP: {
+			x86_Operand lhs = codegen_val(ir_instr->binop.lhs);
+			x86_Operand rhs = codegen_val(ir_instr->binop.rhs);
+			x86_Operand dst = codegen_val(ir_instr->binop.dst);
 			switch (ir_instr->binop.op) {
 				case IR_DIV: {
 					// lhs / rhs: load the dividend (lhs) into eax, sign-extend
 					// into edx:eax with cdq, then divide by the divisor (rhs).
 					// The quotient ends up in eax.
-					x86_Operand dividend = codegen_val(ir_instr->binop.lhs);
-					x86_Operand divisor = codegen_val(ir_instr->binop.rhs);
-					x86_Operand dst = codegen_val(ir_instr->binop.dst);
-					x86_Operand eax = { x86_REG, .reg = x86_AX };
-					x86_instr_list_append(list, (x86_Instr) {.kind = x86_MOV, .mov = {
-						.dst = eax,
-						.src = dividend
-					}});
-					x86_instr_list_append(list, (x86_Instr) {.kind = x86_CDQ });
-					x86_instr_list_append(list, (x86_Instr) {.kind = x86_IDIV, .idiv = {
-						.operand = divisor
-					}});
-					x86_instr_list_append(list, (x86_Instr) {.kind = x86_MOV, .mov = {
-						.dst = dst,
-						.src = eax
-					}});
+					x86_Operand eax = x86_operand_reg(x86_AX);
+					x86_instr_list_append(list, x86_mov(eax, lhs));
+					x86_instr_list_append(list, x86_cdq_instr());
+					x86_instr_list_append(list, x86_idiv_instr(rhs));
+					x86_instr_list_append(list, x86_mov(dst, eax));
 					return;
-				}
+                }
 				case IR_MOD: {
 					// lhs % rhs: same setup as division, but the remainder is
 					// left in edx.
-					x86_Operand dividend = codegen_val(ir_instr->binop.lhs);
-					x86_Operand divisor = codegen_val(ir_instr->binop.rhs);
-					x86_Operand dst = codegen_val(ir_instr->binop.dst);
-					x86_Operand eax = { x86_REG, .reg = x86_AX };
-					x86_Operand edx = { x86_REG, .reg = x86_DX };
-					x86_instr_list_append(list, (x86_Instr) {.kind = x86_MOV, .mov = {
-						.dst = eax,
-						.src = dividend
-					}});
-					x86_instr_list_append(list, (x86_Instr) {.kind = x86_CDQ });
-					x86_instr_list_append(list, (x86_Instr) {.kind = x86_IDIV, .idiv = {
-						.operand = divisor
-					}});
-					x86_instr_list_append(list, (x86_Instr) {.kind = x86_MOV, .mov = {
-						.dst = dst,
-						.src = edx
-					}});
+					x86_Operand eax = x86_operand_reg(x86_AX);
+					x86_Operand edx = x86_operand_reg(x86_DX);
+					x86_instr_list_append(list, x86_mov(eax, lhs));
+					x86_instr_list_append(list, x86_cdq_instr());
+					x86_instr_list_append(list, x86_idiv_instr(rhs));
+					x86_instr_list_append(list, x86_mov(dst, edx));
 					return;
-				}
-				default: {
-					x86_Operand lhs = codegen_val(ir_instr->binop.lhs);
-					x86_Operand rhs = codegen_val(ir_instr->binop.rhs);
-					x86_Operand dst = codegen_val(ir_instr->binop.dst);
-					x86_instr_list_append(list, (x86_Instr) {.kind = x86_MOV, .mov = {
-						.dst = dst,
-						.src = lhs
-					}});
-					x86_instr_list_append(list, (x86_Instr) {.kind = x86_BINOP, .binop = {
-						.optype = codegen_binop(ir_instr->binop.op),
-						.rhs	= rhs,
-						.dst	= dst
-					}});
-					return;	
-				}
+                }
+                case IR_EQ:
+                case IR_NEQ:
+                case IR_LESS:
+                case IR_GREATER:
+                case IR_LEQ:
+                case IR_GEQ:
+                    x86_instr_list_append(list, x86_cmp_instr(lhs, rhs));
+                    x86_instr_list_append(list, x86_mov(dst, x86_operand_imm(0))); 
+                    x86_instr_list_append(list, x86_setcc_instr(codegen_cond(ir_instr->binop.op), dst));
+                    return;
+				default:  {
+					x86_instr_list_append(list, x86_mov(dst, lhs));
+					x86_instr_list_append(list, x86_binary(codegen_binop(ir_instr->binop.op), rhs, dst));
+					return;
+                }
 			}
+            fprintf(stderr, "codegen: unsupported IR binary operation\n");
+            exit(1);
 		}
+        case IR_JUMP:
+            x86_instr_list_append(list, x86_jmp_instr(ir_instr->jump.target));
+            return;
+        case IR_JUMP_ZERO:
+            x86_instr_list_append(list, x86_cmp_instr(
+                x86_operand_imm(0),
+                codegen_val(ir_instr->jump_zero.cond)));
+            x86_instr_list_append(list, x86_jmpcc_instr(x86_E, ir_instr->jump_zero.target));
+            return;
+        case IR_JUMP_NOT_ZERO:
+            x86_instr_list_append(list, x86_cmp_instr(
+                x86_operand_imm(0),
+                codegen_val(ir_instr->jump_not_zero.cond)));
+            x86_instr_list_append(list, x86_jmpcc_instr(x86_NE, ir_instr->jump_not_zero.target));
+            return;
+        case IR_COPY:
+            x86_instr_list_append(list, x86_mov(
+                codegen_val(ir_instr->copy.dst),
+                codegen_val(ir_instr->copy.src)));
+            return;
+        case IR_LABEL:
+            x86_instr_list_append(list, x86_label_instr(ir_instr->label.identifier));
+            return;
 		default:
 			break;
     }
@@ -223,6 +241,13 @@ int rename_registers(x86_Function* function) {
             case x86_IDIV:
                 instr->idiv.operand = operand_map_put(&opmap, instr->idiv.operand);
                 break;
+            case x86_CMP:
+                instr->cmp.lhs = operand_map_put(&opmap, instr->cmp.lhs);
+                instr->cmp.rhs = operand_map_put(&opmap, instr->cmp.rhs);
+                break;
+            case x86_SETCC:
+                instr->setcc.op = operand_map_put(&opmap, instr->setcc.op);
+                break;
             default:
                 break;
         }
@@ -249,7 +274,6 @@ int allocate_stack(x86_Function* function, int stack_offset) {
         }
         instr = instr->next;
     }
-    x86_instr_list_prepend(&function->instrs,
-        (x86_Instr){.kind = x86_ALLOC, .alloc_stack = {.size = -stack_offset}});
+    x86_instr_list_prepend(&function->instrs, x86_alloc(-stack_offset));
     return 0;
 }

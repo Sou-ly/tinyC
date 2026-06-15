@@ -161,7 +161,7 @@ void test_codegen_return_complement_neg2() {
     // notl tmp1
     assert(i != NULL);
     assert(i->kind == x86_UNOP);
-    assert(i->unop.unop == x86_NOT);
+    assert(i->unop.unop == x86_COMP);
     assert(i->unop.operand.kind == x86_ID);
     i = i->next;
 

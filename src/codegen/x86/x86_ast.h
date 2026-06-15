@@ -32,7 +32,7 @@ typedef struct {
 
 typedef enum {
     x86_NEG,
-    x86_NOT
+    x86_COMP,
 } x86_Unop;
 
 typedef enum {
@@ -45,8 +45,17 @@ typedef enum {
 	x86_OR,
 	x86_XOR,
 	x86_LSHIFT,
-	x86_RSHIFT
+	x86_RSHIFT,
 } x86_Binop;
+
+typedef enum x86_ConditionCode {
+    x86_E,
+    x86_NE,
+    x86_L,
+    x86_LE,
+    x86_G,
+    x86_GE
+} x86_ConditionCode;
 
 // --- Instructions (linked list) ---
 
@@ -57,7 +66,12 @@ typedef enum {
     x86_UNOP,
     x86_BINOP,
 	x86_IDIV,
-	x86_CDQ
+	x86_CDQ,
+    x86_CMP,
+    x86_JMP,
+    x86_JMPCC,
+    x86_SETCC,
+    x86_LABEL
 } x86_InstrKind;
 
 typedef struct x86_Instr {
@@ -70,6 +84,11 @@ typedef struct x86_Instr {
 		// struct {}													cdq;
         struct { int size; }											alloc_stack;
         // struct {}													ret;
+        struct { x86_Operand lhs; x86_Operand rhs; }                    cmp;
+        struct { char* identifier; }                                    jmp;
+        struct { x86_ConditionCode cond; x86_Operand op; }              setcc;
+        struct { x86_ConditionCode cond; char* identifier; }            jmpcc;
+        struct { char* identifier; }                                    label;
     };
     struct x86_Instr* next;
 } x86_Instr;
@@ -78,6 +97,30 @@ typedef struct {
     x86_Instr* head;
     x86_Instr* tail;
 } x86_InstrList;
+
+// --- Operand constructors ---
+
+x86_Operand x86_operand_reg(x86_Reg reg);
+x86_Operand x86_operand_imm(int imm);
+x86_Operand x86_operand_id(char* identifier);
+x86_Operand x86_operand_stack(int offset);
+
+// --- Instruction constructors ---
+
+x86_Instr x86_mov(x86_Operand dst, x86_Operand src);
+x86_Instr x86_ret(void);
+x86_Instr x86_alloc(int size);
+x86_Instr x86_unary(x86_Unop op, x86_Operand operand);
+x86_Instr x86_binary(x86_Binop op, x86_Operand rhs, x86_Operand dst);
+x86_Instr x86_idiv_instr(x86_Operand operand);
+x86_Instr x86_cdq_instr(void);
+x86_Instr x86_cmp_instr(x86_Operand lhs, x86_Operand rhs);
+x86_Instr x86_jmp_instr(char* identifier);
+x86_Instr x86_jmpcc_instr(x86_ConditionCode cond, char* identifier);
+x86_Instr x86_setcc_instr(x86_ConditionCode cond, x86_Operand op);
+x86_Instr x86_label_instr(char* identifier);
+
+// --- Instruction list ---
 
 x86_InstrList x86_instr_list_new(void);
 x86_Instr* x86_instr_list_append(x86_InstrList* list, x86_Instr instr);
