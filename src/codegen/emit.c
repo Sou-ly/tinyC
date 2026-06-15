@@ -1,20 +1,33 @@
 #include "emit.h"
+#include <stdbool.h>
 #include <string.h>
 
-static const char* reg_name(x86_Reg reg) {
+static char* emit_cond_code(x86_ConditionCode cond) {
+	switch (cond) {
+		case x86_E:		return "e";
+    	case x86_NE:	return "ne";
+    	case x86_L:		return "l";
+    	case x86_LE:	return "le";
+    	case x86_G:		return "g";
+    	case x86_GE:	return "ge";
+	}
+	return "???";
+}
+
+static char* reg_name(x86_Reg reg, bool one_byte) {
     switch (reg) {
-        case x86_AX:  return "eax";
-        case x86_DX:  return "edx";
-        case x86_R10: return "r10d";
-        case x86_R11: return "r11d";
+		case x86_AX:  return one_byte? "al" : "eax";
+        case x86_DX:  return one_byte? "dl" : "edx";
+        case x86_R10: return one_byte? "r10l" : "r10d";
+        case x86_R11: return one_byte? "r11l" : "r11d";
     }
-    return "???";
+	return "???";
 }
 
 static void emit_operand(x86_Operand* op, FILE* out) {
     switch (op->kind) {
         case x86_REG:
-            fprintf(out, "%%%s", reg_name(op->reg));
+            fprintf(out, "%%%s", reg_name(op->reg, false));
             break;
         case x86_IMM:
             fprintf(out, "$%d", op->imm);
@@ -36,7 +49,6 @@ static const char* unop_name(x86_Unop op) {
 	fprintf(stderr, "unrecognized unop\n");
 	exit(1);
 }
-
 
 static const char* binop_name(x86_Binop op) {
     switch (op) {
@@ -94,18 +106,18 @@ static void emit_instr(x86_Instr* instr, FILE* out) {
             break;
         case x86_CMP:
             fprintf(out, "    cmpl ");
-            emit_operand(&instr->cmp.rhs, out);
+            emit_operand(&instr->cmp.lhs, out);
             fprintf(out, ", ");
-            emit_operand(&instr->cmp.dst, out);
+            emit_operand(&instr->cmp.rhs, out);
             fprintf(out, "\n");
         case x86_JMP:
-            fprintf(out, "   jmp  %s\n", instr->jmp.target);
+            fprintf(out, "   jmp  .L%s\n", instr->jmp.identifier);
         case x86_JMPCC:
-            fprintf(out, "   j%s  %s\n", emit_cond_code(instr->jmpcc.cond), instr->jmpcc.target);
+            fprintf(out, "   j%s  .L%s\n", emit_cond_code(instr->jmpcc.cond), instr->jmpcc.identifier);
             fprintf(out, "\n");
         case x86_SETCC:
             fprintf(out, "   set%s ", emit_cond_code(instr->setcc.cond));
-            emit_operand(&instr->setcc.op, out);
+			fprintf(out, "%%%s", reg_name(instr->setcc.op.reg, true));
             fprintf(out, "\n");
         case x86_LABEL:
             fprintf(out, ".L%s:", instr->label.identifier);
