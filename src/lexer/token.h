@@ -47,7 +47,9 @@ typedef enum {
 	TOK_LESS,
 	TOK_GREATER,
 	TOK_LEQ,
-	TOK_GEQ
+	TOK_GEQ,
+	// other
+	TOK_ASSIGN
 } TokenOperator;
 
 typedef enum {
