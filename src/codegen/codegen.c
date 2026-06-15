@@ -65,8 +65,10 @@ static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
             x86_Operand src = codegen_val(ir_instr->unary.src);
             x86_Operand dst = codegen_val(ir_instr->unary.dst);
             if (ir_instr->unary.op == IR_NOT) {
-                x86_instr_list_append(list, x86_cmp_instr(dst, x86_operand_imm(0)));
-                x86_instr_list_append(list, x86_mov(src, x86_operand_imm(0)));
+                // !src == 1 iff src == 0: compare src to 0, zero the result,
+                // then set its low byte when the compare was equal.
+                x86_instr_list_append(list, x86_cmp_instr(src, x86_operand_imm(0)));
+                x86_instr_list_append(list, x86_mov(dst, x86_operand_imm(0)));
                 x86_instr_list_append(list, x86_setcc_instr(x86_E, dst));
             } else {
                 x86_instr_list_append(list, x86_mov(dst, src));
@@ -273,21 +275,23 @@ int allocate_stack(x86_Function* function, int stack_offset) {
 				break;
 			case x86_BINOP:
 				if (instr->binop.dst.kind == x86_STACK && instr->binop.rhs.kind == x86_STACK) {
+					// x86 forbids mem,mem: load the rhs into %r10d, then apply the
+					// op with %r10d as the source so the result stays in dst.
 					x86_Instr* next_instr = malloc(sizeof(x86_Instr));
         	    	next_instr->kind = instr->kind;
 					next_instr->binop.optype = instr->binop.optype;
-        	    	next_instr->binop.rhs = instr->binop.rhs;
-        	    	next_instr->binop.dst = (x86_Operand){.kind=x86_REG, .reg=x86_R10};
+        	    	next_instr->binop.rhs = (x86_Operand){.kind=x86_REG, .reg=x86_R10};
+        	    	next_instr->binop.dst = instr->binop.dst;
         	    	next_instr->next = instr->next;
-					x86_Operand src = instr->binop.dst;
-        	    	instr->kind = x86_MOV; 
-        	    	instr->mov.dst = (x86_Operand){.kind=x86_REG, .reg=x86_R10}; 
-        	    	instr->mov.src = src; 
+					x86_Operand src = instr->binop.rhs;
+        	    	instr->kind = x86_MOV;
+        	    	instr->mov.dst = (x86_Operand){.kind=x86_REG, .reg=x86_R10};
+        	    	instr->mov.src = src;
         	    	instr->next = next_instr;
 				}
 				break;
 			case x86_CMP:
-				if (instr->cmp.lhs.kind == x86_STACK && instr->binop.rhs.kind == x86_STACK) {
+				if (instr->cmp.lhs.kind == x86_STACK && instr->cmp.rhs.kind == x86_STACK) {
 					x86_Instr* next_instr = malloc(sizeof(x86_Instr));
         	    	next_instr->kind = instr->kind;
         	    	next_instr->cmp.rhs = instr->cmp.rhs;

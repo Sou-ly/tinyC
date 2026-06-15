@@ -486,6 +486,89 @@ void test_emit_logical_or_short_circuit() {
     printf("  PASS: test_emit_logical_or_short_circuit\n");
 }
 
+// Each relational AST operator lowers to a plain IR_BINOP carrying the matching
+// relational opcode (they are not short-circuited like && / ||).
+void test_emit_relational_ops() {
+    struct { AstBinopType ast_op; IrBinopType ir_op; } cases[] = {
+        { BINOP_EQ,      IR_EQ      },
+        { BINOP_NEQ,     IR_NEQ     },
+        { BINOP_LESS,    IR_LESS    },
+        { BINOP_GREATER, IR_GREATER },
+        { BINOP_LEQ,     IR_LEQ     },
+        { BINOP_GEQ,     IR_GEQ     },
+    };
+    for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
+        AstProgram ast = program_of_stmt(make_return_stmt(
+            create_binop_exp(cases[c].ast_op,
+                             create_int_exp(4), create_int_exp(5))));
+        IrProgram ir = emit_ir(&ast);
+
+        IrFunction* fn = &ir.functions[0];
+        assert(fn->size == 2);
+        IrInstruction* binop = &fn->instructions[0];
+        assert(binop->type == IR_BINOP);
+        assert(binop->binop.op == cases[c].ir_op);
+        assert(binop->binop.lhs.int_val == 4);
+        assert(binop->binop.rhs.int_val == 5);
+
+        IrInstruction* ret = &fn->instructions[1];
+        assert(ret->type == IR_RETURN);
+        assert(strcmp(ret->ret.val.name, binop->binop.dst.name) == 0);
+
+        free_ir_program(&ir);
+        destroy_program(&ast);
+    }
+    printf("  PASS: test_emit_relational_ops\n");
+}
+
+// int main() { return !5; }  ->  logical NOT lowers to the IR_NOT unary op.
+void test_emit_logical_not() {
+    AstProgram ast = program_of_stmt(
+        make_return_stmt(create_unary_exp(UNOP_NOT, create_int_exp(5))));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.functions[0];
+    assert(fn->size == 2);
+    assert(fn->instructions[0].type == IR_UNOP);
+    assert(fn->instructions[0].unary.op == IR_NOT);
+    assert(fn->instructions[0].unary.src.kind == IR_CONSTANT);
+    assert(fn->instructions[0].unary.src.int_val == 5);
+
+    free_ir_program(&ir);
+    destroy_program(&ast);
+    printf("  PASS: test_emit_logical_not\n");
+}
+
+// Nested short-circuit operators each allocate their own pair of labels, so a
+// program with two && expressions must emit four distinct labels.
+void test_emit_nested_short_circuit_unique_labels() {
+    // (1 && 2) && 3
+    AstExp* inner = create_binop_exp(BINOP_LAND,
+                                     create_int_exp(1), create_int_exp(2));
+    AstExp* outer = create_binop_exp(BINOP_LAND, inner, create_int_exp(3));
+    AstProgram ast = program_of_stmt(make_return_stmt(outer));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.functions[0];
+    const char* labels[8];
+    int num_labels = 0;
+    for (int i = 0; i < fn->size; i++) {
+        if (fn->instructions[i].type == IR_LABEL) {
+            labels[num_labels++] = fn->instructions[i].label.identifier;
+        }
+    }
+    assert(num_labels == 4);
+    for (int a = 0; a < num_labels; a++) {
+        for (int b = a + 1; b < num_labels; b++) {
+            assert(strcmp(labels[a], labels[b]) != 0);
+        }
+    }
+
+    free_ir_program(&ir);
+    destroy_program(&ast);
+    printf("  PASS: test_emit_nested_short_circuit_unique_labels\n");
+}
+
 int main(void) {
     printf("Running IR tests...\n");
     test_emit_return_constant();
@@ -503,6 +586,9 @@ int main(void) {
     test_emit_binop_bitwise_nested();
     test_emit_logical_and_short_circuit();
     test_emit_logical_or_short_circuit();
+    test_emit_relational_ops();
+    test_emit_logical_not();
+    test_emit_nested_short_circuit_unique_labels();
     printf("All IR tests passed!\n");
     return 0;
 }
