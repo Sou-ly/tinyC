@@ -18,6 +18,21 @@ AstExp* create_unary_exp(AstUnopType op_type, AstExp* operand) {
     return e;
 }
 
+AstExp* create_variable_exp(const char* identifier) {
+    AstExp* e = malloc(sizeof(AstExp));
+    e->kind = EXP_VAR;
+    e->variable.identifier = strdup(identifier);
+    return e;
+}
+
+AstExp* create_assign_exp(AstExp* lhs, AstExp* rhs) {
+    AstExp* e = malloc(sizeof(AstExp));
+    e->kind = EXP_ASSIGN;
+    e->assign.lhs = lhs;
+    e->assign.rhs = rhs;
+    return e;
+}
+
 AstExp* create_binop_exp(AstBinopType op_type, AstExp* lhs, AstExp* rhs) {
     AstExp* e = malloc(sizeof(AstExp));
     e->kind = EXP_BINOP;
@@ -39,6 +54,13 @@ void destroy_exp(AstExp* exp) {
             destroy_exp(exp->binop.lhs);
             destroy_exp(exp->binop.rhs);
             break;
+		case EXP_VAR:
+			free(exp->variable.identifier);
+			break;
+		case EXP_ASSIGN:
+			destroy_exp(exp->assign.lhs);
+			destroy_exp(exp->assign.rhs);
+			break;
     }
     free(exp);
 }
