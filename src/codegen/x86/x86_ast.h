@@ -28,6 +28,11 @@ typedef struct {
     };
 } x86_Operand;
 
+x86_Operand x86_operand_reg(x86_Reg reg);
+x86_Operand x86_operand_imm(int imm);
+x86_Operand x86_operand_id(char* identifier);
+x86_Operand x86_operand_stack(int offset);
+
 // --- Operators ---
 
 typedef enum {
@@ -93,20 +98,6 @@ typedef struct x86_Instr {
     struct x86_Instr* next;
 } x86_Instr;
 
-typedef struct {
-    x86_Instr* head;
-    x86_Instr* tail;
-} x86_InstrList;
-
-// --- Operand constructors ---
-
-x86_Operand x86_operand_reg(x86_Reg reg);
-x86_Operand x86_operand_imm(int imm);
-x86_Operand x86_operand_id(char* identifier);
-x86_Operand x86_operand_stack(int offset);
-
-// --- Instruction constructors ---
-
 x86_Instr x86_mov(x86_Operand dst, x86_Operand src);
 x86_Instr x86_ret(void);
 x86_Instr x86_alloc(int size);
@@ -122,6 +113,11 @@ x86_Instr x86_label_instr(char* identifier);
 
 // --- Instruction list ---
 
+typedef struct {
+    x86_Instr* head;
+    x86_Instr* tail;
+} x86_InstrList;
+
 x86_InstrList x86_instr_list_new(void);
 x86_Instr* x86_instr_list_append(x86_InstrList* list, x86_Instr instr);
 void x86_instr_list_prepend(x86_InstrList* list, x86_Instr instr);
@@ -134,15 +130,15 @@ typedef struct {
     x86_InstrList instrs;
 } x86_Function;
 
+x86_Function make_x86_function(char* name, x86_InstrList instrs);
+void destroy_x86_function(x86_Function* fn);
+
 // --- Program ---
 
 typedef struct {
     x86_Function* functions;
     int num_functions;
 } x86_Program;
-
-x86_Function make_x86_function(char* name, x86_InstrList instrs);
-void destroy_x86_function(x86_Function* fn);
 
 x86_Program make_x86_program(x86_Function* functions, int num_functions);
 void destroy_x86_program(x86_Program* prog);

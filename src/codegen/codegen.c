@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <string.h>
 
-
 static x86_Operand codegen_val(IrVal val) {
     switch (val.kind) {
         case IR_CONSTANT:
@@ -18,7 +17,6 @@ static x86_Unop codegen_unop(IrUnopType op) {
     switch (op) {
         case IR_NEG:	return x86_NEG;
         case IR_COMP: 	return x86_COMP;
-        case IR_NOT: 	return x86_NOT;
 		default:		break;
     }
     fprintf(stderr, "codegen: unsupported unary op\n");
@@ -261,18 +259,62 @@ int rename_registers(x86_Function* function) {
 int allocate_stack(x86_Function* function, int stack_offset) {
     x86_Instr* instr = function->instrs.head;
     while (instr != NULL){
-        if (instr->kind == x86_MOV 
-            && instr->mov.src.kind == x86_STACK 
-            && instr->mov.dst.kind == x86_STACK) {
-            x86_Instr* next_instr = malloc(sizeof(x86_Instr));
-            next_instr->kind = x86_MOV;
-            next_instr->mov.dst = instr->mov.dst;
-            next_instr->mov.src = (x86_Operand){.kind=x86_REG, .reg=x86_R10};
-            next_instr->next = instr->next;
-            instr->mov.dst = (x86_Operand){.kind=x86_REG, .reg=x86_R10}; 
-            instr->next = next_instr;
-        }
-        instr = instr->next;
+		switch (instr->kind){
+			case x86_MOV:
+				if (instr->mov.src.kind == x86_STACK && instr->mov.dst.kind == x86_STACK) {
+					x86_Instr* next_instr = malloc(sizeof(x86_Instr));
+        	    	next_instr->kind = x86_MOV;
+        	    	next_instr->mov.dst = instr->mov.dst;
+        	    	next_instr->mov.src = (x86_Operand){.kind=x86_REG, .reg=x86_R10};
+        	    	next_instr->next = instr->next;
+        	    	instr->mov.dst = (x86_Operand){.kind=x86_REG, .reg=x86_R10}; 
+        	    	instr->next = next_instr;
+				}
+				break;
+			case x86_BINOP:
+				if (instr->binop.dst.kind == x86_STACK && instr->binop.rhs.kind == x86_STACK) {
+					x86_Instr* next_instr = malloc(sizeof(x86_Instr));
+        	    	next_instr->kind = instr->kind;
+					next_instr->binop.optype = instr->binop.optype;
+        	    	next_instr->binop.rhs = instr->binop.rhs;
+        	    	next_instr->binop.dst = (x86_Operand){.kind=x86_REG, .reg=x86_R10};
+        	    	next_instr->next = instr->next;
+					x86_Operand src = instr->binop.dst;
+        	    	instr->kind = x86_MOV; 
+        	    	instr->mov.dst = (x86_Operand){.kind=x86_REG, .reg=x86_R10}; 
+        	    	instr->mov.src = src; 
+        	    	instr->next = next_instr;
+				}
+				break;
+			case x86_CMP:
+				if (instr->cmp.lhs.kind == x86_STACK && instr->binop.rhs.kind == x86_STACK) {
+					x86_Instr* next_instr = malloc(sizeof(x86_Instr));
+        	    	next_instr->kind = instr->kind;
+        	    	next_instr->cmp.rhs = instr->cmp.rhs;
+        	    	next_instr->cmp.lhs = (x86_Operand){.kind=x86_REG, .reg=x86_R10};
+        	    	next_instr->next = instr->next;
+					x86_Operand src = instr->cmp.lhs;
+        	    	instr->kind = x86_MOV; 
+        	    	instr->mov.dst = (x86_Operand){.kind=x86_REG, .reg=x86_R10}; 
+        	    	instr->mov.src = src; 
+        	    	instr->next = next_instr;
+				} else if (instr->cmp.rhs.kind == x86_IMM) {
+					x86_Instr* next_instr = malloc(sizeof(x86_Instr));
+        	    	next_instr->kind = instr->kind;
+        	    	next_instr->cmp.rhs = (x86_Operand){.kind=x86_REG, .reg=x86_R11};
+        	    	next_instr->cmp.lhs = instr->cmp.lhs;
+        	    	next_instr->next = instr->next;
+					x86_Operand src = instr->cmp.rhs;
+        	    	instr->kind = x86_MOV; 
+        	    	instr->mov.dst = (x86_Operand){.kind=x86_REG, .reg=x86_R11}; 
+        	    	instr->mov.src = src; 
+        	    	instr->next = next_instr;
+				}
+				break;
+			default:
+				break;
+		}
+		instr = instr->next;
     }
     x86_instr_list_prepend(&function->instrs, x86_alloc(-stack_offset));
     return 0;
