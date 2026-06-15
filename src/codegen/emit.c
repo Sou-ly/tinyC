@@ -110,17 +110,25 @@ static void emit_instr(x86_Instr* instr, FILE* out) {
             fprintf(out, ", ");
             emit_operand(&instr->cmp.rhs, out);
             fprintf(out, "\n");
+            break;
         case x86_JMP:
-            fprintf(out, "   jmp  .L%s\n", instr->jmp.identifier);
+            fprintf(out, "    jmp .L%s\n", instr->jmp.identifier);
+            break;
         case x86_JMPCC:
-            fprintf(out, "   j%s  .L%s\n", emit_cond_code(instr->jmpcc.cond), instr->jmpcc.identifier);
-            fprintf(out, "\n");
+            fprintf(out, "    j%s .L%s\n", emit_cond_code(instr->jmpcc.cond), instr->jmpcc.identifier);
+            break;
         case x86_SETCC:
-            fprintf(out, "   set%s ", emit_cond_code(instr->setcc.cond));
-			fprintf(out, "%%%s", reg_name(instr->setcc.op.reg, true));
+            fprintf(out, "    set%s ", emit_cond_code(instr->setcc.cond));
+            if (instr->setcc.op.kind == x86_REG) {
+                fprintf(out, "%%%s", reg_name(instr->setcc.op.reg, true));
+            } else {
+                emit_operand(&instr->setcc.op, out);
+            }
             fprintf(out, "\n");
+            break;
         case x86_LABEL:
-            fprintf(out, ".L%s:", instr->label.identifier);
+            fprintf(out, ".L%s:\n", instr->label.identifier);
+            break;
     }
 }
 

@@ -587,6 +587,379 @@ void test_emit_bitwise_program() {
     printf("  PASS: test_emit_bitwise_program\n");
 }
 
+// --- constructors for the relational / control-flow instruction kinds ---
+
+void test_x86_new_instr_constructors() {
+    x86_Instr cmp = x86_cmp_instr(x86_operand_reg(x86_AX), x86_operand_imm(7));
+    assert(cmp.kind == x86_CMP);
+    assert(cmp.cmp.lhs.kind == x86_REG && cmp.cmp.lhs.reg == x86_AX);
+    assert(cmp.cmp.rhs.kind == x86_IMM && cmp.cmp.rhs.imm == 7);
+
+    x86_Instr jmp = x86_jmp_instr("end");
+    assert(jmp.kind == x86_JMP);
+    assert(strcmp(jmp.jmp.identifier, "end") == 0);
+
+    x86_Instr jmpcc = x86_jmpcc_instr(x86_NE, "loop");
+    assert(jmpcc.kind == x86_JMPCC);
+    assert(jmpcc.jmpcc.cond == x86_NE);
+    assert(strcmp(jmpcc.jmpcc.identifier, "loop") == 0);
+
+    x86_Instr setcc = x86_setcc_instr(x86_GE, x86_operand_reg(x86_AX));
+    assert(setcc.kind == x86_SETCC);
+    assert(setcc.setcc.cond == x86_GE);
+    assert(setcc.setcc.op.kind == x86_REG && setcc.setcc.op.reg == x86_AX);
+
+    x86_Instr label = x86_label_instr("L0");
+    assert(label.kind == x86_LABEL);
+    assert(strcmp(label.label.identifier, "L0") == 0);
+
+    printf("  PASS: test_x86_new_instr_constructors\n");
+}
+
+// --- relational operator codegen ---
+
+// Each relational binop lowers to:
+//   cmp  lhs, rhs
+//   mov  dst, $0      (zero the result; movl does not touch flags)
+//   setCC dst         (set the low byte from the compare flags)
+// Only the condition code differs, so drive them from a table.
+void test_codegen_relational_ops() {
+    struct { AstBinopType ast_op; x86_ConditionCode cond; } cases[] = {
+        { BINOP_EQ,      x86_E  },
+        { BINOP_NEQ,     x86_NE },
+        { BINOP_LESS,    x86_L  },
+        { BINOP_GREATER, x86_G  },
+        { BINOP_LEQ,     x86_LE },
+        { BINOP_GEQ,     x86_GE },
+    };
+    for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
+        AstProgram program = make_test_program(
+            create_binop_exp(cases[c].ast_op,
+                             create_int_exp(4), create_int_exp(5)));
+        IrProgram ir = emit_ir(&program);
+        x86_Program asm_prog = codegen(&ir);
+
+        x86_Instr* i = asm_prog.functions[0].instrs.head;
+
+        // cmp $4, $5
+        assert(i != NULL && i->kind == x86_CMP);
+        assert(i->cmp.lhs.kind == x86_IMM && i->cmp.lhs.imm == 4);
+        assert(i->cmp.rhs.kind == x86_IMM && i->cmp.rhs.imm == 5);
+        i = i->next;
+
+        // mov dst, $0
+        assert(i != NULL && i->kind == x86_MOV);
+        assert(i->mov.dst.kind == x86_ID);
+        assert(i->mov.src.kind == x86_IMM && i->mov.src.imm == 0);
+        i = i->next;
+
+        // setCC dst
+        assert(i != NULL && i->kind == x86_SETCC);
+        assert(i->setcc.cond == cases[c].cond);
+        assert(i->setcc.op.kind == x86_ID);
+        i = i->next;
+
+        // return lowering: mov %eax, dst ; ret
+        assert(i != NULL && i->kind == x86_MOV);
+        assert(i->mov.dst.kind == x86_REG && i->mov.dst.reg == x86_AX);
+        i = i->next;
+        assert(i != NULL && i->kind == x86_RET);
+        assert(i->next == NULL);
+
+        destroy_x86_program(&asm_prog);
+        destroy_program(&program);
+    }
+    printf("  PASS: test_codegen_relational_ops\n");
+}
+
+// int main() { return !5; }  lowers logical NOT to:
+//   cmp  $0, src       (compare the operand against zero)
+//   mov  dst, $0       (clear the result without disturbing flags)
+//   sete dst           (result is 1 exactly when src was 0)
+void test_codegen_logical_not() {
+    AstProgram program = make_test_program(
+        create_unary_exp(UNOP_NOT, create_int_exp(5)));
+    IrProgram ir = emit_ir(&program);
+    x86_Program asm_prog = codegen(&ir);
+
+    x86_Instr* i = asm_prog.functions[0].instrs.head;
+
+    // cmp src($5), $0  -- the operand being tested, not the destination
+    assert(i != NULL && i->kind == x86_CMP);
+    assert(i->cmp.lhs.kind == x86_IMM && i->cmp.lhs.imm == 5);
+    assert(i->cmp.rhs.kind == x86_IMM && i->cmp.rhs.imm == 0);
+    i = i->next;
+
+    // mov dst, $0  -- the result temp is zeroed
+    assert(i != NULL && i->kind == x86_MOV);
+    assert(i->mov.dst.kind == x86_ID);
+    assert(i->mov.src.kind == x86_IMM && i->mov.src.imm == 0);
+    const char* dst_name = i->mov.dst.identifier;
+    i = i->next;
+
+    // sete dst  -- sets the same temp that was zeroed
+    assert(i != NULL && i->kind == x86_SETCC);
+    assert(i->setcc.cond == x86_E);
+    assert(i->setcc.op.kind == x86_ID);
+    assert(strcmp(i->setcc.op.identifier, dst_name) == 0);
+
+    destroy_x86_program(&asm_prog);
+    destroy_program(&program);
+    printf("  PASS: test_codegen_logical_not\n");
+}
+
+// int main() { return 1 && 2; }  exercises the short-circuit lowering all the
+// way to x86: each operand is compared against zero and conditionally jumps to
+// the short-circuit label; the two result stores are plain movs; control flow
+// uses an unconditional jump and two labels.
+void test_codegen_short_circuit_and() {
+    AstProgram program = make_test_program(
+        create_binop_exp(BINOP_LAND, create_int_exp(1), create_int_exp(2)));
+    IrProgram ir = emit_ir(&program);
+    x86_Program asm_prog = codegen(&ir);
+
+    int cmp = 0, jmpcc = 0, jmp = 0, label = 0, mov = 0;
+    for (x86_Instr* i = asm_prog.functions[0].instrs.head; i; i = i->next) {
+        switch (i->kind) {
+            case x86_CMP:   cmp++; break;
+            case x86_JMPCC:
+                jmpcc++;
+                // && short-circuits when an operand is zero -> jump-if-equal
+                assert(i->jmpcc.cond == x86_E);
+                break;
+            case x86_JMP:   jmp++; break;
+            case x86_LABEL: label++; break;
+            case x86_MOV:   mov++; break;
+            default: break;
+        }
+    }
+    // one compare + conditional jump per operand
+    assert(cmp == 2);
+    assert(jmpcc == 2);
+    // one unconditional jump skips the short-circuit store
+    assert(jmp == 1);
+    // short-circuit label + end label
+    assert(label == 2);
+
+    destroy_x86_program(&asm_prog);
+    destroy_program(&program);
+    printf("  PASS: test_codegen_short_circuit_and\n");
+}
+
+// rename_registers must rewrite the operands of CMP and SETCC too, or a
+// relational result would still reference a pseudo after allocation.
+void test_rename_clears_cmp_setcc_pseudos() {
+    // (1 + 1) < (2 + 2): operands of the compare are temps, so they become
+    // stack slots and force rename to touch the cmp operands.
+    AstExp* lhs = create_binop_exp(BINOP_ADD, create_int_exp(1), create_int_exp(1));
+    AstExp* rhs = create_binop_exp(BINOP_ADD, create_int_exp(2), create_int_exp(2));
+    AstProgram program = make_test_program(create_binop_exp(BINOP_LESS, lhs, rhs));
+    IrProgram ir = emit_ir(&program);
+    x86_Program asm_prog = codegen(&ir);
+
+    rename_registers(&asm_prog.functions[0]);
+
+    for (x86_Instr* i = asm_prog.functions[0].instrs.head; i; i = i->next) {
+        if (i->kind == x86_CMP) {
+            assert(i->cmp.lhs.kind != x86_ID);
+            assert(i->cmp.rhs.kind != x86_ID);
+        }
+        if (i->kind == x86_SETCC) {
+            assert(i->setcc.op.kind != x86_ID);
+        }
+    }
+
+    destroy_x86_program(&asm_prog);
+    destroy_program(&program);
+    printf("  PASS: test_rename_clears_cmp_setcc_pseudos\n");
+}
+
+// --- allocate_stack second-pass register fixing ---
+
+static x86_Program one_instr_program(x86_Instr instr) {
+    x86_InstrList instrs = x86_instr_list_new();
+    x86_instr_list_append(&instrs, instr);
+    x86_instr_list_append(&instrs, x86_ret());
+    x86_Function* fns = malloc(sizeof(x86_Function));
+    fns[0] = make_x86_function("main", instrs);
+    return make_x86_program(fns, 1);
+}
+
+// cmp mem, mem is illegal: the lhs must be loaded into %r10d first.
+void test_allocate_stack_cmp_two_memory() {
+    x86_Program prog = one_instr_program(
+        x86_cmp_instr(x86_operand_stack(-4), x86_operand_stack(-8)));
+    allocate_stack(&prog.functions[0], 0);
+
+    x86_Instr* i = prog.functions[0].instrs.head;
+    assert(i->kind == x86_ALLOC); i = i->next;   // prepended frame setup
+
+    // movl -4(%rbp), %r10d
+    assert(i->kind == x86_MOV);
+    assert(i->mov.dst.kind == x86_REG && i->mov.dst.reg == x86_R10);
+    assert(i->mov.src.kind == x86_STACK && i->mov.src.stack == -4);
+    i = i->next;
+
+    // cmpl %r10d, -8(%rbp)
+    assert(i->kind == x86_CMP);
+    assert(i->cmp.lhs.kind == x86_REG && i->cmp.lhs.reg == x86_R10);
+    assert(i->cmp.rhs.kind == x86_STACK && i->cmp.rhs.stack == -8);
+
+    destroy_x86_program(&prog);
+    printf("  PASS: test_allocate_stack_cmp_two_memory\n");
+}
+
+// cmp's rhs may not be an immediate (it is the operand setCC reads against), so
+// an immediate rhs is loaded into %r11d first.
+void test_allocate_stack_cmp_imm_rhs() {
+    x86_Program prog = one_instr_program(
+        x86_cmp_instr(x86_operand_stack(-4), x86_operand_imm(0)));
+    allocate_stack(&prog.functions[0], 0);
+
+    x86_Instr* i = prog.functions[0].instrs.head;
+    assert(i->kind == x86_ALLOC); i = i->next;
+
+    // movl $0, %r11d
+    assert(i->kind == x86_MOV);
+    assert(i->mov.dst.kind == x86_REG && i->mov.dst.reg == x86_R11);
+    assert(i->mov.src.kind == x86_IMM && i->mov.src.imm == 0);
+    i = i->next;
+
+    // cmpl -4(%rbp), %r11d
+    assert(i->kind == x86_CMP);
+    assert(i->cmp.lhs.kind == x86_STACK && i->cmp.lhs.stack == -4);
+    assert(i->cmp.rhs.kind == x86_REG && i->cmp.rhs.reg == x86_R11);
+
+    destroy_x86_program(&prog);
+    printf("  PASS: test_allocate_stack_cmp_imm_rhs\n");
+}
+
+// add mem, mem is illegal: the rhs is loaded into %r10d, then the op is applied
+// with %r10d as the source so the result is written back into the dst memory.
+void test_allocate_stack_binop_two_memory() {
+    x86_Program prog = one_instr_program(
+        x86_binary(x86_ADD, x86_operand_stack(-8), x86_operand_stack(-4)));
+    allocate_stack(&prog.functions[0], 0);
+
+    x86_Instr* i = prog.functions[0].instrs.head;
+    assert(i->kind == x86_ALLOC); i = i->next;
+
+    // movl -8(%rbp), %r10d   (rhs into the scratch register)
+    assert(i->kind == x86_MOV);
+    assert(i->mov.dst.kind == x86_REG && i->mov.dst.reg == x86_R10);
+    assert(i->mov.src.kind == x86_STACK && i->mov.src.stack == -8);
+    i = i->next;
+
+    // addl %r10d, -4(%rbp)   (result stays in the dst slot)
+    assert(i->kind == x86_BINOP);
+    assert(i->binop.optype == x86_ADD);
+    assert(i->binop.rhs.kind == x86_REG && i->binop.rhs.reg == x86_R10);
+    assert(i->binop.dst.kind == x86_STACK && i->binop.dst.stack == -4);
+
+    destroy_x86_program(&prog);
+    printf("  PASS: test_allocate_stack_binop_two_memory\n");
+}
+
+// --- emit tests for the relational / control-flow instruction kinds ---
+
+// Each new instruction kind must render its own line and not fall through into
+// the following case (a missing break would splice unrelated operands together).
+void test_emit_cmp_setcc_jmp_label() {
+    x86_InstrList instrs = x86_instr_list_new();
+    x86_instr_list_append(&instrs,
+        x86_cmp_instr(x86_operand_imm(0), x86_operand_reg(x86_AX)));
+    x86_instr_list_append(&instrs,
+        x86_setcc_instr(x86_E, x86_operand_reg(x86_AX)));
+    x86_instr_list_append(&instrs, x86_jmpcc_instr(x86_NE, "skip"));
+    x86_instr_list_append(&instrs, x86_jmp_instr("done"));
+    x86_instr_list_append(&instrs, x86_label_instr("skip"));
+    x86_instr_list_append(&instrs, x86_setcc_instr(x86_GE, x86_operand_stack(-4)));
+    x86_instr_list_append(&instrs, x86_label_instr("done"));
+
+    x86_Function* fns = malloc(sizeof(x86_Function));
+    fns[0] = make_x86_function("main", instrs);
+    x86_Program prog = make_x86_program(fns, 1);
+
+    char* buf = NULL;
+    size_t buf_size = 0;
+    FILE* out = open_memstream(&buf, &buf_size);
+    emit_asm(&prog, out);
+    fclose(out);
+
+    assert(strstr(buf, "cmpl $0, %eax") != NULL);
+    assert(strstr(buf, "sete %al") != NULL);
+    assert(strstr(buf, "jne .Lskip") != NULL);
+    assert(strstr(buf, "jmp .Ldone") != NULL);
+    assert(strstr(buf, ".Lskip:") != NULL);
+    // setCC on a stack slot must emit the memory operand, not a register name.
+    assert(strstr(buf, "setge -4(%rbp)") != NULL);
+    assert(strstr(buf, ".Ldone:") != NULL);
+    assert(strstr(buf, "???") == NULL);
+
+    free(buf);
+    destroy_x86_program(&prog);
+    printf("  PASS: test_emit_cmp_setcc_jmp_label\n");
+}
+
+// End-to-end: int main() { return 1 < 2; } renders cmp + setl through the full
+// pipeline and leaves no pseudo-registers behind.
+void test_emit_relational_program() {
+    AstProgram program = make_test_program(
+        create_binop_exp(BINOP_LESS, create_int_exp(1), create_int_exp(2)));
+    IrProgram ir = emit_ir(&program);
+    x86_Program asm_prog = codegen(&ir);
+
+    int stack_offset = rename_registers(&asm_prog.functions[0]);
+    allocate_stack(&asm_prog.functions[0], stack_offset);
+
+    char* buf = NULL;
+    size_t buf_size = 0;
+    FILE* out = open_memstream(&buf, &buf_size);
+    emit_asm(&asm_prog, out);
+    fclose(out);
+
+    assert(strstr(buf, "cmpl") != NULL);
+    assert(strstr(buf, "setl") != NULL);
+    assert(strstr(buf, "<pseudo:") == NULL);
+    assert(strstr(buf, "???") == NULL);
+
+    free(buf);
+    destroy_x86_program(&asm_prog);
+    destroy_program(&program);
+    printf("  PASS: test_emit_relational_program\n");
+}
+
+// End-to-end: int main() { return 1 && 2; } renders the short-circuit control
+// flow (conditional jumps, an unconditional jump, and labels) and leaves no
+// pseudo-registers behind.
+void test_emit_short_circuit_program() {
+    AstProgram program = make_test_program(
+        create_binop_exp(BINOP_LAND, create_int_exp(1), create_int_exp(2)));
+    IrProgram ir = emit_ir(&program);
+    x86_Program asm_prog = codegen(&ir);
+
+    int stack_offset = rename_registers(&asm_prog.functions[0]);
+    allocate_stack(&asm_prog.functions[0], stack_offset);
+
+    char* buf = NULL;
+    size_t buf_size = 0;
+    FILE* out = open_memstream(&buf, &buf_size);
+    emit_asm(&asm_prog, out);
+    fclose(out);
+
+    assert(strstr(buf, "cmpl") != NULL);
+    assert(strstr(buf, "je .L") != NULL);    // && jumps if an operand is zero
+    assert(strstr(buf, "jmp .L") != NULL);   // skip past the short-circuit store
+    assert(strstr(buf, ":\n") != NULL);      // at least one emitted label
+    assert(strstr(buf, "<pseudo:") == NULL);
+    assert(strstr(buf, "???") == NULL);
+
+    free(buf);
+    destroy_x86_program(&asm_prog);
+    destroy_program(&program);
+    printf("  PASS: test_emit_short_circuit_program\n");
+}
+
 int main(void) {
     printf("Running codegen tests...\n");
     test_create_x86_function();
@@ -605,6 +978,17 @@ int main(void) {
     test_rename_binop_clears_pseudos();
     test_emit_bitwise_program();
     test_emit_div_program();
+    test_x86_new_instr_constructors();
+    test_codegen_relational_ops();
+    test_codegen_logical_not();
+    test_codegen_short_circuit_and();
+    test_rename_clears_cmp_setcc_pseudos();
+    test_allocate_stack_cmp_two_memory();
+    test_allocate_stack_cmp_imm_rhs();
+    test_allocate_stack_binop_two_memory();
+    test_emit_cmp_setcc_jmp_label();
+    test_emit_relational_program();
+    test_emit_short_circuit_program();
     printf("All codegen tests passed!\n");
     return 0;
 }
