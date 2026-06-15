@@ -56,6 +56,7 @@ void test_operator_name() {
 	assert(strcmp(operator_name(TOK_LSHIFT),     "<<") == 0);
 	assert(strcmp(operator_name(TOK_DECR),       "--") == 0);
 	assert(strcmp(operator_name(TOK_INCR),       "++") == 0);
+	assert(strcmp(operator_name(TOK_ASSIGN),     "=") == 0);
 	printf("  PASS: operator_name\n");
 }
 
@@ -213,6 +214,21 @@ void test_tokenize_two_char_ops_no_spaces() {
 	printf("  PASS: tokenize_two_char_ops_no_spaces\n");
 }
 
+void test_tokenize_assign_int_simple() {
+	TokenList tl = token_list_create(4);
+	assert(tokenize("int a = 42;", &tl) == ERR_OK);
+	assert(tl.count == 5);
+	assert(tl.items[0].kind == TOK_KEYWORD);
+	assert(tl.items[0].kw	== TOK_INT);
+	assert(tl.items[1].kind == TOK_IDENTIFIER);
+	assert(tl.items[2].kind == TOK_OPERATOR);
+	assert(tl.items[2].op	== TOK_ASSIGN);
+	assert(tl.items[3].kind == TOK_INT_LITERAL && tl.items[3].int_val == 42);
+	assert(tl.items[4].kind == TOK_SEPARATOR && tl.items[4].sep == TOK_SEMICOLON);
+	token_list_destroy(&tl);
+	printf(" PASS: test_tokenize_assign_int_simple\n");
+}
+
 int main() {
 	printf("token_kind_name tests:\n");
 	test_token_kind_name();
@@ -242,7 +258,7 @@ int main() {
 	test_tokenize_operators();
 	test_tokenize_full_function();
 	test_tokenize_unexpected_char();
-	test_tokenize_two_char_ops_no_spaces();
+	test_tokenize_assign_int_simple();
 
 	printf("\nall tests passed\n");
 	return 0;

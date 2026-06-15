@@ -41,6 +41,7 @@ const char *operator_name(TokenOperator o) {
 		case TOK_AND:       return "&";
 		case TOK_OR:        return "|";
 		case TOK_XOR:       return "^";
+		case TOK_ASSIGN:	return "=";
 		case TOK_LSHIFT:    return "<<";
 		case TOK_RSHIFT:    return ">>";
 		case TOK_LNOT:		return "!";
@@ -92,20 +93,21 @@ typedef struct {
 
 // Two-char operators must precede their one-char prefixes ("<<" before "<").
 static const PunctEntry punct_table[] = {
-	OP("++", TOK_INCR),   OP("--", TOK_DECR),
-	OP("<<", TOK_LSHIFT), OP(">>", TOK_RSHIFT),
-	OP("==", TOK_EQ),     OP("!=", TOK_NEQ),
-	OP("<=", TOK_LEQ),    OP(">=", TOK_GEQ),
-	OP("&&", TOK_LAND),   OP("||", TOK_LOR),
-	OP("+",  TOK_PLUS),   OP("-",  TOK_MINUS),
-	OP("*",  TOK_STAR),   OP("/",  TOK_FSLASH),
-	OP("%",  TOK_PERCENT),OP("~",  TOK_NOT),
-	OP("&",  TOK_AND),    OP("|",  TOK_OR),
-	OP("^",  TOK_XOR),    OP("!",  TOK_LNOT),
-	OP("<",  TOK_LESS),   OP(">",  TOK_GREATER),
-	SEP("(", TOK_LPAR),   SEP(")", TOK_RPAR),
-	SEP("{", TOK_LBRACE), SEP("}", TOK_RBRACE),
-	SEP(",", TOK_COMMA),  SEP(";", TOK_SEMICOLON),
+	OP("++", TOK_INCR),		OP("--", TOK_DECR),
+	OP("<<", TOK_LSHIFT),	OP(">>", TOK_RSHIFT),
+	OP("==", TOK_EQ),		OP("!=", TOK_NEQ),
+	OP("<=", TOK_LEQ),		OP(">=", TOK_GEQ),
+	OP("&&", TOK_LAND),		OP("||", TOK_LOR),
+	OP("+",  TOK_PLUS),		OP("-",  TOK_MINUS),
+	OP("*",  TOK_STAR),		OP("/",  TOK_FSLASH),
+	OP("%",  TOK_PERCENT),	OP("~",  TOK_NOT),
+	OP("&",  TOK_AND),		OP("|",  TOK_OR),
+	OP("^",  TOK_XOR),		OP("!",  TOK_LNOT),
+	OP("<",  TOK_LESS),		OP(">",  TOK_GREATER),
+	OP("=", TOK_ASSIGN),	SEP("(", TOK_LPAR),
+	SEP(")", TOK_RPAR),		SEP("{", TOK_LBRACE), 
+	SEP("}", TOK_RBRACE),	SEP(",", TOK_COMMA),
+	SEP(";", TOK_SEMICOLON)
 };
 
 #undef OP
