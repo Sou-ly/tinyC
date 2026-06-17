@@ -32,7 +32,9 @@ typedef enum {
 	BINOP_LESS,
 	BINOP_GREATER,
 	BINOP_LEQ,
-	BINOP_GEQ
+	BINOP_GEQ,
+	// special
+	BINOP_ASSIGN
 } AstBinopType;
 
 typedef enum {
@@ -85,32 +87,41 @@ void destroy_stmt(AstStatement* stmt);
 // --- Declarations ---
 
 typedef enum {
-    DECL_FUNCTION
-} AstDeclarationKind;
+    AST_DECLARATION,
+    AST_STATEMENT
+} AstBlockItemType;
 
 typedef struct {
-	char* name;
-	AstStatement* body;
-	int num_stmts;
-} AstFunction;
-
-typedef struct {
-    AstDeclarationKind kind;
-    union {
-		AstFunction function;
-    };
+	char* identifier;
+	AstExp* exp; // nullable
 } AstDeclaration;
 
-AstDeclaration make_function_decl(char* name, AstStatement* body, int num_stmts);
-void destroy_decl(AstDeclaration* decl);
+typedef struct {
+	AstBlockItemType type;
+	union {
+		AstDeclaration	decl;
+		AstStatement	stmt;
+	}
+} AstBlockItem;
+
+typedef struct {
+	char* identifier;
+	size_t size;
+	size_t capacity;
+	AstBlockItem* body;
+} AstFunction;
+
+AstFunction ast_function_make(const char* name, size_t capacity);
+void ast_function_append(AstFunction* function, AstBlockItem block_item);
+void ast_function_destroy(AstFunction* function);
 
 // --- Program ---
 
 typedef struct {
-    AstDeclaration* decls;
-    int num_decls;
+    AstFunction* functions;
+    int num_functions;
 } AstProgram;
 
-AstProgram make_program(AstDeclaration* decls, int num_decls);
+AstProgram ast_program_create(AstFunction* functions, int num_functions);
 char* to_string(AstProgram);
 void destroy_program(AstProgram* program);

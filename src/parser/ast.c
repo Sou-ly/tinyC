@@ -86,37 +86,51 @@ void destroy_stmt(AstStatement* stmt) {
     }
 }
 
-// --- Declarations ---
-
-AstDeclaration make_function_decl(char* name, AstStatement* body, int num_stmts) {
-    return (AstDeclaration){
-        .kind = DECL_FUNCTION,
-        .function = { .name = strdup(name), .body = body, .num_stmts = num_stmts }
-    };
+AstFunction ast_function_make(const char* name, size_t capacity) {
+	AstFunction function;
+	function.identifier = strdup(name);
+	function.size = 0;
+	function.capacity = capacity;
+	function.body = malloc(capacity * sizeof(AstBlockItem));
+	return function;
 }
 
-void destroy_decl(AstDeclaration* decl) {
-    switch (decl->kind) {
-        case DECL_FUNCTION:
-            free(decl->function.name);
-            for (int i = 0; i < decl->function.num_stmts; i++) {
-                destroy_stmt(&decl->function.body[i]);
-            }
-            free(decl->function.body);
-            break;
-    }
+void ast_function_append(AstFunction* function, AstBlockItem block_item) {
+	if (function->size >= function->capacity) {
+		function->capacity *= 2;
+		function->body = realloc(function->body, function->capacity * sizeof(AstBlockItem));
+	}
+	function->body[function->size++] = block_item;
+	return;
+}
+
+void ast_function_destroy(AstFunction* function) {
+	free(function->identifier);
+	for (size_t i = 0; i < function->size; i++) {
+		AstBlockItem* block_item = function->body+i;
+		switch (block_item->type) {
+			case AST_DECLARATION:
+				destroy_exp(block_item->decl.exp);
+				break;
+			case AST_STATEMENT:
+				destroy_exp(block_item->decl.exp);
+				destroy_exp(block_item->decl.exp);
+				break;
+		}
+	}
+	free(function->body);
+	return;
 }
 
 // --- Program ---
 
-AstProgram make_program(AstDeclaration* decls, int num_decls) {
-    return (AstProgram){ .decls = decls, .num_decls = num_decls };
+AstProgram ast_program_create(AstFunction* functions, int num_functions) {
+	return (AstProgram) {.functions = functions, .num_functions = num_functions};	
 }
 
 void destroy_program(AstProgram* program) {
-    for (int i = 0; i < program->num_decls; i++) {
-        destroy_decl(&program->decls[i]);
+    for (int i = 0; i < program->num_functions; i++) {
+        ast_function_destroy(&program->functions[i]);
     }
-    free(program->decls);
+    free(program->functions);
 }
-
