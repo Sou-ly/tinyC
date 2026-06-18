@@ -124,12 +124,21 @@ static IrVal emit_ir_expression(const AstExp* exp, IrFunction* ir_function) {
 			IrVal lhs = emit_ir_expression(exp->binop.lhs, ir_function);
 			IrVal rhs = emit_ir_expression(exp->binop.rhs, ir_function);
 			IrVal dst = { IR_VARIABLE, .name = generate_variable_name() };
-			IrInstruction instruction = {
-				IR_BINOP,
-				.binop = { optype, lhs, rhs, dst }
-			};
+			IrInstruction instruction = { IR_BINOP, .binop = { optype, lhs, rhs, dst } };
 			append_ir_instruction(ir_function, instruction);
 			return dst;	
+		}
+		case EXP_VAR: {
+			IrVal var = { .kind = IR_VARIABLE, .name = strdup(exp->variable.identifier) };
+			return var;
+		}
+		case EXP_ASSIGN: {
+			assert(exp->lhs.kind == AST_VARIABLE);
+			IrVal var = emit_ir_expression(exp->lhs, instructions);
+			IrVal result = emit_ir_expression(exp->rhs, instructions);
+			IrInstruction copy = { IR_COPY, .copy = { .src = result, .dst = var}};
+			append_ir_instruction(ir_function, copy);
+			return var;
 		}
 		default:
 			break;
@@ -138,20 +147,24 @@ static IrVal emit_ir_expression(const AstExp* exp, IrFunction* ir_function) {
 	exit(1);
 }
 
-static void emit_ir_statement(const AstStatement* stmt, IrFunction* ir_function) {
-	switch (stmt->kind) {
-		case STMT_EXP:
-			emit_ir_expression(stmt->exp_stmt.exp, ir_function);
-			return;
-		case STMT_RETURN: {
-			IrVal val = emit_ir_expression(stmt->ret.exp, ir_function);
-			IrInstruction ret_instr = { IR_RETURN, .ret = { val } };
-			append_ir_instruction(ir_function, ret_instr);
-			return;
+static void emit_ir_block(IrFunction* ir_function, const AstBlockItem block_item) {
+	if (block_item.kind == AST_STATEMENT) {
+		switch (block_item.stmt.kind) {
+			case STMT_EXP:
+				emit_ir_expression(block_item.stmt.exp_stmt.exp, ir_function);
+				return;
+			case STMT_RETURN: {
+				IrVal val = emit_ir_expression(block_item.stmt.ret.exp, ir_function);
+				IrInstruction ret_instr = { IR_RETURN, .ret = { val } };
+				append_ir_instruction(ir_function, ret_instr);
+				return;
+			}
 		}
+	} else if (block_item.kind == AST_DECLARATION && block_item.decl.exp != NULL) {
+		emit_ir_expression(block_item.decl.exp, ir_function);
+		return;
 	}
-	fprintf(stderr, "ir: unsupported statement type\n");
-	exit(1);
+	return;
 }
 
 static void append_ir_function(IrProgram* program, IrFunction function) {
@@ -160,28 +173,20 @@ static void append_ir_function(IrProgram* program, IrFunction function) {
 	program->functions[program->size - 1] = function;
 }
 
-static IrFunction emit_ir_function(const AstDeclaration* decl) {
-	assert(decl->kind == DECL_FUNCTION);
+static IrFunction emit_ir_function(const AstFunction* ast_function) {
 	IrFunction ir_function = {NULL, NULL, 0};
-	ir_function.name = strdup(decl->function.name);
-	for (int i = 0; i < decl->function.num_stmts; i++) {
-		emit_ir_statement(&decl->function.body[i], &ir_function);
+	ir_function.name = strdup(function->function.identifier);
+	for (size_t i = 0; i < ast_function.size; i++) {
+		emit_ir_block(&ir_function, ast_function->body[i]);
 	}
 	return ir_function;
 }
 
 IrProgram emit_ir(const AstProgram* ast_program) {
 	IrProgram ir_program = {NULL, 0};
-	for (int i = 0; i < ast_program->num_decls; i++) {
-		const AstDeclaration* decl = &ast_program->decls[i];
-		switch (decl->kind) {
-			case DECL_FUNCTION:
-				append_ir_function(&ir_program, emit_ir_function(decl));
-				break;
-			default:
-				fprintf(stderr, "ir: unsupported declaration type\n");
-				exit(1);
-		}
+	for (int i = 0; i < ast_program->num_functions; i++) {
+		const AstFunction* function = &ast_program->functions[i];
+		append_ir_function(&ir_program, emit_ir_function(function));
 	}
 	return ir_program;
 }

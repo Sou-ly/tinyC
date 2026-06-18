@@ -281,3 +281,57 @@ AstProgram parse_program(Parser* p) {
 
     return ast_program_create(functions, count);
 }
+
+static VariableMap variable_map_create(int capacity) {
+    return (VariableMap){
+        .entries = malloc(sizeof(VariableEntry) * capacity),
+        .size = 0,
+        .capacity = capacity,
+        .stack_offset = 0,
+    };
+}
+
+static void variable_map_destroy(VariableMap* map) {
+    for (int i = 0; i < map->size; i++) {
+        free(map->entries[i].key);
+    }
+    free(map->entries);
+}
+
+static x86_Variable* variable_map_get(VariableMap* map, const char* key) {
+    for (int i = 0; i < map->size; i++) {
+        if (strcmp(map->entries[i].key, key) == 0) {
+            return &map->entries[i].val;
+        }
+    }
+    return NULL;
+}
+
+static x86_Variable variable_map_put(VariableMap* map, x86_Variable op) {
+    if (op.kind != x86_ID) return op;
+    x86_Variable* existing = variable_map_get(map, op.identifier);
+    if (existing) return *existing;
+
+    if (map->size == map->capacity) {
+        map->capacity *= 2;
+        map->entries = realloc(map->entries, sizeof(VariableEntry) * map->capacity);
+    }
+
+    map->stack_offset -= 4;
+    x86_Variable val = (x86_Variable){.kind = x86_STACK, .stack = map->stack_offset};
+    map->entries[map->size] = (VariableEntry){.key = strdup(op.identifier), .val = val};
+    map->size++;
+    return val;
+}
+
+void resolve_declaration(AstDeclaration declaration, VariableMap* map) {
+	if (variable_map_contains(vmap, declaration.name)) {
+		fprintf(stderr, "Duplicate variable declaration in scope: %s\n");
+		exit(1);
+	} 
+	 = make_temporary();
+	variable_map_put(vmap, declaration);
+	if (declaration != NULL) {
+		declaration.exp = resolve_expression(declaration.exp, vmap);
+	}
+}
