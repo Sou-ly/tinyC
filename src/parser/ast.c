@@ -110,11 +110,11 @@ void ast_function_destroy(AstFunction* function) {
 		AstBlockItem* block_item = function->body+i;
 		switch (block_item->type) {
 			case AST_DECLARATION:
+				free(block_item->decl.identifier);
 				destroy_exp(block_item->decl.exp);
 				break;
 			case AST_STATEMENT:
-				destroy_exp(block_item->decl.exp);
-				destroy_exp(block_item->decl.exp);
+				destroy_stmt(&block_item->stmt);
 				break;
 		}
 	}

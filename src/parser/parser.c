@@ -54,6 +54,7 @@ static int precedence(Token* tok) {
 		case TOK_OR:		return 15;
 		case TOK_LAND:		return 10;
 		case TOK_LOR:		return 5;
+		case TOK_ASSIGN:	return 1;
 		default:			break;
 	}
 	fprintf(stderr, "precedence: unrecognized token operator");
@@ -152,10 +153,11 @@ static AstExp* parse_factor(Parser* p) {
                 return exp;
             }
             break;
-		case TOK_IDENTIFIER:
+		case TOK_IDENTIFIER: {
 			AstExp* exp = create_variable_exp(current(p)->ident);
 			advance(p);
 			return exp;
+		}
         default:
             break;
     }
@@ -195,9 +197,10 @@ static AstStatement parse_statement(Parser* p) {
         return make_return_stmt(exp);
     }
 
-    fprintf(stderr, "parse error at %zu:%zu: expected statement\n",
-            current(p)->line, current(p)->col);
-    exit(1);
+    // expression statement: exp ;
+    AstExp* exp = parse_expression(p, 0);
+    expect_separator(p, TOK_SEMICOLON);
+    return make_exp_stmt(exp);
 }
 
 static AstDeclaration parse_declaration(Parser* p) {
@@ -208,9 +211,10 @@ static AstDeclaration parse_declaration(Parser* p) {
     	    fprintf(stderr, "parse error at %zu:%zu: expected variable name\n", current(p)->line, current(p)->col);
     	    exit(1);
     	}
-    	declaration.identifier = current(p)->ident;
+    	declaration.identifier = strdup(current(p)->ident);
 		advance(p);
-		if (current(p)->kind == TOK_ASSIGN) {
+		if (current(p)->kind == TOK_OPERATOR && current(p)->op == TOK_ASSIGN) {
+			advance(p); // consume '='
 			declaration.exp = parse_expression(p, 0);
 		} else {
 			declaration.exp = NULL;
@@ -282,56 +286,156 @@ AstProgram parse_program(Parser* p) {
     return ast_program_create(functions, count);
 }
 
-static VariableMap variable_map_create(int capacity) {
-    return (VariableMap){
-        .entries = malloc(sizeof(VariableEntry) * capacity),
-        .size = 0,
-        .capacity = capacity,
-        .stack_offset = 0,
-    };
+// --- Variable resolution ---
+//
+// After parsing, every variable still carries its original source name.
+// The resolution pass renames each declaration to a unique name (var.0,
+// var.1, …) and rewrites every reference to use the new name.  It also
+// catches duplicate declarations and undeclared variables.
+
+static int RESOLVE_COUNTER = 0;
+
+static char* make_unique_name(const char* original) {
+	int len = snprintf(NULL, 0, "%s.%d", original, RESOLVE_COUNTER);
+	char* name = malloc(len + 1);
+	snprintf(name, len + 1, "%s.%d", original, RESOLVE_COUNTER++);
+	return name;
 }
 
-static void variable_map_destroy(VariableMap* map) {
-    for (int i = 0; i < map->size; i++) {
-        free(map->entries[i].key);
-    }
-    free(map->entries);
+VarMap varmap_create(int capacity) {
+	return (VarMap){
+		.entries = malloc(sizeof(VarMapEntry) * capacity),
+		.size = 0,
+		.capacity = capacity,
+	};
 }
 
-static x86_Variable* variable_map_get(VariableMap* map, const char* key) {
-    for (int i = 0; i < map->size; i++) {
-        if (strcmp(map->entries[i].key, key) == 0) {
-            return &map->entries[i].val;
-        }
-    }
-    return NULL;
-}
-
-static x86_Variable variable_map_put(VariableMap* map, x86_Variable op) {
-    if (op.kind != x86_ID) return op;
-    x86_Variable* existing = variable_map_get(map, op.identifier);
-    if (existing) return *existing;
-
-    if (map->size == map->capacity) {
-        map->capacity *= 2;
-        map->entries = realloc(map->entries, sizeof(VariableEntry) * map->capacity);
-    }
-
-    map->stack_offset -= 4;
-    x86_Variable val = (x86_Variable){.kind = x86_STACK, .stack = map->stack_offset};
-    map->entries[map->size] = (VariableEntry){.key = strdup(op.identifier), .val = val};
-    map->size++;
-    return val;
-}
-
-void resolve_declaration(AstDeclaration declaration, VariableMap* map) {
-	if (variable_map_contains(vmap, declaration.name)) {
-		fprintf(stderr, "Duplicate variable declaration in scope: %s\n");
-		exit(1);
-	} 
-	 = make_temporary();
-	variable_map_put(vmap, declaration);
-	if (declaration != NULL) {
-		declaration.exp = resolve_expression(declaration.exp, vmap);
+void varmap_destroy(VarMap* map) {
+	for (int i = 0; i < map->size; i++) {
+		free(map->entries[i].key);
+		free(map->entries[i].val);
 	}
+	free(map->entries);
+}
+
+char* varmap_get(VarMap* map, const char* key) {
+	// search backwards so later entries shadow earlier ones
+	for (int i = map->size - 1; i >= 0; i--) {
+		if (strcmp(map->entries[i].key, key) == 0) {
+			return map->entries[i].val;
+		}
+	}
+	return NULL;
+}
+
+void varmap_put(VarMap* map, const char* key, const char* val) {
+	if (map->size == map->capacity) {
+		map->capacity *= 2;
+		map->entries = realloc(map->entries, sizeof(VarMapEntry) * map->capacity);
+	}
+	map->entries[map->size] = (VarMapEntry){
+		.key = strdup(key),
+		.val = strdup(val),
+	};
+	map->size++;
+}
+
+static AstExp* resolve_expression(AstExp* exp, VarMap* map) {
+	if (!exp) return NULL;
+	switch (exp->kind) {
+		case EXP_INT:
+			return exp;
+		case EXP_VAR: {
+			char* resolved = varmap_get(map, exp->variable.identifier);
+			if (!resolved) {
+				fprintf(stderr, "error: undeclared variable '%s'\n",
+						exp->variable.identifier);
+				exit(1);
+			}
+			free(exp->variable.identifier);
+			exp->variable.identifier = strdup(resolved);
+			return exp;
+		}
+		case EXP_ASSIGN: {
+			if (exp->assign.lhs->kind != EXP_VAR) {
+				fprintf(stderr, "error: invalid lvalue in assignment\n");
+				exit(1);
+			}
+			exp->assign.lhs = resolve_expression(exp->assign.lhs, map);
+			exp->assign.rhs = resolve_expression(exp->assign.rhs, map);
+			return exp;
+		}
+		case EXP_UNOP:
+			exp->unary.operand = resolve_expression(exp->unary.operand, map);
+			return exp;
+		case EXP_BINOP:
+			exp->binop.lhs = resolve_expression(exp->binop.lhs, map);
+			exp->binop.rhs = resolve_expression(exp->binop.rhs, map);
+			return exp;
+	}
+	return exp;
+}
+
+static AstStatement resolve_statement(AstStatement stmt, VarMap* map) {
+	switch (stmt.kind) {
+		case STMT_RETURN:
+			stmt.ret.exp = resolve_expression(stmt.ret.exp, map);
+			break;
+		case STMT_EXP:
+			stmt.exp_stmt.exp = resolve_expression(stmt.exp_stmt.exp, map);
+			break;
+	}
+	return stmt;
+}
+
+static AstDeclaration resolve_declaration(AstDeclaration decl, VarMap* map) {
+	// check for duplicate in current scope
+	// (linear scan is fine — we only check exact key matches at the top level)
+	for (int i = 0; i < map->size; i++) {
+		if (strcmp(map->entries[i].key, decl.identifier) == 0) {
+			fprintf(stderr, "error: duplicate variable declaration '%s'\n",
+					decl.identifier);
+			exit(1);
+		}
+	}
+	char* unique = make_unique_name(decl.identifier);
+	varmap_put(map, decl.identifier, unique);
+
+	// resolve the initializer (if any) AFTER recording the mapping
+	// so `int a = a;` is technically allowed (C behavior)
+	decl.exp = resolve_expression(decl.exp, map);
+
+	// rename the declaration itself
+	free(decl.identifier);
+	decl.identifier = unique;
+	return decl;
+}
+
+static AstBlockItem resolve_block_item(AstBlockItem item, VarMap* map) {
+	switch (item.type) {
+		case AST_DECLARATION:
+			item.decl = resolve_declaration(item.decl, map);
+			break;
+		case AST_STATEMENT:
+			item.stmt = resolve_statement(item.stmt, map);
+			break;
+	}
+	return item;
+}
+
+static AstFunction resolve_function(AstFunction func) {
+	VarMap map = varmap_create(16);
+	for (size_t i = 0; i < func.size; i++) {
+		func.body[i] = resolve_block_item(func.body[i], &map);
+	}
+	varmap_destroy(&map);
+	return func;
+}
+
+AstProgram resolve_variables(AstProgram program) {
+	RESOLVE_COUNTER = 0;
+	for (int i = 0; i < program.num_functions; i++) {
+		program.functions[i] = resolve_function(program.functions[i]);
+	}
+	return program;
 }
