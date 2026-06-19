@@ -54,7 +54,7 @@ struct AstExp {
         struct { AstUnopType op_type; AstExp* operand; }				unary;
         struct { AstBinopType op_type; AstExp* lhs; AstExp* rhs; }		binop;
 		struct { char* identifier; }									variable;
-		struct { AstExp* lhs; AstExp* rhs }								assign;
+		struct { AstExp* lhs; AstExp* rhs; }							assign;
     };
 };
 
@@ -101,7 +101,7 @@ typedef struct {
 	union {
 		AstDeclaration	decl;
 		AstStatement	stmt;
-	}
+	};
 } AstBlockItem;
 
 typedef struct {

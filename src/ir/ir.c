@@ -59,6 +59,7 @@ static IrBinopType convert_ir_binop(AstBinopType ast_op) {
 		case BINOP_GREATER:	return IR_GREATER;
 		case BINOP_LEQ:		return IR_LEQ;
 		case BINOP_GEQ:		return IR_GEQ;
+		case BINOP_ASSIGN:	break; // handled separately in EXP_ASSIGN
 	}
 	fprintf(stderr, "ir: unsupported binary operator\n");
 	exit(1);
@@ -133,12 +134,12 @@ static IrVal emit_ir_expression(const AstExp* exp, IrFunction* ir_function) {
 			return var;
 		}
 		case EXP_ASSIGN: {
-			assert(exp->lhs.kind == AST_VARIABLE);
-			IrVal var = emit_ir_expression(exp->lhs, instructions);
-			IrVal result = emit_ir_expression(exp->rhs, instructions);
+			assert(exp->assign.lhs->kind == EXP_VAR);
+			IrVal var = emit_ir_expression(exp->assign.lhs, ir_function);
+			IrVal result = emit_ir_expression(exp->assign.rhs, ir_function);
 			IrInstruction copy = { IR_COPY, .copy = { .src = result, .dst = var}};
 			append_ir_instruction(ir_function, copy);
-			return var;
+			return result;
 		}
 		default:
 			break;
@@ -148,7 +149,7 @@ static IrVal emit_ir_expression(const AstExp* exp, IrFunction* ir_function) {
 }
 
 static void emit_ir_block(IrFunction* ir_function, const AstBlockItem block_item) {
-	if (block_item.kind == AST_STATEMENT) {
+	if (block_item.type == AST_STATEMENT) {
 		switch (block_item.stmt.kind) {
 			case STMT_EXP:
 				emit_ir_expression(block_item.stmt.exp_stmt.exp, ir_function);
@@ -160,8 +161,11 @@ static void emit_ir_block(IrFunction* ir_function, const AstBlockItem block_item
 				return;
 			}
 		}
-	} else if (block_item.kind == AST_DECLARATION && block_item.decl.exp != NULL) {
-		emit_ir_expression(block_item.decl.exp, ir_function);
+	} else if (block_item.type == AST_DECLARATION && block_item.decl.exp != NULL) {
+		IrVal result = emit_ir_expression(block_item.decl.exp, ir_function);
+		IrVal var = { IR_VARIABLE, .name = strdup(block_item.decl.identifier) };
+		IrInstruction copy = { IR_COPY, .copy = { .src = result, .dst = var } };
+		append_ir_instruction(ir_function, copy);
 		return;
 	}
 	return;
@@ -175,8 +179,8 @@ static void append_ir_function(IrProgram* program, IrFunction function) {
 
 static IrFunction emit_ir_function(const AstFunction* ast_function) {
 	IrFunction ir_function = {NULL, NULL, 0};
-	ir_function.name = strdup(function->function.identifier);
-	for (size_t i = 0; i < ast_function.size; i++) {
+	ir_function.name = strdup(ast_function->identifier);
+	for (size_t i = 0; i < ast_function->size; i++) {
 		emit_ir_block(&ir_function, ast_function->body[i]);
 	}
 	return ir_function;

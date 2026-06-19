@@ -14,19 +14,25 @@ Parser parser_create(TokenList* tokens);
 // Parse a full program (one or more declarations).
 AstProgram parse_program(Parser* p);
 
+// --- Variable resolution ---
+// Maps original variable names to unique names so that
+// duplicate declarations are caught and each variable gets
+// a distinct identity in the IR.
+
 typedef struct {
     char* key;
-    x86_Variable val;
-} VariableEntry;
+    char* val;
+} VarMapEntry;
 
 typedef struct {
-    VariableEntry* entries;
+    VarMapEntry* entries;
     int size;
     int capacity;
-    int stack_offset;
-} VariableMap;
+} VarMap;
 
-AstDeclaration resolve_declaration(AstDeclaration declaration, VariableMap* map);
-AstStatement resolve_statement(AstStatement stmt);
-AstExpression resolve_expression(AstExpression exp);
+VarMap varmap_create(int capacity);
+void varmap_destroy(VarMap* map);
+char* varmap_get(VarMap* map, const char* key);
+void varmap_put(VarMap* map, const char* key, const char* val);
+
 AstProgram resolve_variables(AstProgram program);
