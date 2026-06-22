@@ -44,11 +44,14 @@ void test_create_x86_program() {
 // --- helpers ---
 
 static AstProgram make_test_program(AstExp* expr) {
-    AstStatement* body = malloc(sizeof(AstStatement));
-    body[0] = make_return_stmt(expr);
-    AstDeclaration* decls = malloc(sizeof(AstDeclaration));
-    decls[0] = make_function_decl("main", body, 1);
-    return make_program(decls, 1);
+    AstFunction fn = ast_function_make("main", 8);
+    ast_function_append(&fn, (AstBlockItem){
+        .type = AST_STATEMENT,
+        .stmt = make_return_stmt(expr),
+    });
+    AstFunction* functions = malloc(sizeof(AstFunction));
+    functions[0] = fn;
+    return ast_program_create(functions, 1);
 }
 
 // --- codegen integration test ---

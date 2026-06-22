@@ -47,15 +47,17 @@ void test_create_return_stmt() {
 }
 
 void test_create_function_decl() {
-    AstStatement* body = malloc(sizeof(AstStatement));
-    body[0] = make_return_stmt(create_int_exp(0));
+    AstFunction fn = ast_function_make("main", 8);
+    ast_function_append(&fn, (AstBlockItem){
+        .type = AST_STATEMENT,
+        .stmt = make_return_stmt(create_int_exp(0)),
+    });
 
-    AstDeclaration fn = make_function_decl("main", body, 1);
-    assert(fn.kind == DECL_FUNCTION);
-    assert(strcmp(fn.function.name, "main") == 0);
-    assert(fn.function.num_stmts == 1);
-    assert(fn.function.body[0].kind == STMT_RETURN);
-    destroy_decl(&fn);
+    assert(strcmp(fn.identifier, "main") == 0);
+    assert(fn.size == 1);
+    assert(fn.body[0].type == AST_STATEMENT);
+    assert(fn.body[0].stmt.kind == STMT_RETURN);
+    ast_function_destroy(&fn);
     printf("  PASS: test_create_function_decl\n");
 }
 
@@ -78,13 +80,13 @@ void test_parse_return_2() {
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    assert(prog.num_decls == 1);
-    assert(prog.decls[0].kind == DECL_FUNCTION);
-    assert(strcmp(prog.decls[0].function.name, "main") == 0);
-    assert(prog.decls[0].function.num_stmts == 1);
-    assert(prog.decls[0].function.body[0].kind == STMT_RETURN);
-    assert(prog.decls[0].function.body[0].ret.exp->kind == EXP_INT);
-    assert(prog.decls[0].function.body[0].ret.exp->int_lit.value == 2);
+    assert(prog.num_functions == 1);
+    assert(strcmp(prog.functions[0].identifier, "main") == 0);
+    assert(prog.functions[0].size == 1);
+    assert(prog.functions[0].body[0].type == AST_STATEMENT);
+    assert(prog.functions[0].body[0].stmt.kind == STMT_RETURN);
+    assert(prog.functions[0].body[0].stmt.ret.exp->kind == EXP_INT);
+    assert(prog.functions[0].body[0].stmt.ret.exp->int_lit.value == 2);
 
     destroy_program(&prog);
     free(tokens.items);
@@ -131,6 +133,7 @@ static const char* binop_name(AstBinopType op) {
         case BINOP_GREATER:return ">";
         case BINOP_LEQ:    return "<=";
         case BINOP_GEQ:    return ">=";
+        case BINOP_ASSIGN: return "=";
     }
     return "<unknown>";
 }
@@ -152,6 +155,16 @@ static void print_exp(const AstExp* exp) {
             print_exp(exp->binop.rhs);
             printf(")");
             break;
+        case EXP_VAR:
+            printf("%s", exp->variable.identifier);
+            break;
+        case EXP_ASSIGN:
+            printf("(");
+            print_exp(exp->assign.lhs);
+            printf(" = ");
+            print_exp(exp->assign.rhs);
+            printf(")");
+            break;
     }
 }
 
@@ -169,6 +182,11 @@ static bool exp_equals(const AstExp* a, const AstExp* b) {
             return a->binop.op_type == b->binop.op_type
                 && exp_equals(a->binop.lhs, b->binop.lhs)
                 && exp_equals(a->binop.rhs, b->binop.rhs);
+        case EXP_VAR:
+            return strcmp(a->variable.identifier, b->variable.identifier) == 0;
+        case EXP_ASSIGN:
+            return exp_equals(a->assign.lhs, b->assign.lhs)
+                && exp_equals(a->assign.rhs, b->assign.rhs);
     }
     return false;
 }
@@ -194,7 +212,7 @@ static void check_return_exp(const char* description, const Token* exp_tokens,
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstExp* actual = prog.decls[0].function.body[0].ret.exp;
+    AstExp* actual = prog.functions[0].body[0].stmt.ret.exp;
     if (!exp_equals(actual, expected)) {
         printf("  FAIL: %s\n    expected: ", description);
         print_exp(expected);
