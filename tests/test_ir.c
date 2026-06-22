@@ -8,10 +8,19 @@
 // --- helpers ---
 
 // Wrap a list of statements into a single-function ("main") program.
+// Takes ownership of `stmts` (each statement is copied into the function).
 static AstProgram program_of(AstStatement* stmts, int num_stmts) {
-    AstDeclaration* decls = malloc(sizeof(AstDeclaration));
-    decls[0] = make_function_decl("main", stmts, num_stmts);
-    return make_program(decls, 1);
+    AstFunction fn = ast_function_make("main", num_stmts > 0 ? num_stmts : 1);
+    for (int i = 0; i < num_stmts; i++) {
+        ast_function_append(&fn, (AstBlockItem){
+            .type = AST_STATEMENT,
+            .stmt = stmts[i],
+        });
+    }
+    free(stmts);
+    AstFunction* functions = malloc(sizeof(AstFunction));
+    functions[0] = fn;
+    return ast_program_create(functions, 1);
 }
 
 // Wrap a single statement into a one-statement "main" program.
@@ -101,7 +110,7 @@ void test_emit_name_is_owned_copy() {
     AstProgram ast = program_of_stmt(make_return_stmt(create_int_exp(0)));
     IrProgram ir = emit_ir(&ast);
 
-    assert(ir.functions[0].name != ast.decls[0].function.name);
+    assert(ir.functions[0].name != ast.functions[0].identifier);
     assert(strcmp(ir.functions[0].name, "main") == 0);
 
     free_ir_program(&ir);
@@ -203,15 +212,17 @@ void test_emit_expr_statement_no_instruction() {
 
 // A program with more than one function lowers each independently.
 void test_emit_multiple_functions() {
-    AstStatement* body_a = malloc(sizeof(AstStatement));
-    body_a[0] = make_return_stmt(create_int_exp(1));
-    AstStatement* body_b = malloc(sizeof(AstStatement));
-    body_b[0] = make_return_stmt(create_int_exp(2));
+    AstFunction foo = ast_function_make("foo", 1);
+    ast_function_append(&foo, (AstBlockItem){
+        .type = AST_STATEMENT, .stmt = make_return_stmt(create_int_exp(1))});
+    AstFunction bar = ast_function_make("bar", 1);
+    ast_function_append(&bar, (AstBlockItem){
+        .type = AST_STATEMENT, .stmt = make_return_stmt(create_int_exp(2))});
 
-    AstDeclaration* decls = malloc(2 * sizeof(AstDeclaration));
-    decls[0] = make_function_decl("foo", body_a, 1);
-    decls[1] = make_function_decl("bar", body_b, 1);
-    AstProgram ast = make_program(decls, 2);
+    AstFunction* functions = malloc(2 * sizeof(AstFunction));
+    functions[0] = foo;
+    functions[1] = bar;
+    AstProgram ast = ast_program_create(functions, 2);
     IrProgram ir = emit_ir(&ast);
 
     assert(ir.size == 2);
