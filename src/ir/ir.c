@@ -137,8 +137,43 @@ static IrVal emit_ir_expression(const AstExp* exp, IrFunction* ir_function) {
 			assert(exp->assign.lhs->kind == EXP_VAR);
 			IrVal var = emit_ir_expression(exp->assign.lhs, ir_function);
 			IrVal result = emit_ir_expression(exp->assign.rhs, ir_function);
-			IrInstruction copy = { IR_COPY, .copy = { .src = result, .dst = var}};
-			append_ir_instruction(ir_function, copy);
+			IrInstruction instruction;
+			switch(exp->assign.op) {
+				case ASSIGN_NOP: 
+					instruction = (IrInstruction) { IR_COPY, .copy = { .src = result, .dst = var}}; 
+					break;
+				case ASSIGN_ADD: 
+					instruction = (IrInstruction) { IR_BINOP, .binop = { .op = IR_ADD, .lhs = var, .rhs = result, .dst = var }  }; 
+					break;
+				case ASSIGN_SUB: 
+					instruction = (IrInstruction) { IR_BINOP, .binop = { .op = IR_SUB, .lhs = var, .rhs = result, .dst = var }  }; 
+					break;
+				case ASSIGN_MUL: 
+					instruction = (IrInstruction) { IR_BINOP, .binop = { .op = IR_MUL, .lhs = var, .rhs = result, .dst = var }  }; 
+					break;
+				case ASSIGN_DIV: 
+					instruction = (IrInstruction) { IR_BINOP, .binop = { .op = IR_DIV, .lhs = var, .rhs = result, .dst = var }  }; 
+					break;
+				case ASSIGN_MOD: 
+					instruction = (IrInstruction) { IR_BINOP, .binop = { .op = IR_MOD, .lhs = var, .rhs = result, .dst = var }  }; 
+					break;
+				case ASSIGN_AND: 
+					instruction = (IrInstruction) { IR_BINOP, .binop = { .op = IR_AND, .lhs = var, .rhs = result, .dst = var }  }; 
+					break;
+				case ASSIGN_OR: 
+					instruction = (IrInstruction) { IR_BINOP, .binop = { .op = IR_OR, .lhs = var, .rhs = result, .dst = var }  }; 
+					break;
+				case ASSIGN_XOR: 
+					instruction = (IrInstruction) { IR_BINOP, .binop = { .op = IR_XOR, .lhs = var, .rhs = result, .dst = var }  }; 
+					break;
+				case ASSIGN_RSHIFT: 
+					instruction = (IrInstruction) { IR_BINOP, .binop = { .op = IR_RSHIFT, .lhs = var, .rhs = result, .dst = var }  }; 
+					break;
+				case ASSIGN_LSHIFT: 
+					instruction = (IrInstruction) { IR_BINOP, .binop = { .op = IR_LSHIFT, .lhs = var, .rhs = result, .dst = var }  }; 
+					break;
+			}
+			append_ir_instruction(ir_function, instruction);
 			return result;
 		}
 		default:

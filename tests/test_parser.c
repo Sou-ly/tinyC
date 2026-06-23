@@ -372,6 +372,99 @@ void test_precedence_unary_over_binary() {
             create_int_exp(2)));
 }
 
+// --- Compound assignment tests ---
+//
+// `exp_equals` deliberately ignores `assign.op`, so these tests inspect the
+// parsed assignment node directly. Each parses `int main() { x <op> 5; }` and
+// checks both that the node is an assignment over `x` / `5` and that the
+// operator tag is mapped correctly.
+static void check_assign_op(const char* description, TokenOperator tok_op,
+                            AstAssignOp expected_op) {
+    TokenList tokens = token_list_create(16);
+    token_list_push(&tokens, (Token){TOK_KEYWORD,    {.kw = TOK_INT},            1, 1});
+    token_list_push(&tokens, (Token){TOK_IDENTIFIER, {.ident = strdup("main")}, 1, 1});
+    token_list_push(&tokens, make_sep_token(TOK_LPAR));
+    token_list_push(&tokens, make_sep_token(TOK_RPAR));
+    token_list_push(&tokens, make_sep_token(TOK_LBRACE));
+    token_list_push(&tokens, (Token){TOK_IDENTIFIER, {.ident = strdup("x")}, 1, 1});
+    token_list_push(&tokens, make_op_token(tok_op));
+    token_list_push(&tokens, make_int_token(5));
+    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    token_list_push(&tokens, make_sep_token(TOK_RBRACE));
+
+    Parser parser = parser_create(&tokens);
+    AstProgram prog = parse_program(&parser);
+
+    AstBlockItem item = prog.functions[0].body[0];
+    assert(item.type == AST_STATEMENT);
+    assert(item.stmt.kind == STMT_EXP);
+    AstExp* exp = item.stmt.exp_stmt.exp;
+    assert(exp->kind == EXP_ASSIGN);
+    assert(exp->assign.lhs->kind == EXP_VAR);
+    assert(strcmp(exp->assign.lhs->variable.identifier, "x") == 0);
+    assert(exp->assign.rhs->kind == EXP_INT && exp->assign.rhs->int_lit.value == 5);
+    if (exp->assign.op != expected_op) {
+        printf("  FAIL: %s (expected assign op %d, got %d)\n",
+               description, expected_op, exp->assign.op);
+        exit(1);
+    }
+
+    destroy_program(&prog);
+    token_list_destroy(&tokens);
+    printf("  PASS: %s\n", description);
+}
+
+// Each assignment token maps to the matching AstAssignOp; plain '=' is ASSIGN_NOP.
+void test_parse_compound_assign_ops() {
+    check_assign_op("x = 5",   TOK_ASSIGN,    ASSIGN_NOP);
+    check_assign_op("x += 5",  TOK_PLUS_EQ,   ASSIGN_ADD);
+    check_assign_op("x -= 5",  TOK_MINUS_EQ,  ASSIGN_SUB);
+    check_assign_op("x *= 5",  TOK_MUL_EQ,    ASSIGN_MUL);
+    check_assign_op("x /= 5",  TOK_DIV_EQ,    ASSIGN_DIV);
+    check_assign_op("x %= 5",  TOK_MOD_EQ,    ASSIGN_MOD);
+    check_assign_op("x &= 5",  TOK_AND_EQ,    ASSIGN_AND);
+    check_assign_op("x |= 5",  TOK_OR_EQ,     ASSIGN_OR);
+    check_assign_op("x ^= 5",  TOK_XOR_EQ,    ASSIGN_XOR);
+    check_assign_op("x >>= 5", TOK_RSHIFT_EQ, ASSIGN_RSHIFT);
+    check_assign_op("x <<= 5", TOK_LSHIFT_EQ, ASSIGN_LSHIFT);
+}
+
+// Assignment is right-associative: `x += y += 5` parses as `x += (y += 5)`,
+// and each node keeps its own operator tag.
+void test_parse_compound_assign_right_assoc() {
+    TokenList tokens = token_list_create(16);
+    token_list_push(&tokens, (Token){TOK_KEYWORD,    {.kw = TOK_INT},            1, 1});
+    token_list_push(&tokens, (Token){TOK_IDENTIFIER, {.ident = strdup("main")}, 1, 1});
+    token_list_push(&tokens, make_sep_token(TOK_LPAR));
+    token_list_push(&tokens, make_sep_token(TOK_RPAR));
+    token_list_push(&tokens, make_sep_token(TOK_LBRACE));
+    token_list_push(&tokens, (Token){TOK_IDENTIFIER, {.ident = strdup("x")}, 1, 1});
+    token_list_push(&tokens, make_op_token(TOK_PLUS_EQ));
+    token_list_push(&tokens, (Token){TOK_IDENTIFIER, {.ident = strdup("y")}, 1, 1});
+    token_list_push(&tokens, make_op_token(TOK_MUL_EQ));
+    token_list_push(&tokens, make_int_token(5));
+    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    token_list_push(&tokens, make_sep_token(TOK_RBRACE));
+
+    Parser parser = parser_create(&tokens);
+    AstProgram prog = parse_program(&parser);
+
+    AstExp* outer = prog.functions[0].body[0].stmt.exp_stmt.exp;
+    assert(outer->kind == EXP_ASSIGN && outer->assign.op == ASSIGN_ADD);
+    assert(outer->assign.lhs->kind == EXP_VAR);
+    assert(strcmp(outer->assign.lhs->variable.identifier, "x") == 0);
+
+    AstExp* inner = outer->assign.rhs;
+    assert(inner->kind == EXP_ASSIGN && inner->assign.op == ASSIGN_MUL);
+    assert(inner->assign.lhs->kind == EXP_VAR);
+    assert(strcmp(inner->assign.lhs->variable.identifier, "y") == 0);
+    assert(inner->assign.rhs->kind == EXP_INT && inner->assign.rhs->int_lit.value == 5);
+
+    destroy_program(&prog);
+    token_list_destroy(&tokens);
+    printf("  PASS: test_parse_compound_assign_right_assoc\n");
+}
+
 int main(void) {
     printf("Running parser tests...\n");
     test_create_int_exp();
@@ -387,6 +480,8 @@ int main(void) {
     test_precedence_full_chain();
     test_precedence_parentheses();
     test_precedence_unary_over_binary();
+    test_parse_compound_assign_ops();
+    test_parse_compound_assign_right_assoc();
     printf("All parser tests passed!\n");
     return 0;
 }

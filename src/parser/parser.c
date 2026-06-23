@@ -28,6 +28,16 @@ static bool is_binop(Token* tok) {
 		case TOK_LEQ:
 		case TOK_GEQ:
 		case TOK_ASSIGN:
+		case TOK_PLUS_EQ:
+		case TOK_MINUS_EQ:
+		case TOK_MUL_EQ:
+		case TOK_DIV_EQ:
+		case TOK_MOD_EQ:
+		case TOK_AND_EQ:
+		case TOK_OR_EQ:
+		case TOK_XOR_EQ:
+		case TOK_RSHIFT_EQ:
+		case TOK_LSHIFT_EQ:
 			return true;
 		default:
 			return false;
@@ -55,6 +65,16 @@ static int precedence(Token* tok) {
 		case TOK_LAND:		return 10;
 		case TOK_LOR:		return 5;
 		case TOK_ASSIGN:	return 1;
+		case TOK_PLUS_EQ:	return 1;
+		case TOK_MINUS_EQ:	return 1;
+		case TOK_MUL_EQ:	return 1;
+		case TOK_DIV_EQ:	return 1;
+		case TOK_MOD_EQ:	return 1;
+		case TOK_AND_EQ:	return 1;
+		case TOK_OR_EQ:		return 1;
+		case TOK_XOR_EQ:	return 1;
+		case TOK_RSHIFT_EQ:	return 1;
+		case TOK_LSHIFT_EQ:	return 1;
 		default:			break;
 	}
 	fprintf(stderr, "precedence: unrecognized token operator");
@@ -82,6 +102,16 @@ static AstBinopType tok_to_binop(TokenOperator op) {
 		case TOK_LEQ:		return BINOP_LEQ;
 		case TOK_GEQ:		return BINOP_GEQ;
 		case TOK_ASSIGN:	return BINOP_ASSIGN;
+		case TOK_PLUS_EQ:	return BINOP_ASSIGN;
+		case TOK_MINUS_EQ:	return BINOP_ASSIGN;
+		case TOK_MUL_EQ:	return BINOP_ASSIGN;
+		case TOK_DIV_EQ:	return BINOP_ASSIGN;
+		case TOK_MOD_EQ:	return BINOP_ASSIGN;
+		case TOK_AND_EQ:	return BINOP_ASSIGN;
+		case TOK_OR_EQ:		return BINOP_ASSIGN;
+		case TOK_XOR_EQ:	return BINOP_ASSIGN;
+		case TOK_RSHIFT_EQ:	return BINOP_ASSIGN;
+		case TOK_LSHIFT_EQ:	return BINOP_ASSIGN;
 		default:			break;
 	}
 	fprintf(stderr, "binop: unrecognized token operator");
@@ -167,6 +197,25 @@ static AstExp* parse_factor(Parser* p) {
     exit(1);
 }
 
+static  AstAssignOp tok_to_assign_op(TokenOperator tok) {
+	switch (tok) {
+		case TOK_ASSIGN:	return ASSIGN_NOP;
+		case TOK_PLUS_EQ:	return ASSIGN_ADD;
+		case TOK_MINUS_EQ:	return ASSIGN_SUB;
+		case TOK_MUL_EQ:	return ASSIGN_MUL;
+		case TOK_DIV_EQ:	return ASSIGN_DIV;
+		case TOK_MOD_EQ:	return ASSIGN_MOD;
+		case TOK_AND_EQ:	return ASSIGN_AND;
+		case TOK_OR_EQ:		return ASSIGN_OR;
+		case TOK_XOR_EQ:	return ASSIGN_XOR;
+		case TOK_RSHIFT_EQ:	return ASSIGN_RSHIFT;
+		case TOK_LSHIFT_EQ:	return ASSIGN_LSHIFT;
+		default:			break;
+	}
+    fprintf(stderr, "parse error expected assignment token\n");
+    exit(1);
+}
+
 static AstExp* parse_expression(Parser* p, int min_prec) {
     AstExp* lhs = parse_factor(p);
 	Token* tok = current(p);
@@ -179,7 +228,7 @@ static AstExp* parse_expression(Parser* p, int min_prec) {
 		AstExp* rhs;
 		if (op == BINOP_ASSIGN) {
 			rhs = parse_expression(p, prec);
-			lhs = create_assign_exp(lhs, rhs);
+			lhs = create_assign_exp(tok_to_assign_op(tok->op), lhs, rhs);
 		} else {
 			rhs = parse_expression(p, prec + 1);
 			lhs = create_binop_exp(op, lhs, rhs);

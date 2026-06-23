@@ -38,6 +38,20 @@ typedef enum {
 } AstBinopType;
 
 typedef enum {
+	ASSIGN_NOP,
+	ASSIGN_ADD,
+	ASSIGN_SUB,
+	ASSIGN_MUL,
+	ASSIGN_DIV,
+	ASSIGN_MOD,
+	ASSIGN_OR,
+	ASSIGN_AND,
+	ASSIGN_XOR,
+	ASSIGN_RSHIFT,
+	ASSIGN_LSHIFT,
+} AstAssignOp;
+
+typedef enum {
 	EXP_INT,
 	EXP_UNOP,
 	EXP_BINOP,
@@ -54,7 +68,7 @@ struct AstExp {
         struct { AstUnopType op_type; AstExp* operand; }				unary;
         struct { AstBinopType op_type; AstExp* lhs; AstExp* rhs; }		binop;
 		struct { char* identifier; }									variable;
-		struct { AstExp* lhs; AstExp* rhs; }							assign;
+		struct { AstAssignOp op; AstExp* lhs; AstExp* rhs; }			assign;
     };
 };
 
@@ -62,7 +76,7 @@ AstExp* create_int_exp(int value);
 AstExp* create_unary_exp(AstUnopType op_type, AstExp* operand);
 AstExp* create_binop_exp(AstBinopType op_type, AstExp* lhs, AstExp* rhs);
 AstExp* create_variable_exp(const char* identifier);
-AstExp* create_assign_exp(AstExp* lhs, AstExp* rhs);
+AstExp* create_assign_exp(AstAssignOp op, AstExp* lhs, AstExp* rhs);
 void destroy_exp(AstExp* exp);
 
 // --- Statements ---

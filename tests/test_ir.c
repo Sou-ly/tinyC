@@ -580,6 +580,70 @@ void test_emit_nested_short_circuit_unique_labels() {
     printf("  PASS: test_emit_nested_short_circuit_unique_labels\n");
 }
 
+// int main() { x = 5; }  ->  a plain assignment lowers to a single COPY of the
+// rhs into the variable (no arithmetic).
+void test_emit_assign_plain() {
+    AstProgram ast = program_of_stmt(make_exp_stmt(
+        create_assign_exp(ASSIGN_NOP, create_variable_exp("x"), create_int_exp(5))));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.functions[0];
+    assert(fn->size == 1);
+    IrInstruction* copy = &fn->instructions[0];
+    assert(copy->type == IR_COPY);
+    assert(copy->copy.src.kind == IR_CONSTANT && copy->copy.src.int_val == 5);
+    assert(copy->copy.dst.kind == IR_VARIABLE);
+    assert(strcmp(copy->copy.dst.name, "x") == 0);
+
+    free_ir_program(&ir);
+    destroy_program(&ast);
+    printf("  PASS: test_emit_assign_plain\n");
+}
+
+// Each compound assignment `x <op>= e` lowers to a single BINOP that reads the
+// variable as its left operand and writes the result back into the same
+// variable: `x = x <op> e`.
+void test_emit_compound_assign_all_ops() {
+    struct { AstAssignOp assign_op; IrBinopType ir_op; const char* name; } cases[] = {
+        { ASSIGN_ADD,    IR_ADD,    "+=" },
+        { ASSIGN_SUB,    IR_SUB,    "-=" },
+        { ASSIGN_MUL,    IR_MUL,    "*=" },
+        { ASSIGN_DIV,    IR_DIV,    "/=" },
+        { ASSIGN_MOD,    IR_MOD,    "%=" },
+        { ASSIGN_AND,    IR_AND,    "&=" },
+        { ASSIGN_OR,     IR_OR,     "|=" },
+        { ASSIGN_XOR,    IR_XOR,    "^=" },
+        { ASSIGN_RSHIFT, IR_RSHIFT, ">>=" },
+        { ASSIGN_LSHIFT, IR_LSHIFT, "<<=" },
+    };
+    for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
+        AstProgram ast = program_of_stmt(make_exp_stmt(
+            create_assign_exp(cases[c].assign_op,
+                              create_variable_exp("x"), create_int_exp(5))));
+        IrProgram ir = emit_ir(&ast);
+
+        IrFunction* fn = &ir.functions[0];
+        assert(fn->size == 1);
+        IrInstruction* binop = &fn->instructions[0];
+        if (binop->type != IR_BINOP || binop->binop.op != cases[c].ir_op) {
+            printf("  FAIL: compound assign %s lowered to wrong op "
+                   "(expected IR op %d, got type %d op %d)\n",
+                   cases[c].name, cases[c].ir_op, binop->type, binop->binop.op);
+            exit(1);
+        }
+        // left operand and destination are both the variable; rhs is the constant
+        assert(binop->binop.lhs.kind == IR_VARIABLE);
+        assert(strcmp(binop->binop.lhs.name, "x") == 0);
+        assert(binop->binop.dst.kind == IR_VARIABLE);
+        assert(strcmp(binop->binop.dst.name, "x") == 0);
+        assert(binop->binop.rhs.kind == IR_CONSTANT && binop->binop.rhs.int_val == 5);
+
+        free_ir_program(&ir);
+        destroy_program(&ast);
+    }
+    printf("  PASS: test_emit_compound_assign_all_ops\n");
+}
+
 int main(void) {
     printf("Running IR tests...\n");
     test_emit_return_constant();

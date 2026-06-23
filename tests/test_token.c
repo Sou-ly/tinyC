@@ -57,6 +57,16 @@ void test_operator_name() {
 	assert(strcmp(operator_name(TOK_DECR),       "--") == 0);
 	assert(strcmp(operator_name(TOK_INCR),       "++") == 0);
 	assert(strcmp(operator_name(TOK_ASSIGN),     "=") == 0);
+	assert(strcmp(operator_name(TOK_PLUS_EQ),    "+=")  == 0);
+	assert(strcmp(operator_name(TOK_MINUS_EQ),   "-=")  == 0);
+	assert(strcmp(operator_name(TOK_MUL_EQ),     "*=")  == 0);
+	assert(strcmp(operator_name(TOK_DIV_EQ),     "/=")  == 0);
+	assert(strcmp(operator_name(TOK_MOD_EQ),     "%=")  == 0);
+	assert(strcmp(operator_name(TOK_AND_EQ),     "&=")  == 0);
+	assert(strcmp(operator_name(TOK_OR_EQ),      "|=")  == 0);
+	assert(strcmp(operator_name(TOK_XOR_EQ),     "^=")  == 0);
+	assert(strcmp(operator_name(TOK_RSHIFT_EQ),  ">>=") == 0);
+	assert(strcmp(operator_name(TOK_LSHIFT_EQ),  "<<=") == 0);
 	printf("  PASS: operator_name\n");
 }
 
@@ -229,6 +239,53 @@ void test_tokenize_assign_int_simple() {
 	printf(" PASS: test_tokenize_assign_int_simple\n");
 }
 
+// All ten compound-assignment operators tokenize to their own operator token.
+void test_tokenize_compound_assign_ops() {
+	TokenList tl = token_list_create(16);
+	assert(tokenize("+= -= *= /= %= &= |= ^= >>= <<=", &tl) == ERR_OK);
+	assert(tl.count == 10);
+	TokenOperator expected[] = {
+		TOK_PLUS_EQ, TOK_MINUS_EQ, TOK_MUL_EQ, TOK_DIV_EQ, TOK_MOD_EQ,
+		TOK_AND_EQ,  TOK_OR_EQ,    TOK_XOR_EQ, TOK_RSHIFT_EQ, TOK_LSHIFT_EQ,
+	};
+	for (size_t i = 0; i < sizeof(expected) / sizeof(expected[0]); i++) {
+		assert(tl.items[i].kind == TOK_OPERATOR);
+		assert(tl.items[i].op == expected[i]);
+	}
+	token_list_destroy(&tl);
+	printf("  PASS: tokenize_compound_assign_ops\n");
+}
+
+// Maximal munch: a compound-assign lexeme must win over its shorter prefixes,
+// and the lexer must not greedily merge a plain operator with a following '='.
+void test_tokenize_compound_assign_maximal_munch() {
+	// ">>=" is one token, distinct from ">>" then "=".
+	TokenList tl = token_list_create(8);
+	assert(tokenize("a>>=b", &tl) == ERR_OK);
+	assert(tl.count == 3);
+	assert(tl.items[0].kind == TOK_IDENTIFIER);
+	assert(tl.items[1].kind == TOK_OPERATOR && tl.items[1].op == TOK_RSHIFT_EQ);
+	assert(tl.items[2].kind == TOK_IDENTIFIER);
+	token_list_destroy(&tl);
+
+	// "+=" with no surrounding spaces is still a single compound token.
+	tl = token_list_create(8);
+	assert(tokenize("a+=1", &tl) == ERR_OK);
+	assert(tl.count == 3);
+	assert(tl.items[1].kind == TOK_OPERATOR && tl.items[1].op == TOK_PLUS_EQ);
+	token_list_destroy(&tl);
+
+	// ">> =" with a space stays a shift followed by an assign, not ">>=".
+	tl = token_list_create(8);
+	assert(tokenize("a >> = b", &tl) == ERR_OK);
+	assert(tl.count == 4);
+	assert(tl.items[1].kind == TOK_OPERATOR && tl.items[1].op == TOK_RSHIFT);
+	assert(tl.items[2].kind == TOK_OPERATOR && tl.items[2].op == TOK_ASSIGN);
+	token_list_destroy(&tl);
+
+	printf("  PASS: tokenize_compound_assign_maximal_munch\n");
+}
+
 int main() {
 	printf("token_kind_name tests:\n");
 	test_token_kind_name();
@@ -259,6 +316,8 @@ int main() {
 	test_tokenize_full_function();
 	test_tokenize_unexpected_char();
 	test_tokenize_assign_int_simple();
+	test_tokenize_compound_assign_ops();
+	test_tokenize_compound_assign_maximal_munch();
 
 	printf("\nall tests passed\n");
 	return 0;

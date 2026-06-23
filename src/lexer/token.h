@@ -49,7 +49,17 @@ typedef enum {
 	TOK_LEQ,
 	TOK_GEQ,
 	// other
-	TOK_ASSIGN
+	TOK_ASSIGN,
+	TOK_PLUS_EQ,
+	TOK_MINUS_EQ,
+	TOK_MUL_EQ,
+	TOK_DIV_EQ,
+	TOK_MOD_EQ,
+	TOK_AND_EQ,
+	TOK_OR_EQ,
+	TOK_XOR_EQ,
+	TOK_RSHIFT_EQ,
+	TOK_LSHIFT_EQ
 } TokenOperator;
 
 typedef enum {
