@@ -644,6 +644,81 @@ void test_emit_compound_assign_all_ops() {
     printf("  PASS: test_emit_compound_assign_all_ops\n");
 }
 
+// --- increment / decrement lowering ---
+//
+// These assume the local lowering discussed for the (not-yet-implemented)
+// inc/dec pass; adjust the expected shapes if a different lowering is chosen.
+
+// Prefix `++x` / `--x` mutates the variable in place and the expression yields
+// the variable itself:
+//   x = x <+/-> 1
+//   return x
+static void check_prefix(const char* desc, AstUnopType op, IrBinopType ir_op) {
+    AstProgram ast = program_of_stmt(make_return_stmt(
+        create_unary_exp(op, create_variable_exp("x"))));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.functions[0];
+    assert(fn->size == 2);
+
+    IrInstruction* binop = &fn->instructions[0];
+    assert(binop->type == IR_BINOP);
+    assert(binop->binop.op == ir_op);
+    assert(binop->binop.lhs.kind == IR_VARIABLE && strcmp(binop->binop.lhs.name, "x") == 0);
+    assert(binop->binop.rhs.kind == IR_CONSTANT && binop->binop.rhs.int_val == 1);
+    assert(binop->binop.dst.kind == IR_VARIABLE && strcmp(binop->binop.dst.name, "x") == 0);
+
+    IrInstruction* ret = &fn->instructions[1];
+    assert(ret->type == IR_RETURN);
+    assert(ret->ret.val.kind == IR_VARIABLE && strcmp(ret->ret.val.name, "x") == 0);
+
+    free_ir_program(&ir);
+    destroy_program(&ast);
+    printf("  PASS: %s\n", desc);
+}
+
+// Postfix `x++` / `x--` saves the old value into a fresh temp, mutates the
+// variable, and yields the saved temp (not the mutated variable):
+//   tmp = x
+//   x = x <+/-> 1
+//   return tmp
+static void check_postfix(const char* desc, AstUnopType op, IrBinopType ir_op) {
+    AstProgram ast = program_of_stmt(make_return_stmt(
+        create_unary_exp(op, create_variable_exp("x"))));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.functions[0];
+    assert(fn->size == 3);
+
+    IrInstruction* copy = &fn->instructions[0];
+    assert(copy->type == IR_COPY);
+    assert(copy->copy.src.kind == IR_VARIABLE && strcmp(copy->copy.src.name, "x") == 0);
+    assert(copy->copy.dst.kind == IR_VARIABLE);
+    assert(strcmp(copy->copy.dst.name, "x") != 0);  // a fresh temp, not x
+
+    IrInstruction* binop = &fn->instructions[1];
+    assert(binop->type == IR_BINOP);
+    assert(binop->binop.op == ir_op);
+    assert(binop->binop.lhs.kind == IR_VARIABLE && strcmp(binop->binop.lhs.name, "x") == 0);
+    assert(binop->binop.rhs.kind == IR_CONSTANT && binop->binop.rhs.int_val == 1);
+    assert(binop->binop.dst.kind == IR_VARIABLE && strcmp(binop->binop.dst.name, "x") == 0);
+
+    IrInstruction* ret = &fn->instructions[2];
+    assert(ret->type == IR_RETURN);
+    assert(ret->ret.val.kind == IR_VARIABLE);
+    assert(strcmp(ret->ret.val.name, copy->copy.dst.name) == 0);  // the saved old value
+    assert(strcmp(ret->ret.val.name, "x") != 0);
+
+    free_ir_program(&ir);
+    destroy_program(&ast);
+    printf("  PASS: %s\n", desc);
+}
+
+void test_emit_prefix_increment()  { check_prefix("return ++x", UNOP_PREINC, IR_ADD); }
+void test_emit_prefix_decrement()  { check_prefix("return --x", UNOP_PREDEC, IR_SUB); }
+void test_emit_postfix_increment() { check_postfix("return x++", UNOP_POSTINC, IR_ADD); }
+void test_emit_postfix_decrement() { check_postfix("return x--", UNOP_POSTDEC, IR_SUB); }
+
 int main(void) {
     printf("Running IR tests...\n");
     test_emit_return_constant();
@@ -664,6 +739,12 @@ int main(void) {
     test_emit_relational_ops();
     test_emit_logical_not();
     test_emit_nested_short_circuit_unique_labels();
+    test_emit_assign_plain();
+    test_emit_compound_assign_all_ops();
+    test_emit_prefix_increment();
+    test_emit_prefix_decrement();
+    test_emit_postfix_increment();
+    test_emit_postfix_decrement();
     printf("All IR tests passed!\n");
     return 0;
 }

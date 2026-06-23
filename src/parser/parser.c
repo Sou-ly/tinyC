@@ -163,7 +163,7 @@ static void expect_separator(Parser* p, TokenSeparator sep) {
 
 static AstExp* parse_expression(Parser* p, int min_prec);
 
-// factor ::= int | ("!" | "-") factor | "(" exp ")"
+// factor ::= int | ("!" | "-") factor | "(" exp ")"  | ++id | --id | id++ | id--
 static AstExp* parse_factor(Parser* p) {
     Token* tok = current(p);
     switch (tok->kind) {
@@ -174,8 +174,15 @@ static AstExp* parse_factor(Parser* p) {
         }
         case TOK_OPERATOR:
             advance(p);
-            return create_unary_exp(tok_to_unop(tok->op), parse_factor(p));
-        case TOK_SEPARATOR:
+			// TODO: should probably have some check on lvalue instead... need to check C standard
+			if ((tok->op == TOK_INCR || tok->op == TOK_DECR) && current(p)->kind == TOK_IDENTIFIER) {
+				AstExp* exp = create_variable_exp(current(p)->ident);
+				advance(p);
+				return create_unary_exp(tok->op == TOK_INCR? UNOP_PREINC : UNOP_PREDEC, exp);
+			} else {
+				return create_unary_exp(tok_to_unop(tok->op), parse_factor(p));
+			}
+		case TOK_SEPARATOR:
             if (tok->sep == TOK_LPAR) {
                 advance(p);
                 AstExp* exp = parse_expression(p, 0);
@@ -186,7 +193,13 @@ static AstExp* parse_factor(Parser* p) {
 		case TOK_IDENTIFIER: {
 			AstExp* exp = create_variable_exp(current(p)->ident);
 			advance(p);
-			return exp;
+			if (current(p)->kind == TOK_OPERATOR && (current(p)->op == TOK_INCR || current(p)->op == TOK_DECR)) {
+				TokenOperator postfix = current(p)->op;
+				advance(p);
+				return create_unary_exp(postfix == TOK_INCR? UNOP_POSTINC : UNOP_POSTDEC, exp);
+			} else {
+				return exp;
+			}
 		}
         default:
             break;
