@@ -109,6 +109,10 @@ static Token make_op_token(TokenOperator op) {
     return (Token){TOK_OPERATOR, {.op = op}, 1, 1};
 }
 
+static Token make_ident_token(const char* name) {
+    return (Token){TOK_IDENTIFIER, {.ident = strdup(name)}, 1, 1};
+}
+
 static Token make_sep_token(TokenSeparator sep) {
     return (Token){TOK_SEPARATOR, {.sep = sep}, 1, 1};
 }
@@ -143,11 +147,22 @@ static void print_exp(const AstExp* exp) {
         case EXP_INT:
             printf("%d", exp->int_lit.value);
             break;
-        case EXP_UNOP:
-            printf("(%s ", exp->unary.op_type == UNOP_COMP ? "!" : "-");
+        case EXP_UNOP: {
+            const char* name = "?";
+            switch (exp->unary.op_type) {
+                case UNOP_COMP:    name = "!";   break;
+                case UNOP_MINUS:   name = "-";   break;
+                case UNOP_NOT:     name = "~";   break;
+                case UNOP_PREINC:  name = "pre++";  break;
+                case UNOP_PREDEC:  name = "pre--";  break;
+                case UNOP_POSTINC: name = "post++"; break;
+                case UNOP_POSTDEC: name = "post--"; break;
+            }
+            printf("(%s ", name);
             print_exp(exp->unary.operand);
             printf(")");
             break;
+        }
         case EXP_BINOP:
             printf("(");
             print_exp(exp->binop.lhs);
@@ -465,6 +480,35 @@ void test_parse_compound_assign_right_assoc() {
     printf("  PASS: test_parse_compound_assign_right_assoc\n");
 }
 
+// --- Increment / decrement tests ---
+//
+// Prefix `++id` / `--id` and postfix `id++` / `id--` each parse to a unary
+// node over the variable, tagged with the matching pre/post op. Each case is
+// parsed as `int main() { return <exp>; }`.
+void test_parse_prefix_increment() {
+    Token toks[] = { make_op_token(TOK_INCR), make_ident_token("x") };
+    check_return_exp("++x", toks, COUNT_OF(toks),
+        create_unary_exp(UNOP_PREINC, create_variable_exp("x")));
+}
+
+void test_parse_prefix_decrement() {
+    Token toks[] = { make_op_token(TOK_DECR), make_ident_token("x") };
+    check_return_exp("--x", toks, COUNT_OF(toks),
+        create_unary_exp(UNOP_PREDEC, create_variable_exp("x")));
+}
+
+void test_parse_postfix_increment() {
+    Token toks[] = { make_ident_token("x"), make_op_token(TOK_INCR) };
+    check_return_exp("x++", toks, COUNT_OF(toks),
+        create_unary_exp(UNOP_POSTINC, create_variable_exp("x")));
+}
+
+void test_parse_postfix_decrement() {
+    Token toks[] = { make_ident_token("x"), make_op_token(TOK_DECR) };
+    check_return_exp("x--", toks, COUNT_OF(toks),
+        create_unary_exp(UNOP_POSTDEC, create_variable_exp("x")));
+}
+
 int main(void) {
     printf("Running parser tests...\n");
     test_create_int_exp();
@@ -482,6 +526,10 @@ int main(void) {
     test_precedence_unary_over_binary();
     test_parse_compound_assign_ops();
     test_parse_compound_assign_right_assoc();
+    test_parse_prefix_increment();
+    test_parse_prefix_decrement();
+    test_parse_postfix_increment();
+    test_parse_postfix_decrement();
     printf("All parser tests passed!\n");
     return 0;
 }

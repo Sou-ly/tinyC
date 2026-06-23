@@ -8,7 +8,11 @@
 typedef enum {
     UNOP_COMP,
     UNOP_MINUS,
-	UNOP_NOT
+	UNOP_NOT,
+	UNOP_POSTINC,
+	UNOP_PREINC,
+	UNOP_POSTDEC,
+	UNOP_PREDEC
 } AstUnopType;
 
 typedef enum {

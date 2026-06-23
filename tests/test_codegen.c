@@ -963,6 +963,75 @@ void test_emit_short_circuit_program() {
     printf("  PASS: test_emit_short_circuit_program\n");
 }
 
+// --- increment / decrement codegen ---
+//
+// Once inc/dec lowers to `x = x +/- 1` (plus a save temp for postfix), no IR
+// instruction kinds are new, so codegen and emission already handle it. These
+// drive all four forms from a table.
+static const struct {
+    const char* desc;
+    AstUnopType op;
+    x86_Binop x86_op;
+    const char* mnemonic;
+} incdec_cases[] = {
+    { "++x", UNOP_PREINC,  x86_ADD, "addl $1" },
+    { "--x", UNOP_PREDEC,  x86_SUB, "subl $1" },
+    { "x++", UNOP_POSTINC, x86_ADD, "addl $1" },
+    { "x--", UNOP_POSTDEC, x86_SUB, "subl $1" },
+};
+
+// int main() { return <incdec> x; }  must codegen an in-place add/sub of $1.
+void test_codegen_incdec_binop() {
+    for (size_t c = 0; c < sizeof(incdec_cases) / sizeof(incdec_cases[0]); c++) {
+        AstProgram program = make_test_program(
+            create_unary_exp(incdec_cases[c].op, create_variable_exp("x")));
+        IrProgram ir = emit_ir(&program);
+        x86_Program asm_prog = codegen(&ir);
+
+        bool found = false;
+        for (x86_Instr* i = asm_prog.functions[0].instrs.head; i; i = i->next) {
+            if (i->kind == x86_BINOP && i->binop.optype == incdec_cases[c].x86_op
+                && i->binop.rhs.kind == x86_IMM && i->binop.rhs.imm == 1) {
+                found = true;
+            }
+        }
+        assert(found);
+
+        destroy_x86_program(&asm_prog);
+        destroy_program(&program);
+    }
+    printf("  PASS: test_codegen_incdec_binop\n");
+}
+
+// End-to-end: each inc/dec form renders its add/sub through the full pipeline
+// and leaves no pseudo-registers behind.
+void test_emit_incdec_program() {
+    for (size_t c = 0; c < sizeof(incdec_cases) / sizeof(incdec_cases[0]); c++) {
+        AstProgram program = make_test_program(
+            create_unary_exp(incdec_cases[c].op, create_variable_exp("x")));
+        IrProgram ir = emit_ir(&program);
+        x86_Program asm_prog = codegen(&ir);
+
+        int stack_offset = rename_registers(&asm_prog.functions[0]);
+        allocate_stack(&asm_prog.functions[0], stack_offset);
+
+        char* buf = NULL;
+        size_t buf_size = 0;
+        FILE* out = open_memstream(&buf, &buf_size);
+        emit_asm(&asm_prog, out);
+        fclose(out);
+
+        assert(strstr(buf, incdec_cases[c].mnemonic) != NULL);
+        assert(strstr(buf, "<pseudo:") == NULL);
+        assert(strstr(buf, "???") == NULL);
+
+        free(buf);
+        destroy_x86_program(&asm_prog);
+        destroy_program(&program);
+    }
+    printf("  PASS: test_emit_incdec_program\n");
+}
+
 int main(void) {
     printf("Running codegen tests...\n");
     test_create_x86_function();
@@ -992,6 +1061,8 @@ int main(void) {
     test_emit_cmp_setcc_jmp_label();
     test_emit_relational_program();
     test_emit_short_circuit_program();
+    test_codegen_incdec_binop();
+    test_emit_incdec_program();
     printf("All codegen tests passed!\n");
     return 0;
 }

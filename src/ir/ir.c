@@ -34,6 +34,12 @@ static IrUnopType convert_ir_unary(AstUnopType ast_op) {
 		case UNOP_COMP:		return IR_COMP;
 		case UNOP_MINUS:	return IR_NEG;
 		case UNOP_NOT:		return IR_NOT;
+		// inc/dec are lowered in emit_ir_expression and never reach here.
+		case UNOP_PREINC:
+		case UNOP_PREDEC:
+		case UNOP_POSTINC:
+		case UNOP_POSTDEC:
+			break;
 	}
 	fprintf(stderr, "ir: unsupported unary operator\n");
 	exit(1);
@@ -108,14 +114,38 @@ static IrVal emit_ir_expression(const AstExp* exp, IrFunction* ir_function) {
 			return constant;
 		}
 		case EXP_UNOP: {
-			IrVal src = emit_ir_expression(exp->unary.operand, ir_function);
-			IrVal dst = { IR_VARIABLE, .name = generate_variable_name() };
-			IrInstruction instruction = {
-				IR_UNOP,
-				.unary = { convert_ir_unary(exp->unary.op_type), src, dst }
-			};
-			append_ir_instruction(ir_function, instruction);
-			return dst;
+			if (exp->unary.op_type == UNOP_POSTINC || exp->unary.op_type == UNOP_POSTDEC) {
+				// postfix: save the old value, mutate in place, yield the saved temp.
+				// The parser guarantees the operand is an lvalue (a variable).
+				assert(exp->unary.operand->kind == EXP_VAR);
+				IrVal var = emit_ir_expression(exp->unary.operand, ir_function);
+				IrBinopType step_op = exp->unary.op_type == UNOP_POSTINC ? IR_ADD : IR_SUB;
+				IrVal one = { IR_CONSTANT, .int_val = 1 };
+				IrVal old = { IR_VARIABLE, .name = generate_variable_name() };
+				IrInstruction save = { IR_COPY, .copy = { .src = var, .dst = old } };
+				append_ir_instruction(ir_function, save);
+				IrInstruction step = { IR_BINOP, .binop = { .op = step_op, .lhs = var, .rhs = one, .dst = var } };
+				append_ir_instruction(ir_function, step);
+				return old;
+			} else if (exp->unary.op_type == UNOP_PREINC || exp->unary.op_type == UNOP_PREDEC) {
+				// prefix: mutate in place first, yield the variable itself.
+				assert(exp->unary.operand->kind == EXP_VAR);
+				IrVal var = emit_ir_expression(exp->unary.operand, ir_function);
+				IrBinopType step_op = exp->unary.op_type == UNOP_PREINC ? IR_ADD : IR_SUB;
+				IrVal one = { IR_CONSTANT, .int_val = 1 };
+				IrInstruction step = { IR_BINOP, .binop = { .op = step_op, .lhs = var, .rhs = one, .dst = var } };
+				append_ir_instruction(ir_function, step);
+				return var;
+			} else {
+				IrVal src = emit_ir_expression(exp->unary.operand, ir_function);
+				IrVal dst = { IR_VARIABLE, .name = generate_variable_name() };
+				IrInstruction instruction = {
+					IR_UNOP,
+					.unary = { convert_ir_unary(exp->unary.op_type), src, dst }
+				};
+				append_ir_instruction(ir_function, instruction);
+				return dst;
+			}
 		}
 		case EXP_BINOP: {
 			IrBinopType optype = convert_ir_binop(exp->binop.op_type);
