@@ -53,6 +53,16 @@ const char *operator_name(TokenOperator o) {
 		case TOK_GREATER:	return ">";
 		case TOK_LEQ:		return "<=";
 		case TOK_GEQ:		return ">=";
+		case TOK_PLUS_EQ:	return "+=";
+		case TOK_MINUS_EQ:	return "-=";
+		case TOK_MUL_EQ:	return "*=";
+		case TOK_DIV_EQ:	return "/=";
+		case TOK_MOD_EQ:	return "%=";
+		case TOK_AND_EQ:	return "&=";
+		case TOK_OR_EQ:		return "|=";
+		case TOK_XOR_EQ:	return "^=";
+		case TOK_RSHIFT_EQ:	return ">>=";
+		case TOK_LSHIFT_EQ:	return "<<=";
 	}
 	return "<unknown>";
 }
@@ -91,13 +101,18 @@ typedef struct {
 #define OP(s, v)  { s, sizeof(s) - 1, TOK_OPERATOR, v }
 #define SEP(s, v) { s, sizeof(s) - 1, TOK_SEPARATOR, v }
 
-// Two-char operators must precede their one-char prefixes ("<<" before "<").
+// Longer lexemes must precede their prefixes (">>=" before ">>" before ">").
 static const PunctEntry punct_table[] = {
+	OP(">>=", TOK_RSHIFT_EQ),	OP("<<=", TOK_LSHIFT_EQ),
 	OP("++", TOK_INCR),		OP("--", TOK_DECR),
 	OP("<<", TOK_LSHIFT),	OP(">>", TOK_RSHIFT),
 	OP("==", TOK_EQ),		OP("!=", TOK_NEQ),
 	OP("<=", TOK_LEQ),		OP(">=", TOK_GEQ),
 	OP("&&", TOK_LAND),		OP("||", TOK_LOR),
+	OP("+=", TOK_PLUS_EQ),	OP("-=", TOK_MINUS_EQ),
+	OP("*=", TOK_MUL_EQ),	OP("/=", TOK_DIV_EQ),
+	OP("%=", TOK_MOD_EQ),	OP("&=", TOK_AND_EQ),
+	OP("|=", TOK_OR_EQ),		OP("^=", TOK_XOR_EQ),
 	OP("+",  TOK_PLUS),		OP("-",  TOK_MINUS),
 	OP("*",  TOK_STAR),		OP("/",  TOK_FSLASH),
 	OP("%",  TOK_PERCENT),	OP("~",  TOK_NOT),

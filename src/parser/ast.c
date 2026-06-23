@@ -25,9 +25,10 @@ AstExp* create_variable_exp(const char* identifier) {
     return e;
 }
 
-AstExp* create_assign_exp(AstExp* lhs, AstExp* rhs) {
+AstExp* create_assign_exp(AstAssignOp op, AstExp* lhs, AstExp* rhs) {
     AstExp* e = malloc(sizeof(AstExp));
     e->kind = EXP_ASSIGN;
+	e->assign.op  = op;
     e->assign.lhs = lhs;
     e->assign.rhs = rhs;
     return e;
