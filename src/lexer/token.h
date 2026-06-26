@@ -20,6 +20,8 @@ typedef enum {
 	TOK_RBRACE,
 	TOK_COMMA,
 	TOK_SEMICOLON,
+	TOK_COLON,
+	TOK_QUESTION_MARK
 } TokenSeparator;
 
 typedef enum {
@@ -64,6 +66,7 @@ typedef enum {
 
 typedef enum {
 	TOK_IF,
+	TOK_ELSE,
 	TOK_INT,
 	TOK_RETURN,
 	TOK_VOID,

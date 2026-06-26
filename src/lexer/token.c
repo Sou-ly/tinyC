@@ -18,12 +18,14 @@ const char *token_kind_name(TokenKind kind) {
 
 const char *separator_name(TokenSeparator s) {
 	switch (s) {
-		case TOK_LPAR:      return "(";
-		case TOK_RPAR:      return ")";
-		case TOK_LBRACE:    return "{";
-		case TOK_RBRACE:    return "}";
-		case TOK_COMMA:     return ",";
-		case TOK_SEMICOLON: return ";";
+		case TOK_LPAR:			return "(";
+		case TOK_RPAR:      	return ")";
+		case TOK_LBRACE:    	return "{";
+		case TOK_RBRACE:    	return "}";
+		case TOK_COMMA:     	return ",";
+		case TOK_SEMICOLON: 	return ";";
+		case TOK_COLON:			return ":";
+		case TOK_QUESTION_MARK: return "?";
 	}
 	return "<unknown>";
 }
@@ -70,6 +72,7 @@ const char *operator_name(TokenOperator o) {
 const char *keyword_name(TokenKeyword k) {
 	switch (k) {
 		case TOK_IF:     return "if";
+		case TOK_ELSE:   return "if";
 		case TOK_INT:    return "int";
 		case TOK_RETURN: return "return";
 		case TOK_VOID:   return "void";
@@ -78,14 +81,15 @@ const char *keyword_name(TokenKeyword k) {
 }
 
 static int keyword_lookup(const char *word, size_t len) {
-	static const struct { const char *name; size_t len; TokenKeyword kw; } table[] = {
-		{ "if",     2, TOK_IF     },
-		{ "int",    3, TOK_INT    },
-		{ "return", 6, TOK_RETURN },
-		{ "void",   4, TOK_VOID   },
+	static const struct { const char *name; TokenKeyword kw; } table[] = {
+		{ "if",     TOK_IF     },
+		{ "else",   TOK_IF     },
+		{ "int",    TOK_INT    },
+		{ "return", TOK_RETURN },
+		{ "void",   TOK_VOID   },
 	};
 	for (size_t i = 0; i < sizeof table / sizeof table[0]; i++) {
-		if (table[i].len == len && strncmp(word, table[i].name, len) == 0)
+		if (strncmp(word, table[i].name, len) == 0)
 			return table[i].kw;
 	}
 	return -1;
@@ -104,24 +108,24 @@ typedef struct {
 // Longer lexemes must precede their prefixes (">>=" before ">>" before ">").
 static const PunctEntry punct_table[] = {
 	OP(">>=", TOK_RSHIFT_EQ),	OP("<<=", TOK_LSHIFT_EQ),
-	OP("++", TOK_INCR),		OP("--", TOK_DECR),
-	OP("<<", TOK_LSHIFT),	OP(">>", TOK_RSHIFT),
-	OP("==", TOK_EQ),		OP("!=", TOK_NEQ),
-	OP("<=", TOK_LEQ),		OP(">=", TOK_GEQ),
-	OP("&&", TOK_LAND),		OP("||", TOK_LOR),
-	OP("+=", TOK_PLUS_EQ),	OP("-=", TOK_MINUS_EQ),
-	OP("*=", TOK_MUL_EQ),	OP("/=", TOK_DIV_EQ),
-	OP("%=", TOK_MOD_EQ),	OP("&=", TOK_AND_EQ),
+	OP("++", TOK_INCR),			OP("--", TOK_DECR),
+	OP("<<", TOK_LSHIFT),		OP(">>", TOK_RSHIFT),
+	OP("==", TOK_EQ),			OP("!=", TOK_NEQ),
+	OP("<=", TOK_LEQ),			OP(">=", TOK_GEQ),
+	OP("&&", TOK_LAND),			OP("||", TOK_LOR),
+	OP("+=", TOK_PLUS_EQ),		OP("-=", TOK_MINUS_EQ),
+	OP("*=", TOK_MUL_EQ),		OP("/=", TOK_DIV_EQ),
+	OP("%=", TOK_MOD_EQ),		OP("&=", TOK_AND_EQ),
 	OP("|=", TOK_OR_EQ),		OP("^=", TOK_XOR_EQ),
-	OP("+",  TOK_PLUS),		OP("-",  TOK_MINUS),
-	OP("*",  TOK_STAR),		OP("/",  TOK_FSLASH),
-	OP("%",  TOK_PERCENT),	OP("~",  TOK_NOT),
-	OP("&",  TOK_AND),		OP("|",  TOK_OR),
-	OP("^",  TOK_XOR),		OP("!",  TOK_LNOT),
-	OP("<",  TOK_LESS),		OP(">",  TOK_GREATER),
-	OP("=", TOK_ASSIGN),	SEP("(", TOK_LPAR),
-	SEP(")", TOK_RPAR),		SEP("{", TOK_LBRACE), 
-	SEP("}", TOK_RBRACE),	SEP(",", TOK_COMMA),
+	OP("+",  TOK_PLUS),			OP("-",  TOK_MINUS),
+	OP("*",  TOK_STAR),			OP("/",  TOK_FSLASH),
+	OP("%",  TOK_PERCENT),		OP("~",  TOK_NOT),
+	OP("&",  TOK_AND),			OP("|",  TOK_OR),
+	OP("^",  TOK_XOR),			OP("!",  TOK_LNOT),
+	OP("<",  TOK_LESS),			OP(">",  TOK_GREATER),
+	OP("=", TOK_ASSIGN),		SEP("(", TOK_LPAR),
+	SEP(")", TOK_RPAR),			SEP("{", TOK_LBRACE), 
+	SEP("}", TOK_RBRACE),		SEP(",", TOK_COMMA),
 	SEP(";", TOK_SEMICOLON)
 };
 
@@ -183,7 +187,6 @@ LexerErr tokenize(const char *source, struct TokenList *tokens) {
 				val = val * 10 + (source[i] - '0');
 				i++;
 			}
-
 			Token t = { .kind = TOK_INT_LITERAL, .int_val = val };
 			token_list_push(tokens, t);
 		} else if (isspace((unsigned char)source[i])) {
