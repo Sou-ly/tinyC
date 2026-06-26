@@ -1,4 +1,5 @@
 #include "parser.h"
+#include "../ice.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -77,8 +78,7 @@ static int precedence(Token* tok) {
 		case TOK_LSHIFT_EQ:	return 1;
 		default:			break;
 	}
-	fprintf(stderr, "precedence: unrecognized token operator");
-	exit(1);
+	ICE("precedence: unrecognized token operator");
 }
 
 static AstBinopType tok_to_binop(TokenOperator op) {
@@ -114,8 +114,7 @@ static AstBinopType tok_to_binop(TokenOperator op) {
 		case TOK_LSHIFT_EQ:	return BINOP_ASSIGN;
 		default:			break;
 	}
-	fprintf(stderr, "binop: unrecognized token operator");
-	exit(1);
+	ICE("binop: unrecognized token operator");
 }
 
 static AstUnopType tok_to_unop(TokenOperator op) {
@@ -125,8 +124,7 @@ static AstUnopType tok_to_unop(TokenOperator op) {
 		case TOK_LNOT:		return UNOP_NOT;
 		default:			break;
 	}
-	fprintf(stderr, "unop: unrecognized token operator");
-	exit(1);
+	ICE("unop: unrecognized token operator");
 }
 
 static Token* current(Parser* p) {
@@ -293,10 +291,10 @@ static AstBlockItem parse_block_item(Parser* p) {
 	AstBlockItem block_item;
 	if (current(p)->kind == TOK_KEYWORD && current(p)->kw == TOK_INT) {
 		block_item.type = AST_DECLARATION;
-		block_item.decl = parse_declaration(p);
+		block_item.as.decl = parse_declaration(p);
 	} else {
 		block_item.type = AST_STATEMENT;
-		block_item.stmt = parse_statement(p);
+		block_item.as.stmt = parse_statement(p);
 	}
 	return block_item;
 }
@@ -408,31 +406,31 @@ static AstExp* resolve_expression(AstExp* exp, VarMap* map) {
 		case EXP_INT:
 			return exp;
 		case EXP_VAR: {
-			char* resolved = varmap_get(map, exp->variable.identifier);
+			char* resolved = varmap_get(map, exp->as.variable.identifier);
 			if (!resolved) {
 				fprintf(stderr, "error: undeclared variable '%s'\n",
-						exp->variable.identifier);
+						exp->as.variable.identifier);
 				exit(1);
 			}
-			free(exp->variable.identifier);
-			exp->variable.identifier = strdup(resolved);
+			free(exp->as.variable.identifier);
+			exp->as.variable.identifier = strdup(resolved);
 			return exp;
 		}
 		case EXP_ASSIGN: {
-			if (exp->assign.lhs->kind != EXP_VAR) {
+			if (exp->as.assign.lhs->kind != EXP_VAR) {
 				fprintf(stderr, "error: invalid lvalue in assignment\n");
 				exit(1);
 			}
-			exp->assign.lhs = resolve_expression(exp->assign.lhs, map);
-			exp->assign.rhs = resolve_expression(exp->assign.rhs, map);
+			exp->as.assign.lhs = resolve_expression(exp->as.assign.lhs, map);
+			exp->as.assign.rhs = resolve_expression(exp->as.assign.rhs, map);
 			return exp;
 		}
 		case EXP_UNOP:
-			exp->unary.operand = resolve_expression(exp->unary.operand, map);
+			exp->as.unary.operand = resolve_expression(exp->as.unary.operand, map);
 			return exp;
 		case EXP_BINOP:
-			exp->binop.lhs = resolve_expression(exp->binop.lhs, map);
-			exp->binop.rhs = resolve_expression(exp->binop.rhs, map);
+			exp->as.binop.lhs = resolve_expression(exp->as.binop.lhs, map);
+			exp->as.binop.rhs = resolve_expression(exp->as.binop.rhs, map);
 			return exp;
 	}
 	return exp;
@@ -441,10 +439,10 @@ static AstExp* resolve_expression(AstExp* exp, VarMap* map) {
 static AstStatement resolve_statement(AstStatement stmt, VarMap* map) {
 	switch (stmt.kind) {
 		case STMT_RETURN:
-			stmt.ret.exp = resolve_expression(stmt.ret.exp, map);
+			stmt.as.ret.exp = resolve_expression(stmt.as.ret.exp, map);
 			break;
 		case STMT_EXP:
-			stmt.exp_stmt.exp = resolve_expression(stmt.exp_stmt.exp, map);
+			stmt.as.exp_stmt.exp = resolve_expression(stmt.as.exp_stmt.exp, map);
 			break;
 	}
 	return stmt;
@@ -476,10 +474,10 @@ static AstDeclaration resolve_declaration(AstDeclaration decl, VarMap* map) {
 static AstBlockItem resolve_block_item(AstBlockItem item, VarMap* map) {
 	switch (item.type) {
 		case AST_DECLARATION:
-			item.decl = resolve_declaration(item.decl, map);
+			item.as.decl = resolve_declaration(item.as.decl, map);
 			break;
 		case AST_STATEMENT:
-			item.stmt = resolve_statement(item.stmt, map);
+			item.as.stmt = resolve_statement(item.as.stmt, map);
 			break;
 	}
 	return item;

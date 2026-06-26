@@ -12,7 +12,7 @@ void test_create_int_exp() {
     AstExp* e = create_int_exp(42);
     assert(e != NULL);
     assert(e->kind == EXP_INT);
-    assert(e->int_lit.value == 42);
+    assert(e->as.int_lit.value == 42);
     destroy_exp(e);
     printf("  PASS: test_create_int_exp\n");
 }
@@ -21,8 +21,8 @@ void test_create_unary_exp() {
     AstExp* e = create_unary_exp(UNOP_MINUS, create_int_exp(5));
     assert(e != NULL);
     assert(e->kind == EXP_UNOP);
-    assert(e->unary.op_type == UNOP_MINUS);
-    assert(e->unary.operand->int_lit.value == 5);
+    assert(e->as.unary.op_type == UNOP_MINUS);
+    assert(e->as.unary.operand->as.int_lit.value == 5);
     destroy_exp(e);
     printf("  PASS: test_create_unary_exp\n");
 }
@@ -31,9 +31,9 @@ void test_create_binop_exp() {
     AstExp* e = create_binop_exp(BINOP_ADD, create_int_exp(3), create_int_exp(7));
     assert(e != NULL);
     assert(e->kind == EXP_BINOP);
-    assert(e->binop.op_type == BINOP_ADD);
-    assert(e->binop.lhs->int_lit.value == 3);
-    assert(e->binop.rhs->int_lit.value == 7);
+    assert(e->as.binop.op_type == BINOP_ADD);
+    assert(e->as.binop.lhs->as.int_lit.value == 3);
+    assert(e->as.binop.rhs->as.int_lit.value == 7);
     destroy_exp(e);
     printf("  PASS: test_create_binop_exp\n");
 }
@@ -41,7 +41,7 @@ void test_create_binop_exp() {
 void test_create_return_stmt() {
     AstStatement s = make_return_stmt(create_int_exp(2));
     assert(s.kind == STMT_RETURN);
-    assert(s.ret.exp->int_lit.value == 2);
+    assert(s.as.ret.exp->as.int_lit.value == 2);
     destroy_stmt(&s);
     printf("  PASS: test_create_return_stmt\n");
 }
@@ -50,13 +50,13 @@ void test_create_function_decl() {
     AstFunction fn = ast_function_make("main", 8);
     ast_function_append(&fn, (AstBlockItem){
         .type = AST_STATEMENT,
-        .stmt = make_return_stmt(create_int_exp(0)),
+        .as.stmt = make_return_stmt(create_int_exp(0)),
     });
 
     assert(strcmp(fn.identifier, "main") == 0);
     assert(fn.size == 1);
     assert(fn.body[0].type == AST_STATEMENT);
-    assert(fn.body[0].stmt.kind == STMT_RETURN);
+    assert(fn.body[0].as.stmt.kind == STMT_RETURN);
     ast_function_destroy(&fn);
     printf("  PASS: test_create_function_decl\n");
 }
@@ -84,9 +84,9 @@ void test_parse_return_2() {
     assert(strcmp(prog.functions[0].identifier, "main") == 0);
     assert(prog.functions[0].size == 1);
     assert(prog.functions[0].body[0].type == AST_STATEMENT);
-    assert(prog.functions[0].body[0].stmt.kind == STMT_RETURN);
-    assert(prog.functions[0].body[0].stmt.ret.exp->kind == EXP_INT);
-    assert(prog.functions[0].body[0].stmt.ret.exp->int_lit.value == 2);
+    assert(prog.functions[0].body[0].as.stmt.kind == STMT_RETURN);
+    assert(prog.functions[0].body[0].as.stmt.as.ret.exp->kind == EXP_INT);
+    assert(prog.functions[0].body[0].as.stmt.as.ret.exp->as.int_lit.value == 2);
 
     destroy_program(&prog);
     free(tokens.items);
@@ -145,11 +145,11 @@ static const char* binop_name(AstBinopType op) {
 static void print_exp(const AstExp* exp) {
     switch (exp->kind) {
         case EXP_INT:
-            printf("%d", exp->int_lit.value);
+            printf("%d", exp->as.int_lit.value);
             break;
         case EXP_UNOP: {
             const char* name = "?";
-            switch (exp->unary.op_type) {
+            switch (exp->as.unary.op_type) {
                 case UNOP_COMP:    name = "!";   break;
                 case UNOP_MINUS:   name = "-";   break;
                 case UNOP_NOT:     name = "~";   break;
@@ -159,25 +159,25 @@ static void print_exp(const AstExp* exp) {
                 case UNOP_POSTDEC: name = "post--"; break;
             }
             printf("(%s ", name);
-            print_exp(exp->unary.operand);
+            print_exp(exp->as.unary.operand);
             printf(")");
             break;
         }
         case EXP_BINOP:
             printf("(");
-            print_exp(exp->binop.lhs);
-            printf(" %s ", binop_name(exp->binop.op_type));
-            print_exp(exp->binop.rhs);
+            print_exp(exp->as.binop.lhs);
+            printf(" %s ", binop_name(exp->as.binop.op_type));
+            print_exp(exp->as.binop.rhs);
             printf(")");
             break;
         case EXP_VAR:
-            printf("%s", exp->variable.identifier);
+            printf("%s", exp->as.variable.identifier);
             break;
         case EXP_ASSIGN:
             printf("(");
-            print_exp(exp->assign.lhs);
+            print_exp(exp->as.assign.lhs);
             printf(" = ");
-            print_exp(exp->assign.rhs);
+            print_exp(exp->as.assign.rhs);
             printf(")");
             break;
     }
@@ -189,19 +189,19 @@ static bool exp_equals(const AstExp* a, const AstExp* b) {
     }
     switch (a->kind) {
         case EXP_INT:
-            return a->int_lit.value == b->int_lit.value;
+            return a->as.int_lit.value == b->as.int_lit.value;
         case EXP_UNOP:
-            return a->unary.op_type == b->unary.op_type
-                && exp_equals(a->unary.operand, b->unary.operand);
+            return a->as.unary.op_type == b->as.unary.op_type
+                && exp_equals(a->as.unary.operand, b->as.unary.operand);
         case EXP_BINOP:
-            return a->binop.op_type == b->binop.op_type
-                && exp_equals(a->binop.lhs, b->binop.lhs)
-                && exp_equals(a->binop.rhs, b->binop.rhs);
+            return a->as.binop.op_type == b->as.binop.op_type
+                && exp_equals(a->as.binop.lhs, b->as.binop.lhs)
+                && exp_equals(a->as.binop.rhs, b->as.binop.rhs);
         case EXP_VAR:
-            return strcmp(a->variable.identifier, b->variable.identifier) == 0;
+            return strcmp(a->as.variable.identifier, b->as.variable.identifier) == 0;
         case EXP_ASSIGN:
-            return exp_equals(a->assign.lhs, b->assign.lhs)
-                && exp_equals(a->assign.rhs, b->assign.rhs);
+            return exp_equals(a->as.assign.lhs, b->as.assign.lhs)
+                && exp_equals(a->as.assign.rhs, b->as.assign.rhs);
     }
     return false;
 }
@@ -227,7 +227,7 @@ static void check_return_exp(const char* description, const Token* exp_tokens,
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstExp* actual = prog.functions[0].body[0].stmt.ret.exp;
+    AstExp* actual = prog.functions[0].body[0].as.stmt.as.ret.exp;
     if (!exp_equals(actual, expected)) {
         printf("  FAIL: %s\n    expected: ", description);
         print_exp(expected);
@@ -412,15 +412,15 @@ static void check_assign_op(const char* description, TokenOperator tok_op,
 
     AstBlockItem item = prog.functions[0].body[0];
     assert(item.type == AST_STATEMENT);
-    assert(item.stmt.kind == STMT_EXP);
-    AstExp* exp = item.stmt.exp_stmt.exp;
+    assert(item.as.stmt.kind == STMT_EXP);
+    AstExp* exp = item.as.stmt.as.exp_stmt.exp;
     assert(exp->kind == EXP_ASSIGN);
-    assert(exp->assign.lhs->kind == EXP_VAR);
-    assert(strcmp(exp->assign.lhs->variable.identifier, "x") == 0);
-    assert(exp->assign.rhs->kind == EXP_INT && exp->assign.rhs->int_lit.value == 5);
-    if (exp->assign.op != expected_op) {
+    assert(exp->as.assign.lhs->kind == EXP_VAR);
+    assert(strcmp(exp->as.assign.lhs->as.variable.identifier, "x") == 0);
+    assert(exp->as.assign.rhs->kind == EXP_INT && exp->as.assign.rhs->as.int_lit.value == 5);
+    if (exp->as.assign.op != expected_op) {
         printf("  FAIL: %s (expected assign op %d, got %d)\n",
-               description, expected_op, exp->assign.op);
+               description, expected_op, exp->as.assign.op);
         exit(1);
     }
 
@@ -464,16 +464,16 @@ void test_parse_compound_assign_right_assoc() {
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstExp* outer = prog.functions[0].body[0].stmt.exp_stmt.exp;
-    assert(outer->kind == EXP_ASSIGN && outer->assign.op == ASSIGN_ADD);
-    assert(outer->assign.lhs->kind == EXP_VAR);
-    assert(strcmp(outer->assign.lhs->variable.identifier, "x") == 0);
+    AstExp* outer = prog.functions[0].body[0].as.stmt.as.exp_stmt.exp;
+    assert(outer->kind == EXP_ASSIGN && outer->as.assign.op == ASSIGN_ADD);
+    assert(outer->as.assign.lhs->kind == EXP_VAR);
+    assert(strcmp(outer->as.assign.lhs->as.variable.identifier, "x") == 0);
 
-    AstExp* inner = outer->assign.rhs;
-    assert(inner->kind == EXP_ASSIGN && inner->assign.op == ASSIGN_MUL);
-    assert(inner->assign.lhs->kind == EXP_VAR);
-    assert(strcmp(inner->assign.lhs->variable.identifier, "y") == 0);
-    assert(inner->assign.rhs->kind == EXP_INT && inner->assign.rhs->int_lit.value == 5);
+    AstExp* inner = outer->as.assign.rhs;
+    assert(inner->kind == EXP_ASSIGN && inner->as.assign.op == ASSIGN_MUL);
+    assert(inner->as.assign.lhs->kind == EXP_VAR);
+    assert(strcmp(inner->as.assign.lhs->as.variable.identifier, "y") == 0);
+    assert(inner->as.assign.rhs->kind == EXP_INT && inner->as.assign.rhs->as.int_lit.value == 5);
 
     destroy_program(&prog);
     token_list_destroy(&tokens);

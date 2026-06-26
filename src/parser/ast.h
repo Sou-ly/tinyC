@@ -65,15 +65,21 @@ typedef enum {
 
 typedef struct AstExp AstExp;
 
+typedef struct { int value; }										AstExpInt;
+typedef struct { AstUnopType op_type; AstExp* operand; }			AstExpUnary;
+typedef struct { AstBinopType op_type; AstExp* lhs; AstExp* rhs; }	AstExpBinop;
+typedef struct { char* identifier; }								AstExpVar;
+typedef struct { AstAssignOp op; AstExp* lhs; AstExp* rhs; }		AstExpAssign;
+
 struct AstExp {
     AstExpKind kind;
     union {
-        struct { int value; }											int_lit;
-        struct { AstUnopType op_type; AstExp* operand; }				unary;
-        struct { AstBinopType op_type; AstExp* lhs; AstExp* rhs; }		binop;
-		struct { char* identifier; }									variable;
-		struct { AstAssignOp op; AstExp* lhs; AstExp* rhs; }			assign;
-    };
+        AstExpInt		int_lit;
+        AstExpUnary		unary;
+        AstExpBinop		binop;
+        AstExpVar		variable;
+        AstExpAssign	assign;
+    } as;
 };
 
 AstExp* create_int_exp(int value);
@@ -90,16 +96,24 @@ typedef enum {
     STMT_EXP
 } AstStatementKind;
 
-typedef struct {
+typedef struct AstStatement AstStatement;
+
+typedef struct { AstExp* exp; }													AstStmtReturn;
+typedef struct { AstExp* exp; }													AstStmtExp;
+typedef struct { AstExp* cond; AstStatement* then_br; AstStatement* else_br; }	AstStmtIf;
+
+struct AstStatement {
     AstStatementKind kind;
     union {
-        struct { AstExp* exp; } ret;
-        struct { AstExp* exp; } exp_stmt;
-    };
-} AstStatement;
+        AstStmtReturn	ret;
+        AstStmtExp		exp_stmt;
+        AstStmtIf		if_cond;
+    } as;
+};
 
 AstStatement make_return_stmt(AstExp* exp);
 AstStatement make_exp_stmt(AstExp* exp);
+AstStatement make_if_stmt(AstExp* cond, AstStatement* then_br, AstStatement* else_br);
 void destroy_stmt(AstStatement* stmt);
 
 // --- Declarations ---
@@ -119,7 +133,7 @@ typedef struct {
 	union {
 		AstDeclaration	decl;
 		AstStatement	stmt;
-	};
+	} as;
 } AstBlockItem;
 
 typedef struct {

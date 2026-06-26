@@ -12,9 +12,9 @@
 
 void test_create_x86_function() {
     x86_InstrList instrs = x86_instr_list_new();
-    x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_MOV, .mov = {
-        .dst = (x86_Operand){.kind = x86_REG, .reg = x86_AX},
-        .src = (x86_Operand){.kind = x86_IMM, .imm = 5}
+    x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_MOV, .as.mov = {
+        .dst = (x86_Operand){.kind = x86_REG, .as.reg = x86_AX},
+        .src = (x86_Operand){.kind = x86_IMM, .as.imm = 5}
     }});
     x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_RET});
 
@@ -47,7 +47,7 @@ static AstProgram make_test_program(AstExp* expr) {
     AstFunction fn = ast_function_make("main", 8);
     ast_function_append(&fn, (AstBlockItem){
         .type = AST_STATEMENT,
-        .stmt = make_return_stmt(expr),
+        .as.stmt = make_return_stmt(expr),
     });
     AstFunction* functions = malloc(sizeof(AstFunction));
     functions[0] = fn;
@@ -66,8 +66,8 @@ void test_codegen_return_2() {
     assert(strcmp(asm_prog.functions[0].name, "main") == 0);
     x86_Instr* first = asm_prog.functions[0].instrs.head;
     assert(first->kind == x86_MOV);
-    assert(first->mov.src.kind == x86_IMM);
-    assert(first->mov.src.imm == 2);
+    assert(first->as.mov.src.kind == x86_IMM);
+    assert(first->as.mov.src.as.imm == 2);
     assert(first->next->kind == x86_RET);
 
     destroy_x86_program(&asm_prog);
@@ -81,7 +81,7 @@ void test_codegen_return_0() {
     IrProgram ir = emit_ir(&program);
     x86_Program asm_prog = codegen(&ir);
 
-    assert(asm_prog.functions[0].instrs.head->mov.src.imm == 0);
+    assert(asm_prog.functions[0].instrs.head->as.mov.src.as.imm == 0);
 
     destroy_x86_program(&asm_prog);
     destroy_program(&program);
@@ -142,38 +142,38 @@ void test_codegen_return_complement_neg2() {
     // mov tmp0, $2
     assert(i != NULL);
     assert(i->kind == x86_MOV);
-    assert(i->mov.src.kind == x86_IMM);
-    assert(i->mov.src.imm == 2);
-    assert(i->mov.dst.kind == x86_ID);
+    assert(i->as.mov.src.kind == x86_IMM);
+    assert(i->as.mov.src.as.imm == 2);
+    assert(i->as.mov.dst.kind == x86_ID);
     i = i->next;
 
     // negl tmp0
     assert(i != NULL);
     assert(i->kind == x86_UNOP);
-    assert(i->unop.unop == x86_NEG);
-    assert(i->unop.operand.kind == x86_ID);
+    assert(i->as.unop.unop == x86_NEG);
+    assert(i->as.unop.operand.kind == x86_ID);
     i = i->next;
 
     // mov tmp1, tmp0
     assert(i != NULL);
     assert(i->kind == x86_MOV);
-    assert(i->mov.src.kind == x86_ID);
-    assert(i->mov.dst.kind == x86_ID);
+    assert(i->as.mov.src.kind == x86_ID);
+    assert(i->as.mov.dst.kind == x86_ID);
     i = i->next;
 
     // notl tmp1
     assert(i != NULL);
     assert(i->kind == x86_UNOP);
-    assert(i->unop.unop == x86_COMP);
-    assert(i->unop.operand.kind == x86_ID);
+    assert(i->as.unop.unop == x86_COMP);
+    assert(i->as.unop.operand.kind == x86_ID);
     i = i->next;
 
     // mov %eax, tmp1
     assert(i != NULL);
     assert(i->kind == x86_MOV);
-    assert(i->mov.dst.kind == x86_REG);
-    assert(i->mov.dst.reg == x86_AX);
-    assert(i->mov.src.kind == x86_ID);
+    assert(i->as.mov.dst.kind == x86_REG);
+    assert(i->as.mov.dst.as.reg == x86_AX);
+    assert(i->as.mov.src.kind == x86_ID);
     i = i->next;
 
     // ret
@@ -244,20 +244,20 @@ void test_codegen_binop_arithmetic() {
 
         // mov dst, $4   (lhs copied into the destination temp)
         assert(i != NULL && i->kind == x86_MOV);
-        assert(i->mov.dst.kind == x86_ID);
-        assert(i->mov.src.kind == x86_IMM && i->mov.src.imm == 4);
+        assert(i->as.mov.dst.kind == x86_ID);
+        assert(i->as.mov.src.kind == x86_IMM && i->as.mov.src.as.imm == 4);
         i = i->next;
 
         // <op> $5, dst
         assert(i != NULL && i->kind == x86_BINOP);
-        assert(i->binop.optype == cases[c].x86_op);
-        assert(i->binop.rhs.kind == x86_IMM && i->binop.rhs.imm == 5);
-        assert(i->binop.dst.kind == x86_ID);
+        assert(i->as.binop.optype == cases[c].x86_op);
+        assert(i->as.binop.rhs.kind == x86_IMM && i->as.binop.rhs.as.imm == 5);
+        assert(i->as.binop.dst.kind == x86_ID);
         i = i->next;
 
         // mov %eax, dst  (return lowering)
         assert(i != NULL && i->kind == x86_MOV);
-        assert(i->mov.dst.kind == x86_REG && i->mov.dst.reg == x86_AX);
+        assert(i->as.mov.dst.kind == x86_REG && i->as.mov.dst.as.reg == x86_AX);
         i = i->next;
 
         assert(i != NULL && i->kind == x86_RET);
@@ -292,20 +292,20 @@ void test_codegen_binop_bitwise() {
 
         // mov dst, $12   (lhs copied into the destination temp)
         assert(i != NULL && i->kind == x86_MOV);
-        assert(i->mov.dst.kind == x86_ID);
-        assert(i->mov.src.kind == x86_IMM && i->mov.src.imm == 12);
+        assert(i->as.mov.dst.kind == x86_ID);
+        assert(i->as.mov.src.kind == x86_IMM && i->as.mov.src.as.imm == 12);
         i = i->next;
 
         // <op> $2, dst
         assert(i != NULL && i->kind == x86_BINOP);
-        assert(i->binop.optype == cases[c].x86_op);
-        assert(i->binop.rhs.kind == x86_IMM && i->binop.rhs.imm == 2);
-        assert(i->binop.dst.kind == x86_ID);
+        assert(i->as.binop.optype == cases[c].x86_op);
+        assert(i->as.binop.rhs.kind == x86_IMM && i->as.binop.rhs.as.imm == 2);
+        assert(i->as.binop.dst.kind == x86_ID);
         i = i->next;
 
         // mov %eax, dst  (return lowering)
         assert(i != NULL && i->kind == x86_MOV);
-        assert(i->mov.dst.kind == x86_REG && i->mov.dst.reg == x86_AX);
+        assert(i->as.mov.dst.kind == x86_REG && i->as.mov.dst.as.reg == x86_AX);
         i = i->next;
 
         assert(i != NULL && i->kind == x86_RET);
@@ -332,8 +332,8 @@ void test_codegen_binop_div() {
 
     // mov %eax, $6  (lhs / dividend loaded into eax)
     assert(i != NULL && i->kind == x86_MOV);
-    assert(i->mov.dst.kind == x86_REG && i->mov.dst.reg == x86_AX);
-    assert(i->mov.src.kind == x86_IMM && i->mov.src.imm == 6);
+    assert(i->as.mov.dst.kind == x86_REG && i->as.mov.dst.as.reg == x86_AX);
+    assert(i->as.mov.src.kind == x86_IMM && i->as.mov.src.as.imm == 6);
     i = i->next;
 
     // cdq
@@ -342,13 +342,13 @@ void test_codegen_binop_div() {
 
     // idivl $3  (rhs / divisor is the idiv operand)
     assert(i != NULL && i->kind == x86_IDIV);
-    assert(i->idiv.operand.kind == x86_IMM && i->idiv.operand.imm == 3);
+    assert(i->as.idiv.operand.kind == x86_IMM && i->as.idiv.operand.as.imm == 3);
     i = i->next;
 
     // mov dst, %eax  (quotient read from eax)
     assert(i != NULL && i->kind == x86_MOV);
-    assert(i->mov.dst.kind == x86_ID);
-    assert(i->mov.src.kind == x86_REG && i->mov.src.reg == x86_AX);
+    assert(i->as.mov.dst.kind == x86_ID);
+    assert(i->as.mov.src.kind == x86_REG && i->as.mov.src.as.reg == x86_AX);
     i = i->next;
 
     // return lowering + ret
@@ -373,8 +373,8 @@ void test_codegen_binop_mod() {
 
     // mov %eax, $7  (lhs / dividend)
     assert(i != NULL && i->kind == x86_MOV);
-    assert(i->mov.dst.kind == x86_REG && i->mov.dst.reg == x86_AX);
-    assert(i->mov.src.kind == x86_IMM && i->mov.src.imm == 7);
+    assert(i->as.mov.dst.kind == x86_REG && i->as.mov.dst.as.reg == x86_AX);
+    assert(i->as.mov.src.kind == x86_IMM && i->as.mov.src.as.imm == 7);
     i = i->next;
 
     // cdq
@@ -383,13 +383,13 @@ void test_codegen_binop_mod() {
 
     // idivl $2  (rhs / divisor)
     assert(i != NULL && i->kind == x86_IDIV);
-    assert(i->idiv.operand.kind == x86_IMM && i->idiv.operand.imm == 2);
+    assert(i->as.idiv.operand.kind == x86_IMM && i->as.idiv.operand.as.imm == 2);
     i = i->next;
 
     // mov dst, %edx  (remainder read from edx)
     assert(i != NULL && i->kind == x86_MOV);
-    assert(i->mov.dst.kind == x86_ID);
-    assert(i->mov.src.kind == x86_REG && i->mov.src.reg == x86_DX);
+    assert(i->as.mov.dst.kind == x86_ID);
+    assert(i->as.mov.src.kind == x86_REG && i->as.mov.src.as.reg == x86_DX);
 
     destroy_x86_program(&asm_prog);
     destroy_program(&program);
@@ -404,25 +404,25 @@ void test_codegen_binop_mod() {
 void test_emit_binop_and_div_instructions() {
     x86_InstrList instrs = x86_instr_list_new();
     // addl $1, %eax
-    x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_BINOP, .binop = {
+    x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_BINOP, .as.binop = {
         .optype = x86_ADD,
-        .rhs = (x86_Operand){.kind = x86_IMM, .imm = 1},
-        .dst = (x86_Operand){.kind = x86_REG, .reg = x86_AX}}});
+        .rhs = (x86_Operand){.kind = x86_IMM, .as.imm = 1},
+        .dst = (x86_Operand){.kind = x86_REG, .as.reg = x86_AX}}});
     // subl %r10d, %r11d
-    x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_BINOP, .binop = {
+    x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_BINOP, .as.binop = {
         .optype = x86_SUB,
-        .rhs = (x86_Operand){.kind = x86_REG, .reg = x86_R10},
-        .dst = (x86_Operand){.kind = x86_REG, .reg = x86_R11}}});
+        .rhs = (x86_Operand){.kind = x86_REG, .as.reg = x86_R10},
+        .dst = (x86_Operand){.kind = x86_REG, .as.reg = x86_R11}}});
     // imull %edx, %eax
-    x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_BINOP, .binop = {
+    x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_BINOP, .as.binop = {
         .optype = x86_MUL,
-        .rhs = (x86_Operand){.kind = x86_REG, .reg = x86_DX},
-        .dst = (x86_Operand){.kind = x86_REG, .reg = x86_AX}}});
+        .rhs = (x86_Operand){.kind = x86_REG, .as.reg = x86_DX},
+        .dst = (x86_Operand){.kind = x86_REG, .as.reg = x86_AX}}});
     // cdq
     x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_CDQ});
     // idivl %r10d
-    x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_IDIV, .idiv = {
-        .operand = (x86_Operand){.kind = x86_REG, .reg = x86_R10}}});
+    x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_IDIV, .as.idiv = {
+        .operand = (x86_Operand){.kind = x86_REG, .as.reg = x86_R10}}});
     x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_RET});
 
     x86_Function* functions = malloc(sizeof(x86_Function));
@@ -461,16 +461,16 @@ void test_emit_bitwise_instructions() {
 
     x86_InstrList instrs = x86_instr_list_new();
     for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
-        x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_BINOP, .binop = {
+        x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_BINOP, .as.binop = {
             .optype = cases[c].op,
-            .rhs = (x86_Operand){.kind = x86_IMM, .imm = 5},
-            .dst = (x86_Operand){.kind = x86_REG, .reg = x86_AX}}});
+            .rhs = (x86_Operand){.kind = x86_IMM, .as.imm = 5},
+            .dst = (x86_Operand){.kind = x86_REG, .as.reg = x86_AX}}});
     }
     // xorl %r10d, %r11d  (register form)
-    x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_BINOP, .binop = {
+    x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_BINOP, .as.binop = {
         .optype = x86_XOR,
-        .rhs = (x86_Operand){.kind = x86_REG, .reg = x86_R10},
-        .dst = (x86_Operand){.kind = x86_REG, .reg = x86_R11}}});
+        .rhs = (x86_Operand){.kind = x86_REG, .as.reg = x86_R10},
+        .dst = (x86_Operand){.kind = x86_REG, .as.reg = x86_R11}}});
     x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_RET});
 
     x86_Function* functions = malloc(sizeof(x86_Function));
@@ -506,15 +506,15 @@ void test_rename_binop_clears_pseudos() {
 
     for (x86_Instr* i = asm_prog.functions[0].instrs.head; i; i = i->next) {
         if (i->kind == x86_BINOP) {
-            assert(i->binop.rhs.kind != x86_ID);
-            assert(i->binop.dst.kind != x86_ID);
+            assert(i->as.binop.rhs.kind != x86_ID);
+            assert(i->as.binop.dst.kind != x86_ID);
         }
         if (i->kind == x86_IDIV) {
-            assert(i->idiv.operand.kind != x86_ID);
+            assert(i->as.idiv.operand.kind != x86_ID);
         }
         if (i->kind == x86_MOV) {
-            assert(i->mov.src.kind != x86_ID);
-            assert(i->mov.dst.kind != x86_ID);
+            assert(i->as.mov.src.kind != x86_ID);
+            assert(i->as.mov.dst.kind != x86_ID);
         }
     }
 
@@ -595,26 +595,26 @@ void test_emit_bitwise_program() {
 void test_x86_new_instr_constructors() {
     x86_Instr cmp = x86_cmp_instr(x86_operand_reg(x86_AX), x86_operand_imm(7));
     assert(cmp.kind == x86_CMP);
-    assert(cmp.cmp.lhs.kind == x86_REG && cmp.cmp.lhs.reg == x86_AX);
-    assert(cmp.cmp.rhs.kind == x86_IMM && cmp.cmp.rhs.imm == 7);
+    assert(cmp.as.cmp.lhs.kind == x86_REG && cmp.as.cmp.lhs.as.reg == x86_AX);
+    assert(cmp.as.cmp.rhs.kind == x86_IMM && cmp.as.cmp.rhs.as.imm == 7);
 
     x86_Instr jmp = x86_jmp_instr("end");
     assert(jmp.kind == x86_JMP);
-    assert(strcmp(jmp.jmp.identifier, "end") == 0);
+    assert(strcmp(jmp.as.jmp.identifier, "end") == 0);
 
     x86_Instr jmpcc = x86_jmpcc_instr(x86_NE, "loop");
     assert(jmpcc.kind == x86_JMPCC);
-    assert(jmpcc.jmpcc.cond == x86_NE);
-    assert(strcmp(jmpcc.jmpcc.identifier, "loop") == 0);
+    assert(jmpcc.as.jmpcc.cond == x86_NE);
+    assert(strcmp(jmpcc.as.jmpcc.identifier, "loop") == 0);
 
     x86_Instr setcc = x86_setcc_instr(x86_GE, x86_operand_reg(x86_AX));
     assert(setcc.kind == x86_SETCC);
-    assert(setcc.setcc.cond == x86_GE);
-    assert(setcc.setcc.op.kind == x86_REG && setcc.setcc.op.reg == x86_AX);
+    assert(setcc.as.setcc.cond == x86_GE);
+    assert(setcc.as.setcc.op.kind == x86_REG && setcc.as.setcc.op.as.reg == x86_AX);
 
     x86_Instr label = x86_label_instr("L0");
     assert(label.kind == x86_LABEL);
-    assert(strcmp(label.label.identifier, "L0") == 0);
+    assert(strcmp(label.as.label.identifier, "L0") == 0);
 
     printf("  PASS: test_x86_new_instr_constructors\n");
 }
@@ -646,25 +646,25 @@ void test_codegen_relational_ops() {
 
         // cmp $4, $5
         assert(i != NULL && i->kind == x86_CMP);
-        assert(i->cmp.lhs.kind == x86_IMM && i->cmp.lhs.imm == 4);
-        assert(i->cmp.rhs.kind == x86_IMM && i->cmp.rhs.imm == 5);
+        assert(i->as.cmp.lhs.kind == x86_IMM && i->as.cmp.lhs.as.imm == 4);
+        assert(i->as.cmp.rhs.kind == x86_IMM && i->as.cmp.rhs.as.imm == 5);
         i = i->next;
 
         // mov dst, $0
         assert(i != NULL && i->kind == x86_MOV);
-        assert(i->mov.dst.kind == x86_ID);
-        assert(i->mov.src.kind == x86_IMM && i->mov.src.imm == 0);
+        assert(i->as.mov.dst.kind == x86_ID);
+        assert(i->as.mov.src.kind == x86_IMM && i->as.mov.src.as.imm == 0);
         i = i->next;
 
         // setCC dst
         assert(i != NULL && i->kind == x86_SETCC);
-        assert(i->setcc.cond == cases[c].cond);
-        assert(i->setcc.op.kind == x86_ID);
+        assert(i->as.setcc.cond == cases[c].cond);
+        assert(i->as.setcc.op.kind == x86_ID);
         i = i->next;
 
         // return lowering: mov %eax, dst ; ret
         assert(i != NULL && i->kind == x86_MOV);
-        assert(i->mov.dst.kind == x86_REG && i->mov.dst.reg == x86_AX);
+        assert(i->as.mov.dst.kind == x86_REG && i->as.mov.dst.as.reg == x86_AX);
         i = i->next;
         assert(i != NULL && i->kind == x86_RET);
         assert(i->next == NULL);
@@ -689,22 +689,22 @@ void test_codegen_logical_not() {
 
     // cmp src($5), $0  -- the operand being tested, not the destination
     assert(i != NULL && i->kind == x86_CMP);
-    assert(i->cmp.lhs.kind == x86_IMM && i->cmp.lhs.imm == 5);
-    assert(i->cmp.rhs.kind == x86_IMM && i->cmp.rhs.imm == 0);
+    assert(i->as.cmp.lhs.kind == x86_IMM && i->as.cmp.lhs.as.imm == 5);
+    assert(i->as.cmp.rhs.kind == x86_IMM && i->as.cmp.rhs.as.imm == 0);
     i = i->next;
 
     // mov dst, $0  -- the result temp is zeroed
     assert(i != NULL && i->kind == x86_MOV);
-    assert(i->mov.dst.kind == x86_ID);
-    assert(i->mov.src.kind == x86_IMM && i->mov.src.imm == 0);
-    const char* dst_name = i->mov.dst.identifier;
+    assert(i->as.mov.dst.kind == x86_ID);
+    assert(i->as.mov.src.kind == x86_IMM && i->as.mov.src.as.imm == 0);
+    const char* dst_name = i->as.mov.dst.as.identifier;
     i = i->next;
 
     // sete dst  -- sets the same temp that was zeroed
     assert(i != NULL && i->kind == x86_SETCC);
-    assert(i->setcc.cond == x86_E);
-    assert(i->setcc.op.kind == x86_ID);
-    assert(strcmp(i->setcc.op.identifier, dst_name) == 0);
+    assert(i->as.setcc.cond == x86_E);
+    assert(i->as.setcc.op.kind == x86_ID);
+    assert(strcmp(i->as.setcc.op.as.identifier, dst_name) == 0);
 
     destroy_x86_program(&asm_prog);
     destroy_program(&program);
@@ -728,7 +728,7 @@ void test_codegen_short_circuit_and() {
             case x86_JMPCC:
                 jmpcc++;
                 // && short-circuits when an operand is zero -> jump-if-equal
-                assert(i->jmpcc.cond == x86_E);
+                assert(i->as.jmpcc.cond == x86_E);
                 break;
             case x86_JMP:   jmp++; break;
             case x86_LABEL: label++; break;
@@ -764,11 +764,11 @@ void test_rename_clears_cmp_setcc_pseudos() {
 
     for (x86_Instr* i = asm_prog.functions[0].instrs.head; i; i = i->next) {
         if (i->kind == x86_CMP) {
-            assert(i->cmp.lhs.kind != x86_ID);
-            assert(i->cmp.rhs.kind != x86_ID);
+            assert(i->as.cmp.lhs.kind != x86_ID);
+            assert(i->as.cmp.rhs.kind != x86_ID);
         }
         if (i->kind == x86_SETCC) {
-            assert(i->setcc.op.kind != x86_ID);
+            assert(i->as.setcc.op.kind != x86_ID);
         }
     }
 
@@ -799,14 +799,14 @@ void test_allocate_stack_cmp_two_memory() {
 
     // movl -4(%rbp), %r10d
     assert(i->kind == x86_MOV);
-    assert(i->mov.dst.kind == x86_REG && i->mov.dst.reg == x86_R10);
-    assert(i->mov.src.kind == x86_STACK && i->mov.src.stack == -4);
+    assert(i->as.mov.dst.kind == x86_REG && i->as.mov.dst.as.reg == x86_R10);
+    assert(i->as.mov.src.kind == x86_STACK && i->as.mov.src.as.stack == -4);
     i = i->next;
 
     // cmpl %r10d, -8(%rbp)
     assert(i->kind == x86_CMP);
-    assert(i->cmp.lhs.kind == x86_REG && i->cmp.lhs.reg == x86_R10);
-    assert(i->cmp.rhs.kind == x86_STACK && i->cmp.rhs.stack == -8);
+    assert(i->as.cmp.lhs.kind == x86_REG && i->as.cmp.lhs.as.reg == x86_R10);
+    assert(i->as.cmp.rhs.kind == x86_STACK && i->as.cmp.rhs.as.stack == -8);
 
     destroy_x86_program(&prog);
     printf("  PASS: test_allocate_stack_cmp_two_memory\n");
@@ -824,14 +824,14 @@ void test_allocate_stack_cmp_imm_rhs() {
 
     // movl $0, %r11d
     assert(i->kind == x86_MOV);
-    assert(i->mov.dst.kind == x86_REG && i->mov.dst.reg == x86_R11);
-    assert(i->mov.src.kind == x86_IMM && i->mov.src.imm == 0);
+    assert(i->as.mov.dst.kind == x86_REG && i->as.mov.dst.as.reg == x86_R11);
+    assert(i->as.mov.src.kind == x86_IMM && i->as.mov.src.as.imm == 0);
     i = i->next;
 
     // cmpl -4(%rbp), %r11d
     assert(i->kind == x86_CMP);
-    assert(i->cmp.lhs.kind == x86_STACK && i->cmp.lhs.stack == -4);
-    assert(i->cmp.rhs.kind == x86_REG && i->cmp.rhs.reg == x86_R11);
+    assert(i->as.cmp.lhs.kind == x86_STACK && i->as.cmp.lhs.as.stack == -4);
+    assert(i->as.cmp.rhs.kind == x86_REG && i->as.cmp.rhs.as.reg == x86_R11);
 
     destroy_x86_program(&prog);
     printf("  PASS: test_allocate_stack_cmp_imm_rhs\n");
@@ -849,15 +849,15 @@ void test_allocate_stack_binop_two_memory() {
 
     // movl -8(%rbp), %r10d   (rhs into the scratch register)
     assert(i->kind == x86_MOV);
-    assert(i->mov.dst.kind == x86_REG && i->mov.dst.reg == x86_R10);
-    assert(i->mov.src.kind == x86_STACK && i->mov.src.stack == -8);
+    assert(i->as.mov.dst.kind == x86_REG && i->as.mov.dst.as.reg == x86_R10);
+    assert(i->as.mov.src.kind == x86_STACK && i->as.mov.src.as.stack == -8);
     i = i->next;
 
     // addl %r10d, -4(%rbp)   (result stays in the dst slot)
     assert(i->kind == x86_BINOP);
-    assert(i->binop.optype == x86_ADD);
-    assert(i->binop.rhs.kind == x86_REG && i->binop.rhs.reg == x86_R10);
-    assert(i->binop.dst.kind == x86_STACK && i->binop.dst.stack == -4);
+    assert(i->as.binop.optype == x86_ADD);
+    assert(i->as.binop.rhs.kind == x86_REG && i->as.binop.rhs.as.reg == x86_R10);
+    assert(i->as.binop.dst.kind == x86_STACK && i->as.binop.dst.as.stack == -4);
 
     destroy_x86_program(&prog);
     printf("  PASS: test_allocate_stack_binop_two_memory\n");
@@ -990,8 +990,8 @@ void test_codegen_incdec_binop() {
 
         bool found = false;
         for (x86_Instr* i = asm_prog.functions[0].instrs.head; i; i = i->next) {
-            if (i->kind == x86_BINOP && i->binop.optype == incdec_cases[c].x86_op
-                && i->binop.rhs.kind == x86_IMM && i->binop.rhs.imm == 1) {
+            if (i->kind == x86_BINOP && i->as.binop.optype == incdec_cases[c].x86_op
+                && i->as.binop.rhs.kind == x86_IMM && i->as.binop.rhs.as.imm == 1) {
                 found = true;
             }
         }

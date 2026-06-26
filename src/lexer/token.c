@@ -72,7 +72,7 @@ const char *operator_name(TokenOperator o) {
 const char *keyword_name(TokenKeyword k) {
 	switch (k) {
 		case TOK_IF:     return "if";
-		case TOK_ELSE:   return "if";
+		case TOK_ELSE:   return "else";
 		case TOK_INT:    return "int";
 		case TOK_RETURN: return "return";
 		case TOK_VOID:   return "void";
@@ -81,15 +81,15 @@ const char *keyword_name(TokenKeyword k) {
 }
 
 static int keyword_lookup(const char *word, size_t len) {
-	static const struct { const char *name; TokenKeyword kw; } table[] = {
-		{ "if",     TOK_IF     },
-		{ "else",   TOK_IF     },
-		{ "int",    TOK_INT    },
-		{ "return", TOK_RETURN },
-		{ "void",   TOK_VOID   },
+	static const struct { const char *name; size_t len; TokenKeyword kw; } table[] = {
+		{ "if",     2, TOK_IF     },
+		{ "else",   4, TOK_ELSE   },
+		{ "int",    3, TOK_INT    },
+		{ "return", 6, TOK_RETURN },
+		{ "void",   4, TOK_VOID   },
 	};
 	for (size_t i = 0; i < sizeof table / sizeof table[0]; i++) {
-		if (strncmp(word, table[i].name, len) == 0)
+		if (table[i].len == len && strncmp(word, table[i].name, len) == 0)
 			return table[i].kw;
 	}
 	return -1;
@@ -126,7 +126,8 @@ static const PunctEntry punct_table[] = {
 	OP("=", TOK_ASSIGN),		SEP("(", TOK_LPAR),
 	SEP(")", TOK_RPAR),			SEP("{", TOK_LBRACE), 
 	SEP("}", TOK_RBRACE),		SEP(",", TOK_COMMA),
-	SEP(";", TOK_SEMICOLON)
+	SEP(";", TOK_SEMICOLON),	SEP(":", TOK_COLON),
+	SEP("?", TOK_QUESTION_MARK)
 };
 
 #undef OP
