@@ -1,16 +1,16 @@
 #include "codegen.h"
+#include "../ice.h"
 #include <stdio.h>
 #include <string.h>
 
 static x86_Operand codegen_val(IrVal val) {
     switch (val.kind) {
         case IR_CONSTANT:
-            return x86_operand_imm(val.int_val);
+            return x86_operand_imm(val.as.int_val);
         case IR_VARIABLE:
-            return x86_operand_id(strdup(val.name));
+            return x86_operand_id(strdup(val.as.name));
     }
-    fprintf(stderr, "codegen: unsupported IR value kind\n");
-    exit(1);
+    ICE("codegen: unsupported IR value kind");
 }
 
 static x86_Unop codegen_unop(IrUnopType op) {
@@ -19,8 +19,7 @@ static x86_Unop codegen_unop(IrUnopType op) {
         case IR_COMP: 	return x86_COMP;
 		default:		break;
     }
-    fprintf(stderr, "codegen: unsupported unary op\n");
-    exit(1);
+    ICE("codegen: unsupported unary op");
 }
 
 static x86_Binop codegen_binop(IrBinopType op) {
@@ -35,8 +34,7 @@ static x86_Binop codegen_binop(IrBinopType op) {
 		case IR_LSHIFT: 	return x86_LSHIFT;
 		default:			break;
     }
-    fprintf(stderr, "codegen: unsupported unary op\n");
-    exit(1);
+    ICE("codegen: unsupported unary op");
 }
 
 static x86_ConditionCode codegen_cond(IrBinopType op) {
@@ -49,22 +47,21 @@ static x86_ConditionCode codegen_cond(IrBinopType op) {
         case IR_GEQ:        return x86_GE;
         default:            break;
     }
-    fprintf(stderr, "codegen: unsupported unary relational operator\n");
-    exit(1);
+    ICE("codegen: unsupported unary relational operator");
 }
 
 static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
     switch (ir_instr->type) {
         case IR_RETURN: {
-            x86_Operand src = codegen_val(ir_instr->ret.val);
+            x86_Operand src = codegen_val(ir_instr->as.ret.val);
             x86_instr_list_append(list, x86_mov(x86_operand_reg(x86_AX), src));
             x86_instr_list_append(list, x86_ret());
             return;
         }
         case IR_UNOP: {
-            x86_Operand src = codegen_val(ir_instr->unary.src);
-            x86_Operand dst = codegen_val(ir_instr->unary.dst);
-            if (ir_instr->unary.op == IR_NOT) {
+            x86_Operand src = codegen_val(ir_instr->as.unary.src);
+            x86_Operand dst = codegen_val(ir_instr->as.unary.dst);
+            if (ir_instr->as.unary.op == IR_NOT) {
                 // !src == 1 iff src == 0: compare src to 0, zero the result,
                 // then set its low byte when the compare was equal.
                 x86_instr_list_append(list, x86_cmp_instr(src, x86_operand_imm(0)));
@@ -72,16 +69,16 @@ static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
                 x86_instr_list_append(list, x86_setcc_instr(x86_E, dst));
             } else {
                 x86_instr_list_append(list, x86_mov(dst, src));
-                x86_Operand dst2 = codegen_val(ir_instr->unary.dst);
-                x86_instr_list_append(list, x86_unary(codegen_unop(ir_instr->unary.op), dst2));
+                x86_Operand dst2 = codegen_val(ir_instr->as.unary.dst);
+                x86_instr_list_append(list, x86_unary(codegen_unop(ir_instr->as.unary.op), dst2));
             }
             return;
 		}
 		case IR_BINOP: {
-			x86_Operand lhs = codegen_val(ir_instr->binop.lhs);
-			x86_Operand rhs = codegen_val(ir_instr->binop.rhs);
-			x86_Operand dst = codegen_val(ir_instr->binop.dst);
-			switch (ir_instr->binop.op) {
+			x86_Operand lhs = codegen_val(ir_instr->as.binop.lhs);
+			x86_Operand rhs = codegen_val(ir_instr->as.binop.rhs);
+			x86_Operand dst = codegen_val(ir_instr->as.binop.dst);
+			switch (ir_instr->as.binop.op) {
 				case IR_DIV: {
 					// lhs / rhs: load the dividend (lhs) into eax, sign-extend
 					// into edx:eax with cdq, then divide by the divisor (rhs).
@@ -112,45 +109,43 @@ static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
                 case IR_GEQ:
                     x86_instr_list_append(list, x86_cmp_instr(lhs, rhs));
                     x86_instr_list_append(list, x86_mov(dst, x86_operand_imm(0))); 
-                    x86_instr_list_append(list, x86_setcc_instr(codegen_cond(ir_instr->binop.op), dst));
+                    x86_instr_list_append(list, x86_setcc_instr(codegen_cond(ir_instr->as.binop.op), dst));
                     return;
 				default:  {
 					x86_instr_list_append(list, x86_mov(dst, lhs));
-					x86_instr_list_append(list, x86_binary(codegen_binop(ir_instr->binop.op), rhs, dst));
+					x86_instr_list_append(list, x86_binary(codegen_binop(ir_instr->as.binop.op), rhs, dst));
 					return;
                 }
 			}
-            fprintf(stderr, "codegen: unsupported IR binary operation\n");
-            exit(1);
+            ICE("codegen: unsupported IR binary operation");
 		}
         case IR_JUMP:
-            x86_instr_list_append(list, x86_jmp_instr(ir_instr->jump.target));
+            x86_instr_list_append(list, x86_jmp_instr(ir_instr->as.jump.target));
             return;
         case IR_JUMP_ZERO:
             x86_instr_list_append(list, x86_cmp_instr(
                 x86_operand_imm(0),
-                codegen_val(ir_instr->jump_zero.cond)));
-            x86_instr_list_append(list, x86_jmpcc_instr(x86_E, ir_instr->jump_zero.target));
+                codegen_val(ir_instr->as.jump_zero.cond)));
+            x86_instr_list_append(list, x86_jmpcc_instr(x86_E, ir_instr->as.jump_zero.target));
             return;
         case IR_JUMP_NOT_ZERO:
             x86_instr_list_append(list, x86_cmp_instr(
                 x86_operand_imm(0),
-                codegen_val(ir_instr->jump_not_zero.cond)));
-            x86_instr_list_append(list, x86_jmpcc_instr(x86_NE, ir_instr->jump_not_zero.target));
+                codegen_val(ir_instr->as.jump_not_zero.cond)));
+            x86_instr_list_append(list, x86_jmpcc_instr(x86_NE, ir_instr->as.jump_not_zero.target));
             return;
         case IR_COPY:
             x86_instr_list_append(list, x86_mov(
-                codegen_val(ir_instr->copy.dst),
-                codegen_val(ir_instr->copy.src)));
+                codegen_val(ir_instr->as.copy.dst),
+                codegen_val(ir_instr->as.copy.src)));
             return;
         case IR_LABEL:
-            x86_instr_list_append(list, x86_label_instr(ir_instr->label.identifier));
+            x86_instr_list_append(list, x86_label_instr(ir_instr->as.label.identifier));
             return;
 		default:
 			break;
     }
-    fprintf(stderr, "codegen: unsupported IR instruction type\n");
-    exit(1);
+    ICE("codegen: unsupported IR instruction type");
 }
 
 static x86_Function codegen_function(IrFunction* ir_fn) {
@@ -208,7 +203,7 @@ static x86_Operand* operand_map_get(OperandMap* map, const char* key) {
 
 static x86_Operand operand_map_put(OperandMap* map, x86_Operand op) {
     if (op.kind != x86_ID) return op;
-    x86_Operand* existing = operand_map_get(map, op.identifier);
+    x86_Operand* existing = operand_map_get(map, op.as.identifier);
     if (existing) return *existing;
 
     if (map->size == map->capacity) {
@@ -217,8 +212,8 @@ static x86_Operand operand_map_put(OperandMap* map, x86_Operand op) {
     }
 
     map->stack_offset -= 4;
-    x86_Operand val = (x86_Operand){.kind = x86_STACK, .stack = map->stack_offset};
-    map->entries[map->size] = (OperandEntry){.key = strdup(op.identifier), .val = val};
+    x86_Operand val = (x86_Operand){.kind = x86_STACK, .as.stack = map->stack_offset};
+    map->entries[map->size] = (OperandEntry){.key = strdup(op.as.identifier), .val = val};
     map->size++;
     return val;
 }
@@ -228,25 +223,25 @@ int rename_registers(x86_Function* function) {
     for (x86_Instr* instr = function->instrs.head; instr; instr = instr->next) {
         switch (instr->kind) {
             case x86_MOV:
-                instr->mov.dst = operand_map_put(&opmap, instr->mov.dst);
-                instr->mov.src = operand_map_put(&opmap, instr->mov.src);
+                instr->as.mov.dst = operand_map_put(&opmap, instr->as.mov.dst);
+                instr->as.mov.src = operand_map_put(&opmap, instr->as.mov.src);
                 break;
             case x86_UNOP:
-                instr->unop.operand = operand_map_put(&opmap, instr->unop.operand);
+                instr->as.unop.operand = operand_map_put(&opmap, instr->as.unop.operand);
                 break;
             case x86_BINOP:
-                instr->binop.rhs = operand_map_put(&opmap, instr->binop.rhs);
-                instr->binop.dst = operand_map_put(&opmap, instr->binop.dst);
+                instr->as.binop.rhs = operand_map_put(&opmap, instr->as.binop.rhs);
+                instr->as.binop.dst = operand_map_put(&opmap, instr->as.binop.dst);
                 break;
             case x86_IDIV:
-                instr->idiv.operand = operand_map_put(&opmap, instr->idiv.operand);
+                instr->as.idiv.operand = operand_map_put(&opmap, instr->as.idiv.operand);
                 break;
             case x86_CMP:
-                instr->cmp.lhs = operand_map_put(&opmap, instr->cmp.lhs);
-                instr->cmp.rhs = operand_map_put(&opmap, instr->cmp.rhs);
+                instr->as.cmp.lhs = operand_map_put(&opmap, instr->as.cmp.lhs);
+                instr->as.cmp.rhs = operand_map_put(&opmap, instr->as.cmp.rhs);
                 break;
             case x86_SETCC:
-                instr->setcc.op = operand_map_put(&opmap, instr->setcc.op);
+                instr->as.setcc.op = operand_map_put(&opmap, instr->as.setcc.op);
                 break;
             default:
                 break;
@@ -263,55 +258,55 @@ int allocate_stack(x86_Function* function, int stack_offset) {
     while (instr != NULL){
 		switch (instr->kind){
 			case x86_MOV:
-				if (instr->mov.src.kind == x86_STACK && instr->mov.dst.kind == x86_STACK) {
+				if (instr->as.mov.src.kind == x86_STACK && instr->as.mov.dst.kind == x86_STACK) {
 					x86_Instr* next_instr = malloc(sizeof(x86_Instr));
         	    	next_instr->kind = x86_MOV;
-        	    	next_instr->mov.dst = instr->mov.dst;
-        	    	next_instr->mov.src = (x86_Operand){.kind=x86_REG, .reg=x86_R10};
+        	    	next_instr->as.mov.dst = instr->as.mov.dst;
+        	    	next_instr->as.mov.src = (x86_Operand){.kind=x86_REG, .as.reg=x86_R10};
         	    	next_instr->next = instr->next;
-        	    	instr->mov.dst = (x86_Operand){.kind=x86_REG, .reg=x86_R10}; 
+        	    	instr->as.mov.dst = (x86_Operand){.kind=x86_REG, .as.reg=x86_R10}; 
         	    	instr->next = next_instr;
 				}
 				break;
 			case x86_BINOP:
-				if (instr->binop.dst.kind == x86_STACK && instr->binop.rhs.kind == x86_STACK) {
+				if (instr->as.binop.dst.kind == x86_STACK && instr->as.binop.rhs.kind == x86_STACK) {
 					// x86 forbids mem,mem: load the rhs into %r10d, then apply the
 					// op with %r10d as the source so the result stays in dst.
 					x86_Instr* next_instr = malloc(sizeof(x86_Instr));
         	    	next_instr->kind = instr->kind;
-					next_instr->binop.optype = instr->binop.optype;
-        	    	next_instr->binop.rhs = (x86_Operand){.kind=x86_REG, .reg=x86_R10};
-        	    	next_instr->binop.dst = instr->binop.dst;
+					next_instr->as.binop.optype = instr->as.binop.optype;
+        	    	next_instr->as.binop.rhs = (x86_Operand){.kind=x86_REG, .as.reg=x86_R10};
+        	    	next_instr->as.binop.dst = instr->as.binop.dst;
         	    	next_instr->next = instr->next;
-					x86_Operand src = instr->binop.rhs;
+					x86_Operand src = instr->as.binop.rhs;
         	    	instr->kind = x86_MOV;
-        	    	instr->mov.dst = (x86_Operand){.kind=x86_REG, .reg=x86_R10};
-        	    	instr->mov.src = src;
+        	    	instr->as.mov.dst = (x86_Operand){.kind=x86_REG, .as.reg=x86_R10};
+        	    	instr->as.mov.src = src;
         	    	instr->next = next_instr;
 				}
 				break;
 			case x86_CMP:
-				if (instr->cmp.lhs.kind == x86_STACK && instr->cmp.rhs.kind == x86_STACK) {
+				if (instr->as.cmp.lhs.kind == x86_STACK && instr->as.cmp.rhs.kind == x86_STACK) {
 					x86_Instr* next_instr = malloc(sizeof(x86_Instr));
         	    	next_instr->kind = instr->kind;
-        	    	next_instr->cmp.rhs = instr->cmp.rhs;
-        	    	next_instr->cmp.lhs = (x86_Operand){.kind=x86_REG, .reg=x86_R10};
+        	    	next_instr->as.cmp.rhs = instr->as.cmp.rhs;
+        	    	next_instr->as.cmp.lhs = (x86_Operand){.kind=x86_REG, .as.reg=x86_R10};
         	    	next_instr->next = instr->next;
-					x86_Operand src = instr->cmp.lhs;
+					x86_Operand src = instr->as.cmp.lhs;
         	    	instr->kind = x86_MOV; 
-        	    	instr->mov.dst = (x86_Operand){.kind=x86_REG, .reg=x86_R10}; 
-        	    	instr->mov.src = src; 
+        	    	instr->as.mov.dst = (x86_Operand){.kind=x86_REG, .as.reg=x86_R10}; 
+        	    	instr->as.mov.src = src; 
         	    	instr->next = next_instr;
-				} else if (instr->cmp.rhs.kind == x86_IMM) {
+				} else if (instr->as.cmp.rhs.kind == x86_IMM) {
 					x86_Instr* next_instr = malloc(sizeof(x86_Instr));
         	    	next_instr->kind = instr->kind;
-        	    	next_instr->cmp.rhs = (x86_Operand){.kind=x86_REG, .reg=x86_R11};
-        	    	next_instr->cmp.lhs = instr->cmp.lhs;
+        	    	next_instr->as.cmp.rhs = (x86_Operand){.kind=x86_REG, .as.reg=x86_R11};
+        	    	next_instr->as.cmp.lhs = instr->as.cmp.lhs;
         	    	next_instr->next = instr->next;
-					x86_Operand src = instr->cmp.rhs;
+					x86_Operand src = instr->as.cmp.rhs;
         	    	instr->kind = x86_MOV; 
-        	    	instr->mov.dst = (x86_Operand){.kind=x86_REG, .reg=x86_R11}; 
-        	    	instr->mov.src = src; 
+        	    	instr->as.mov.dst = (x86_Operand){.kind=x86_REG, .as.reg=x86_R11}; 
+        	    	instr->as.mov.src = src; 
         	    	instr->next = next_instr;
 				}
 				break;

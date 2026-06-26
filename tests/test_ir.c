@@ -14,7 +14,7 @@ static AstProgram program_of(AstStatement* stmts, int num_stmts) {
     for (int i = 0; i < num_stmts; i++) {
         ast_function_append(&fn, (AstBlockItem){
             .type = AST_STATEMENT,
-            .stmt = stmts[i],
+            .as.stmt = stmts[i],
         });
     }
     free(stmts);
@@ -43,16 +43,16 @@ static void free_ir_program(IrProgram* program) {
             char* name = NULL;
             switch (ins->type) {
                 case IR_UNOP:
-                    if (ins->unary.dst.kind == IR_VARIABLE) name = ins->unary.dst.name;
+                    if (ins->as.unary.dst.kind == IR_VARIABLE) name = ins->as.unary.dst.as.name;
                     break;
                 case IR_BINOP:
-                    if (ins->binop.dst.kind == IR_VARIABLE) name = ins->binop.dst.name;
+                    if (ins->as.binop.dst.kind == IR_VARIABLE) name = ins->as.binop.dst.as.name;
                     break;
                 case IR_COPY:
-                    if (ins->copy.dst.kind == IR_VARIABLE) name = ins->copy.dst.name;
+                    if (ins->as.copy.dst.kind == IR_VARIABLE) name = ins->as.copy.dst.as.name;
                     break;
                 case IR_LABEL:
-                    name = ins->label.identifier;
+                    name = ins->as.label.identifier;
                     break;
                 default:
                     break;
@@ -76,11 +76,11 @@ static void free_ir_program(IrProgram* program) {
 // jump_zero and jump_not_zero are distinct union members, so pick the right
 // one based on the instruction type.
 static IrVal jump_cond(const IrInstruction* ins) {
-    return ins->type == IR_JUMP_ZERO ? ins->jump_zero.cond : ins->jump_not_zero.cond;
+    return ins->type == IR_JUMP_ZERO ? ins->as.jump_zero.cond : ins->as.jump_not_zero.cond;
 }
 
 static const char* jump_target(const IrInstruction* ins) {
-    return ins->type == IR_JUMP_ZERO ? ins->jump_zero.target : ins->jump_not_zero.target;
+    return ins->type == IR_JUMP_ZERO ? ins->as.jump_zero.target : ins->as.jump_not_zero.target;
 }
 
 // --- tests ---
@@ -97,8 +97,8 @@ void test_emit_return_constant() {
 
     IrInstruction* ret = &fn->instructions[0];
     assert(ret->type == IR_RETURN);
-    assert(ret->ret.val.kind == IR_CONSTANT);
-    assert(ret->ret.val.int_val == 2);
+    assert(ret->as.ret.val.kind == IR_CONSTANT);
+    assert(ret->as.ret.val.as.int_val == 2);
 
     free_ir_program(&ir);
     destroy_program(&ast);
@@ -129,16 +129,16 @@ void test_emit_return_negate() {
 
     IrInstruction* unary = &fn->instructions[0];
     assert(unary->type == IR_UNOP);
-    assert(unary->unary.op == IR_NEG);
-    assert(unary->unary.src.kind == IR_CONSTANT);
-    assert(unary->unary.src.int_val == 5);
-    assert(unary->unary.dst.kind == IR_VARIABLE);
+    assert(unary->as.unary.op == IR_NEG);
+    assert(unary->as.unary.src.kind == IR_CONSTANT);
+    assert(unary->as.unary.src.as.int_val == 5);
+    assert(unary->as.unary.dst.kind == IR_VARIABLE);
 
     IrInstruction* ret = &fn->instructions[1];
     assert(ret->type == IR_RETURN);
-    assert(ret->ret.val.kind == IR_VARIABLE);
+    assert(ret->as.ret.val.kind == IR_VARIABLE);
     // The return value is exactly the temp produced by the unary op.
-    assert(strcmp(ret->ret.val.name, unary->unary.dst.name) == 0);
+    assert(strcmp(ret->as.ret.val.as.name, unary->as.unary.dst.as.name) == 0);
 
     free_ir_program(&ir);
     destroy_program(&ast);
@@ -154,8 +154,8 @@ void test_emit_return_complement() {
     IrFunction* fn = &ir.functions[0];
     assert(fn->size == 2);
     assert(fn->instructions[0].type == IR_UNOP);
-    assert(fn->instructions[0].unary.op == IR_COMP);
-    assert(fn->instructions[0].unary.src.int_val == 3);
+    assert(fn->instructions[0].as.unary.op == IR_COMP);
+    assert(fn->instructions[0].as.unary.src.as.int_val == 3);
 
     free_ir_program(&ir);
     destroy_program(&ast);
@@ -176,16 +176,16 @@ void test_emit_nested_unary() {
     IrInstruction* in1 = &fn->instructions[1];  // -t0 -> t1
     IrInstruction* in2 = &fn->instructions[2];  // return t1
 
-    assert(in0->type == IR_UNOP && in0->unary.op == IR_COMP);
-    assert(in0->unary.src.kind == IR_CONSTANT && in0->unary.src.int_val == 5);
+    assert(in0->type == IR_UNOP && in0->as.unary.op == IR_COMP);
+    assert(in0->as.unary.src.kind == IR_CONSTANT && in0->as.unary.src.as.int_val == 5);
 
-    assert(in1->type == IR_UNOP && in1->unary.op == IR_NEG);
+    assert(in1->type == IR_UNOP && in1->as.unary.op == IR_NEG);
     // The outer op consumes the inner op's result.
-    assert(in1->unary.src.kind == IR_VARIABLE);
-    assert(strcmp(in1->unary.src.name, in0->unary.dst.name) == 0);
+    assert(in1->as.unary.src.kind == IR_VARIABLE);
+    assert(strcmp(in1->as.unary.src.as.name, in0->as.unary.dst.as.name) == 0);
 
     assert(in2->type == IR_RETURN);
-    assert(strcmp(in2->ret.val.name, in1->unary.dst.name) == 0);
+    assert(strcmp(in2->as.ret.val.as.name, in1->as.unary.dst.as.name) == 0);
 
     free_ir_program(&ir);
     destroy_program(&ast);
@@ -214,10 +214,10 @@ void test_emit_expr_statement_no_instruction() {
 void test_emit_multiple_functions() {
     AstFunction foo = ast_function_make("foo", 1);
     ast_function_append(&foo, (AstBlockItem){
-        .type = AST_STATEMENT, .stmt = make_return_stmt(create_int_exp(1))});
+        .type = AST_STATEMENT, .as.stmt = make_return_stmt(create_int_exp(1))});
     AstFunction bar = ast_function_make("bar", 1);
     ast_function_append(&bar, (AstBlockItem){
-        .type = AST_STATEMENT, .stmt = make_return_stmt(create_int_exp(2))});
+        .type = AST_STATEMENT, .as.stmt = make_return_stmt(create_int_exp(2))});
 
     AstFunction* functions = malloc(2 * sizeof(AstFunction));
     functions[0] = foo;
@@ -228,8 +228,8 @@ void test_emit_multiple_functions() {
     assert(ir.size == 2);
     assert(strcmp(ir.functions[0].name, "foo") == 0);
     assert(strcmp(ir.functions[1].name, "bar") == 0);
-    assert(ir.functions[0].instructions[0].ret.val.int_val == 1);
-    assert(ir.functions[1].instructions[0].ret.val.int_val == 2);
+    assert(ir.functions[0].instructions[0].as.ret.val.as.int_val == 1);
+    assert(ir.functions[1].instructions[0].as.ret.val.as.int_val == 2);
 
     free_ir_program(&ir);
     destroy_program(&ast);
@@ -249,18 +249,18 @@ void test_emit_binop_add() {
 
     IrInstruction* binop = &fn->instructions[0];
     assert(binop->type == IR_BINOP);
-    assert(binop->binop.op == IR_ADD);
-    assert(binop->binop.lhs.kind == IR_CONSTANT);
-    assert(binop->binop.lhs.int_val == 1);
-    assert(binop->binop.rhs.kind == IR_CONSTANT);
-    assert(binop->binop.rhs.int_val == 2);
-    assert(binop->binop.dst.kind == IR_VARIABLE);
+    assert(binop->as.binop.op == IR_ADD);
+    assert(binop->as.binop.lhs.kind == IR_CONSTANT);
+    assert(binop->as.binop.lhs.as.int_val == 1);
+    assert(binop->as.binop.rhs.kind == IR_CONSTANT);
+    assert(binop->as.binop.rhs.as.int_val == 2);
+    assert(binop->as.binop.dst.kind == IR_VARIABLE);
 
     IrInstruction* ret = &fn->instructions[1];
     assert(ret->type == IR_RETURN);
-    assert(ret->ret.val.kind == IR_VARIABLE);
+    assert(ret->as.ret.val.kind == IR_VARIABLE);
     // The return value is exactly the temp produced by the binop.
-    assert(strcmp(ret->ret.val.name, binop->binop.dst.name) == 0);
+    assert(strcmp(ret->as.ret.val.as.name, binop->as.binop.dst.as.name) == 0);
 
     free_ir_program(&ir);
     destroy_program(&ast);
@@ -289,9 +289,9 @@ void test_emit_binop_all_ops() {
 
         IrInstruction* binop = &ir.functions[0].instructions[0];
         assert(binop->type == IR_BINOP);
-        assert(binop->binop.op == cases[c].ir_op);
-        assert(binop->binop.lhs.int_val == 7);
-        assert(binop->binop.rhs.int_val == 3);
+        assert(binop->as.binop.op == cases[c].ir_op);
+        assert(binop->as.binop.lhs.as.int_val == 7);
+        assert(binop->as.binop.rhs.as.int_val == 3);
 
         free_ir_program(&ir);
         destroy_program(&ast);
@@ -316,17 +316,17 @@ void test_emit_binop_nested_lhs_first() {
     IrInstruction* mul = &fn->instructions[1];   // t0 * 3  -> t1
     IrInstruction* ret = &fn->instructions[2];   // return t1
 
-    assert(add->type == IR_BINOP && add->binop.op == IR_ADD);
-    assert(add->binop.lhs.int_val == 1 && add->binop.rhs.int_val == 2);
+    assert(add->type == IR_BINOP && add->as.binop.op == IR_ADD);
+    assert(add->as.binop.lhs.as.int_val == 1 && add->as.binop.rhs.as.int_val == 2);
 
-    assert(mul->type == IR_BINOP && mul->binop.op == IR_MUL);
+    assert(mul->type == IR_BINOP && mul->as.binop.op == IR_MUL);
     // The multiply's left operand is the add's result temp; its right is 3.
-    assert(mul->binop.lhs.kind == IR_VARIABLE);
-    assert(strcmp(mul->binop.lhs.name, add->binop.dst.name) == 0);
-    assert(mul->binop.rhs.kind == IR_CONSTANT && mul->binop.rhs.int_val == 3);
+    assert(mul->as.binop.lhs.kind == IR_VARIABLE);
+    assert(strcmp(mul->as.binop.lhs.as.name, add->as.binop.dst.as.name) == 0);
+    assert(mul->as.binop.rhs.kind == IR_CONSTANT && mul->as.binop.rhs.as.int_val == 3);
 
     assert(ret->type == IR_RETURN);
-    assert(strcmp(ret->ret.val.name, mul->binop.dst.name) == 0);
+    assert(strcmp(ret->as.ret.val.as.name, mul->as.binop.dst.as.name) == 0);
 
     free_ir_program(&ir);
     destroy_program(&ast);
@@ -350,11 +350,11 @@ void test_emit_binop_rhs_subexpression() {
     IrInstruction* mul = &fn->instructions[0];   // (2 * 3) -> t0
     IrInstruction* add = &fn->instructions[1];   // 1 + t0  -> t1
 
-    assert(mul->type == IR_BINOP && mul->binop.op == IR_MUL);
-    assert(add->type == IR_BINOP && add->binop.op == IR_ADD);
-    assert(add->binop.lhs.kind == IR_CONSTANT && add->binop.lhs.int_val == 1);
-    assert(add->binop.rhs.kind == IR_VARIABLE);
-    assert(strcmp(add->binop.rhs.name, mul->binop.dst.name) == 0);
+    assert(mul->type == IR_BINOP && mul->as.binop.op == IR_MUL);
+    assert(add->type == IR_BINOP && add->as.binop.op == IR_ADD);
+    assert(add->as.binop.lhs.kind == IR_CONSTANT && add->as.binop.lhs.as.int_val == 1);
+    assert(add->as.binop.rhs.kind == IR_VARIABLE);
+    assert(strcmp(add->as.binop.rhs.as.name, mul->as.binop.dst.as.name) == 0);
 
     free_ir_program(&ir);
     destroy_program(&ast);
@@ -372,7 +372,7 @@ void test_emit_binop_distinct_temps() {
     IrFunction* fn = &ir.functions[0];
     IrInstruction* sub = &fn->instructions[0];
     IrInstruction* div = &fn->instructions[1];
-    assert(strcmp(sub->binop.dst.name, div->binop.dst.name) != 0);
+    assert(strcmp(sub->as.binop.dst.as.name, div->as.binop.dst.as.name) != 0);
 
     free_ir_program(&ir);
     destroy_program(&ast);
@@ -399,20 +399,20 @@ void test_emit_binop_bitwise_nested() {
     IrInstruction* or_ins  = &fn->instructions[2];  // t0 | t1 -> t2
     IrInstruction* ret     = &fn->instructions[3];  // return t2
 
-    assert(and_ins->type == IR_BINOP && and_ins->binop.op == IR_AND);
-    assert(and_ins->binop.lhs.int_val == 5 && and_ins->binop.rhs.int_val == 3);
+    assert(and_ins->type == IR_BINOP && and_ins->as.binop.op == IR_AND);
+    assert(and_ins->as.binop.lhs.as.int_val == 5 && and_ins->as.binop.rhs.as.int_val == 3);
 
-    assert(shl_ins->type == IR_BINOP && shl_ins->binop.op == IR_LSHIFT);
-    assert(shl_ins->binop.lhs.int_val == 1 && shl_ins->binop.rhs.int_val == 4);
+    assert(shl_ins->type == IR_BINOP && shl_ins->as.binop.op == IR_LSHIFT);
+    assert(shl_ins->as.binop.lhs.as.int_val == 1 && shl_ins->as.binop.rhs.as.int_val == 4);
 
-    assert(or_ins->type == IR_BINOP && or_ins->binop.op == IR_OR);
-    assert(or_ins->binop.lhs.kind == IR_VARIABLE);
-    assert(strcmp(or_ins->binop.lhs.name, and_ins->binop.dst.name) == 0);
-    assert(or_ins->binop.rhs.kind == IR_VARIABLE);
-    assert(strcmp(or_ins->binop.rhs.name, shl_ins->binop.dst.name) == 0);
+    assert(or_ins->type == IR_BINOP && or_ins->as.binop.op == IR_OR);
+    assert(or_ins->as.binop.lhs.kind == IR_VARIABLE);
+    assert(strcmp(or_ins->as.binop.lhs.as.name, and_ins->as.binop.dst.as.name) == 0);
+    assert(or_ins->as.binop.rhs.kind == IR_VARIABLE);
+    assert(strcmp(or_ins->as.binop.rhs.as.name, shl_ins->as.binop.dst.as.name) == 0);
 
     assert(ret->type == IR_RETURN);
-    assert(strcmp(ret->ret.val.name, or_ins->binop.dst.name) == 0);
+    assert(strcmp(ret->as.ret.val.as.name, or_ins->as.binop.dst.as.name) == 0);
 
     free_ir_program(&ir);
     destroy_program(&ast);
@@ -448,38 +448,38 @@ static void check_short_circuit(AstBinopType op, IrInstructionType cond_jump_typ
 
     assert(short_label->type == IR_LABEL);
     assert(end_label->type == IR_LABEL);
-    assert(strcmp(short_label->label.identifier, end_label->label.identifier) != 0);
+    assert(strcmp(short_label->as.label.identifier, end_label->as.label.identifier) != 0);
 
     // both operands take the same conditional jump to the short-circuit label
     assert(jump_lhs->type == cond_jump_type);
     assert(jump_cond(jump_lhs).kind == IR_CONSTANT);
-    assert(jump_cond(jump_lhs).int_val == 1);
-    assert(strcmp(jump_target(jump_lhs), short_label->label.identifier) == 0);
+    assert(jump_cond(jump_lhs).as.int_val == 1);
+    assert(strcmp(jump_target(jump_lhs), short_label->as.label.identifier) == 0);
 
     assert(jump_rhs->type == cond_jump_type);
     assert(jump_cond(jump_rhs).kind == IR_CONSTANT);
-    assert(jump_cond(jump_rhs).int_val == 2);
-    assert(strcmp(jump_target(jump_rhs), short_label->label.identifier) == 0);
+    assert(jump_cond(jump_rhs).as.int_val == 2);
+    assert(strcmp(jump_target(jump_rhs), short_label->as.label.identifier) == 0);
 
     // fall-through stores the opposite of the short-circuit value, then skips
     // past the short-circuit store
     assert(store_fall->type == IR_COPY);
-    assert(store_fall->copy.src.kind == IR_CONSTANT);
-    assert(store_fall->copy.src.int_val == !short_circuit_value);
-    assert(store_fall->copy.dst.kind == IR_VARIABLE);
+    assert(store_fall->as.copy.src.kind == IR_CONSTANT);
+    assert(store_fall->as.copy.src.as.int_val == !short_circuit_value);
+    assert(store_fall->as.copy.dst.kind == IR_VARIABLE);
 
     assert(jump_end->type == IR_JUMP);
-    assert(strcmp(jump_end->jump.target, end_label->label.identifier) == 0);
+    assert(strcmp(jump_end->as.jump.target, end_label->as.label.identifier) == 0);
 
     // short-circuit stores its value into the same destination temp
     assert(store_short->type == IR_COPY);
-    assert(store_short->copy.src.kind == IR_CONSTANT);
-    assert(store_short->copy.src.int_val == short_circuit_value);
-    assert(strcmp(store_short->copy.dst.name, store_fall->copy.dst.name) == 0);
+    assert(store_short->as.copy.src.kind == IR_CONSTANT);
+    assert(store_short->as.copy.src.as.int_val == short_circuit_value);
+    assert(strcmp(store_short->as.copy.dst.as.name, store_fall->as.copy.dst.as.name) == 0);
 
     assert(ret->type == IR_RETURN);
-    assert(ret->ret.val.kind == IR_VARIABLE);
-    assert(strcmp(ret->ret.val.name, store_fall->copy.dst.name) == 0);
+    assert(ret->as.ret.val.kind == IR_VARIABLE);
+    assert(strcmp(ret->as.ret.val.as.name, store_fall->as.copy.dst.as.name) == 0);
 
     free_ir_program(&ir);
     destroy_program(&ast);
@@ -518,13 +518,13 @@ void test_emit_relational_ops() {
         assert(fn->size == 2);
         IrInstruction* binop = &fn->instructions[0];
         assert(binop->type == IR_BINOP);
-        assert(binop->binop.op == cases[c].ir_op);
-        assert(binop->binop.lhs.int_val == 4);
-        assert(binop->binop.rhs.int_val == 5);
+        assert(binop->as.binop.op == cases[c].ir_op);
+        assert(binop->as.binop.lhs.as.int_val == 4);
+        assert(binop->as.binop.rhs.as.int_val == 5);
 
         IrInstruction* ret = &fn->instructions[1];
         assert(ret->type == IR_RETURN);
-        assert(strcmp(ret->ret.val.name, binop->binop.dst.name) == 0);
+        assert(strcmp(ret->as.ret.val.as.name, binop->as.binop.dst.as.name) == 0);
 
         free_ir_program(&ir);
         destroy_program(&ast);
@@ -541,9 +541,9 @@ void test_emit_logical_not() {
     IrFunction* fn = &ir.functions[0];
     assert(fn->size == 2);
     assert(fn->instructions[0].type == IR_UNOP);
-    assert(fn->instructions[0].unary.op == IR_NOT);
-    assert(fn->instructions[0].unary.src.kind == IR_CONSTANT);
-    assert(fn->instructions[0].unary.src.int_val == 5);
+    assert(fn->instructions[0].as.unary.op == IR_NOT);
+    assert(fn->instructions[0].as.unary.src.kind == IR_CONSTANT);
+    assert(fn->instructions[0].as.unary.src.as.int_val == 5);
 
     free_ir_program(&ir);
     destroy_program(&ast);
@@ -565,7 +565,7 @@ void test_emit_nested_short_circuit_unique_labels() {
     int num_labels = 0;
     for (int i = 0; i < fn->size; i++) {
         if (fn->instructions[i].type == IR_LABEL) {
-            labels[num_labels++] = fn->instructions[i].label.identifier;
+            labels[num_labels++] = fn->instructions[i].as.label.identifier;
         }
     }
     assert(num_labels == 4);
@@ -591,9 +591,9 @@ void test_emit_assign_plain() {
     assert(fn->size == 1);
     IrInstruction* copy = &fn->instructions[0];
     assert(copy->type == IR_COPY);
-    assert(copy->copy.src.kind == IR_CONSTANT && copy->copy.src.int_val == 5);
-    assert(copy->copy.dst.kind == IR_VARIABLE);
-    assert(strcmp(copy->copy.dst.name, "x") == 0);
+    assert(copy->as.copy.src.kind == IR_CONSTANT && copy->as.copy.src.as.int_val == 5);
+    assert(copy->as.copy.dst.kind == IR_VARIABLE);
+    assert(strcmp(copy->as.copy.dst.as.name, "x") == 0);
 
     free_ir_program(&ir);
     destroy_program(&ast);
@@ -625,18 +625,18 @@ void test_emit_compound_assign_all_ops() {
         IrFunction* fn = &ir.functions[0];
         assert(fn->size == 1);
         IrInstruction* binop = &fn->instructions[0];
-        if (binop->type != IR_BINOP || binop->binop.op != cases[c].ir_op) {
+        if (binop->type != IR_BINOP || binop->as.binop.op != cases[c].ir_op) {
             printf("  FAIL: compound assign %s lowered to wrong op "
                    "(expected IR op %d, got type %d op %d)\n",
-                   cases[c].name, cases[c].ir_op, binop->type, binop->binop.op);
+                   cases[c].name, cases[c].ir_op, binop->type, binop->as.binop.op);
             exit(1);
         }
         // left operand and destination are both the variable; rhs is the constant
-        assert(binop->binop.lhs.kind == IR_VARIABLE);
-        assert(strcmp(binop->binop.lhs.name, "x") == 0);
-        assert(binop->binop.dst.kind == IR_VARIABLE);
-        assert(strcmp(binop->binop.dst.name, "x") == 0);
-        assert(binop->binop.rhs.kind == IR_CONSTANT && binop->binop.rhs.int_val == 5);
+        assert(binop->as.binop.lhs.kind == IR_VARIABLE);
+        assert(strcmp(binop->as.binop.lhs.as.name, "x") == 0);
+        assert(binop->as.binop.dst.kind == IR_VARIABLE);
+        assert(strcmp(binop->as.binop.dst.as.name, "x") == 0);
+        assert(binop->as.binop.rhs.kind == IR_CONSTANT && binop->as.binop.rhs.as.int_val == 5);
 
         free_ir_program(&ir);
         destroy_program(&ast);
@@ -663,14 +663,14 @@ static void check_prefix(const char* desc, AstUnopType op, IrBinopType ir_op) {
 
     IrInstruction* binop = &fn->instructions[0];
     assert(binop->type == IR_BINOP);
-    assert(binop->binop.op == ir_op);
-    assert(binop->binop.lhs.kind == IR_VARIABLE && strcmp(binop->binop.lhs.name, "x") == 0);
-    assert(binop->binop.rhs.kind == IR_CONSTANT && binop->binop.rhs.int_val == 1);
-    assert(binop->binop.dst.kind == IR_VARIABLE && strcmp(binop->binop.dst.name, "x") == 0);
+    assert(binop->as.binop.op == ir_op);
+    assert(binop->as.binop.lhs.kind == IR_VARIABLE && strcmp(binop->as.binop.lhs.as.name, "x") == 0);
+    assert(binop->as.binop.rhs.kind == IR_CONSTANT && binop->as.binop.rhs.as.int_val == 1);
+    assert(binop->as.binop.dst.kind == IR_VARIABLE && strcmp(binop->as.binop.dst.as.name, "x") == 0);
 
     IrInstruction* ret = &fn->instructions[1];
     assert(ret->type == IR_RETURN);
-    assert(ret->ret.val.kind == IR_VARIABLE && strcmp(ret->ret.val.name, "x") == 0);
+    assert(ret->as.ret.val.kind == IR_VARIABLE && strcmp(ret->as.ret.val.as.name, "x") == 0);
 
     free_ir_program(&ir);
     destroy_program(&ast);
@@ -692,22 +692,22 @@ static void check_postfix(const char* desc, AstUnopType op, IrBinopType ir_op) {
 
     IrInstruction* copy = &fn->instructions[0];
     assert(copy->type == IR_COPY);
-    assert(copy->copy.src.kind == IR_VARIABLE && strcmp(copy->copy.src.name, "x") == 0);
-    assert(copy->copy.dst.kind == IR_VARIABLE);
-    assert(strcmp(copy->copy.dst.name, "x") != 0);  // a fresh temp, not x
+    assert(copy->as.copy.src.kind == IR_VARIABLE && strcmp(copy->as.copy.src.as.name, "x") == 0);
+    assert(copy->as.copy.dst.kind == IR_VARIABLE);
+    assert(strcmp(copy->as.copy.dst.as.name, "x") != 0);  // a fresh temp, not x
 
     IrInstruction* binop = &fn->instructions[1];
     assert(binop->type == IR_BINOP);
-    assert(binop->binop.op == ir_op);
-    assert(binop->binop.lhs.kind == IR_VARIABLE && strcmp(binop->binop.lhs.name, "x") == 0);
-    assert(binop->binop.rhs.kind == IR_CONSTANT && binop->binop.rhs.int_val == 1);
-    assert(binop->binop.dst.kind == IR_VARIABLE && strcmp(binop->binop.dst.name, "x") == 0);
+    assert(binop->as.binop.op == ir_op);
+    assert(binop->as.binop.lhs.kind == IR_VARIABLE && strcmp(binop->as.binop.lhs.as.name, "x") == 0);
+    assert(binop->as.binop.rhs.kind == IR_CONSTANT && binop->as.binop.rhs.as.int_val == 1);
+    assert(binop->as.binop.dst.kind == IR_VARIABLE && strcmp(binop->as.binop.dst.as.name, "x") == 0);
 
     IrInstruction* ret = &fn->instructions[2];
     assert(ret->type == IR_RETURN);
-    assert(ret->ret.val.kind == IR_VARIABLE);
-    assert(strcmp(ret->ret.val.name, copy->copy.dst.name) == 0);  // the saved old value
-    assert(strcmp(ret->ret.val.name, "x") != 0);
+    assert(ret->as.ret.val.kind == IR_VARIABLE);
+    assert(strcmp(ret->as.ret.val.as.name, copy->as.copy.dst.as.name) == 0);  // the saved old value
+    assert(strcmp(ret->as.ret.val.as.name, "x") != 0);
 
     free_ir_program(&ir);
     destroy_program(&ast);

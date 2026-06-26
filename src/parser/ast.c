@@ -6,40 +6,40 @@
 AstExp* create_int_exp(int value) {
     AstExp* e = malloc(sizeof(AstExp));
     e->kind = EXP_INT;
-    e->int_lit.value = value;
+    e->as.int_lit.value = value;
     return e;
 }
 
 AstExp* create_unary_exp(AstUnopType op_type, AstExp* operand) {
     AstExp* e = malloc(sizeof(AstExp));
     e->kind = EXP_UNOP;
-    e->unary.op_type = op_type;
-    e->unary.operand = operand;
+    e->as.unary.op_type = op_type;
+    e->as.unary.operand = operand;
     return e;
 }
 
 AstExp* create_variable_exp(const char* identifier) {
     AstExp* e = malloc(sizeof(AstExp));
     e->kind = EXP_VAR;
-    e->variable.identifier = strdup(identifier);
+    e->as.variable.identifier = strdup(identifier);
     return e;
 }
 
 AstExp* create_assign_exp(AstAssignOp op, AstExp* lhs, AstExp* rhs) {
     AstExp* e = malloc(sizeof(AstExp));
     e->kind = EXP_ASSIGN;
-	e->assign.op  = op;
-    e->assign.lhs = lhs;
-    e->assign.rhs = rhs;
+	e->as.assign.op  = op;
+    e->as.assign.lhs = lhs;
+    e->as.assign.rhs = rhs;
     return e;
 }
 
 AstExp* create_binop_exp(AstBinopType op_type, AstExp* lhs, AstExp* rhs) {
     AstExp* e = malloc(sizeof(AstExp));
     e->kind = EXP_BINOP;
-    e->binop.op_type = op_type;
-    e->binop.lhs = lhs;
-    e->binop.rhs = rhs;
+    e->as.binop.op_type = op_type;
+    e->as.binop.lhs = lhs;
+    e->as.binop.rhs = rhs;
     return e;
 }
 
@@ -49,18 +49,18 @@ void destroy_exp(AstExp* exp) {
         case EXP_INT:
             break;
         case EXP_UNOP:
-            destroy_exp(exp->unary.operand);
+            destroy_exp(exp->as.unary.operand);
             break;
         case EXP_BINOP:
-            destroy_exp(exp->binop.lhs);
-            destroy_exp(exp->binop.rhs);
+            destroy_exp(exp->as.binop.lhs);
+            destroy_exp(exp->as.binop.rhs);
             break;
 		case EXP_VAR:
-			free(exp->variable.identifier);
+			free(exp->as.variable.identifier);
 			break;
 		case EXP_ASSIGN:
-			destroy_exp(exp->assign.lhs);
-			destroy_exp(exp->assign.rhs);
+			destroy_exp(exp->as.assign.lhs);
+			destroy_exp(exp->as.assign.rhs);
 			break;
     }
     free(exp);
@@ -69,20 +69,20 @@ void destroy_exp(AstExp* exp) {
 // --- Statements ---
 
 AstStatement make_return_stmt(AstExp* exp) {
-    return (AstStatement){ .kind = STMT_RETURN, .ret = { exp } };
+    return (AstStatement){ .kind = STMT_RETURN, .as.ret = { exp } };
 }
 
 AstStatement make_exp_stmt(AstExp* exp) {
-    return (AstStatement){ .kind = STMT_EXP, .exp_stmt = { exp } };
+    return (AstStatement){ .kind = STMT_EXP, .as.exp_stmt = { exp } };
 }
 
 void destroy_stmt(AstStatement* stmt) {
     switch (stmt->kind) {
         case STMT_RETURN:
-            destroy_exp(stmt->ret.exp);
+            destroy_exp(stmt->as.ret.exp);
             break;
         case STMT_EXP:
-            destroy_exp(stmt->exp_stmt.exp);
+            destroy_exp(stmt->as.exp_stmt.exp);
             break;
     }
 }
@@ -111,11 +111,11 @@ void ast_function_destroy(AstFunction* function) {
 		AstBlockItem* block_item = function->body+i;
 		switch (block_item->type) {
 			case AST_DECLARATION:
-				free(block_item->decl.identifier);
-				destroy_exp(block_item->decl.exp);
+				free(block_item->as.decl.identifier);
+				destroy_exp(block_item->as.decl.exp);
 				break;
 			case AST_STATEMENT:
-				destroy_stmt(&block_item->stmt);
+				destroy_stmt(&block_item->as.stmt);
 				break;
 		}
 	}

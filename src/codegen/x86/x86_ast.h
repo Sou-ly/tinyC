@@ -25,7 +25,7 @@ typedef struct {
         x86_Reg  reg;
         char*    identifier;
         int      stack;
-    };
+    } as;
 } x86_Operand;
 
 x86_Operand x86_operand_reg(x86_Reg reg);
@@ -79,22 +79,34 @@ typedef enum {
     x86_LABEL
 } x86_InstrKind;
 
+typedef struct { x86_Operand dst; x86_Operand src; }				x86_Mov;
+typedef struct { x86_Unop unop; x86_Operand operand; }				x86_UnopInstr;
+typedef struct { x86_Binop optype; x86_Operand rhs;
+				 x86_Operand dst; }									x86_BinopInstr;
+typedef struct { x86_Operand operand; }								x86_Idiv;
+typedef struct { int size; }										x86_AllocStack;
+typedef struct { x86_Operand lhs; x86_Operand rhs; }				x86_Cmp;
+typedef struct { char* identifier; }								x86_Jmp;
+typedef struct { x86_ConditionCode cond; x86_Operand op; }			x86_Setcc;
+typedef struct { x86_ConditionCode cond; char* identifier; }		x86_Jmpcc;
+typedef struct { char* identifier; }								x86_Label;
+
 typedef struct x86_Instr {
     x86_InstrKind kind;
     union {
-        struct { x86_Operand dst; x86_Operand src; }					mov;
-		struct { x86_Unop unop; x86_Operand operand; }					unop;
-        struct { x86_Binop optype; x86_Operand rhs; x86_Operand dst; }	binop;
-		struct { x86_Operand operand; }									idiv;
-		// struct {}													cdq;
-        struct { int size; }											alloc_stack;
-        // struct {}													ret;
-        struct { x86_Operand lhs; x86_Operand rhs; }                    cmp;
-        struct { char* identifier; }                                    jmp;
-        struct { x86_ConditionCode cond; x86_Operand op; }              setcc;
-        struct { x86_ConditionCode cond; char* identifier; }            jmpcc;
-        struct { char* identifier; }                                    label;
-    };
+        x86_Mov			mov;
+        x86_UnopInstr	unop;
+        x86_BinopInstr	binop;
+        x86_Idiv		idiv;
+        // cdq has no payload
+        x86_AllocStack	alloc_stack;
+        // ret has no payload
+        x86_Cmp			cmp;
+        x86_Jmp			jmp;
+        x86_Setcc		setcc;
+        x86_Jmpcc		jmpcc;
+        x86_Label		label;
+    } as;
     struct x86_Instr* next;
 } x86_Instr;
 

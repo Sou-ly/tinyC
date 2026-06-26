@@ -15,7 +15,7 @@ typedef struct IrVal {
     union {
         char* name;
         int int_val;
-    };
+    } as;
 } IrVal;
 
 typedef enum IrUnopType {
@@ -56,18 +56,28 @@ typedef enum IrInstructionType {
 	IR_LABEL
 } IrInstructionType;
 
+typedef struct { IrVal val; }								IrRet;
+typedef struct { IrUnopType op; IrVal src; IrVal dst; }		IrUnary;
+typedef struct { IrBinopType op; IrVal lhs; IrVal rhs;
+				 IrVal dst; }								IrBinop;
+typedef struct { IrVal src; IrVal dst; }					IrCopy;
+typedef struct { char* target; }							IrJump;
+typedef struct { IrVal cond; char* target; }				IrJumpZero;
+typedef struct { IrVal cond; char* target; }				IrJumpNotZero;
+typedef struct { char* identifier; }						IrLabel;
+
 typedef struct {
     IrInstructionType type;
     union {
-        struct { IrVal val; } ret;
-        struct { IrUnopType op; IrVal src; IrVal dst; }				unary;
-        struct { IrBinopType op; IrVal lhs; IrVal rhs; IrVal dst; } binop;
-		struct { IrVal src; IrVal dst; }							copy;
-		struct { char* target; }									jump;
-		struct { IrVal cond; char* target; }						jump_zero;
-		struct { IrVal cond; char* target; } 						jump_not_zero;
-		struct { char* identifier; }								label;
-    };
+        IrRet			ret;
+        IrUnary			unary;
+        IrBinop			binop;
+        IrCopy			copy;
+        IrJump			jump;
+        IrJumpZero		jump_zero;
+        IrJumpNotZero	jump_not_zero;
+        IrLabel			label;
+    } as;
 } IrInstruction;
 
 typedef struct {

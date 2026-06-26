@@ -1,4 +1,5 @@
 #include "emit.h"
+#include "../ice.h"
 #include <stdbool.h>
 #include <string.h>
 
@@ -27,16 +28,16 @@ static char* reg_name(x86_Reg reg, bool one_byte) {
 static void emit_operand(x86_Operand* op, FILE* out) {
     switch (op->kind) {
         case x86_REG:
-            fprintf(out, "%%%s", reg_name(op->reg, false));
+            fprintf(out, "%%%s", reg_name(op->as.reg, false));
             break;
         case x86_IMM:
-            fprintf(out, "$%d", op->imm);
+            fprintf(out, "$%d", op->as.imm);
             break;
         case x86_STACK:
-            fprintf(out, "%d(%%rbp)", op->stack);
+            fprintf(out, "%d(%%rbp)", op->as.stack);
             break;
         case x86_ID:
-            fprintf(out, "<pseudo:%s>", op->identifier);
+            fprintf(out, "<pseudo:%s>", op->as.identifier);
             break;
     }
 }
@@ -46,8 +47,7 @@ static const char* unop_name(x86_Unop op) {
         case x86_NEG: return "negl";
         case x86_COMP: return "notl";
     }
-	fprintf(stderr, "unrecognized unop\n");
-	exit(1);
+	ICE("unrecognized unop");
 }
 
 static const char* binop_name(x86_Binop op) {
@@ -63,41 +63,40 @@ static const char* binop_name(x86_Binop op) {
 		case x86_RSHIFT:	return "shrl";
 		default:			break;
     }
-	fprintf(stderr, "unrecognized binop\n");
-	exit(1);
+	ICE("unrecognized binop");
 }
 
 static void emit_instr(x86_Instr* instr, FILE* out) {
     switch (instr->kind) {
         case x86_MOV:
             fprintf(out, "    movl ");
-            emit_operand(&instr->mov.src, out);
+            emit_operand(&instr->as.mov.src, out);
             fprintf(out, ", ");
-            emit_operand(&instr->mov.dst, out);
+            emit_operand(&instr->as.mov.dst, out);
             fprintf(out, "\n");
             break;
         case x86_UNOP:
-            fprintf(out, "    %s ", unop_name(instr->unop.unop));
-            emit_operand(&instr->unop.operand, out);
+            fprintf(out, "    %s ", unop_name(instr->as.unop.unop));
+            emit_operand(&instr->as.unop.operand, out);
             fprintf(out, "\n");
             break;
         case x86_BINOP:
-            fprintf(out, "    %s ", binop_name(instr->binop.optype));
-            emit_operand(&instr->binop.rhs, out);
+            fprintf(out, "    %s ", binop_name(instr->as.binop.optype));
+            emit_operand(&instr->as.binop.rhs, out);
             fprintf(out, ", ");
-            emit_operand(&instr->binop.dst, out);
+            emit_operand(&instr->as.binop.dst, out);
             fprintf(out, "\n");
             break;
         case x86_IDIV:
             fprintf(out, "    idivl ");
-            emit_operand(&instr->idiv.operand, out);
+            emit_operand(&instr->as.idiv.operand, out);
             fprintf(out, "\n");
             break;
         case x86_CDQ:
             fprintf(out, "    cdq\n");
             break;
         case x86_ALLOC:
-            fprintf(out, "    subq $%d, %%rsp\n", instr->alloc_stack.size);
+            fprintf(out, "    subq $%d, %%rsp\n", instr->as.alloc_stack.size);
             break;
         case x86_RET:
             fprintf(out, "    movq %%rbp, %%rsp\n");
@@ -106,28 +105,28 @@ static void emit_instr(x86_Instr* instr, FILE* out) {
             break;
         case x86_CMP:
             fprintf(out, "    cmpl ");
-            emit_operand(&instr->cmp.lhs, out);
+            emit_operand(&instr->as.cmp.lhs, out);
             fprintf(out, ", ");
-            emit_operand(&instr->cmp.rhs, out);
+            emit_operand(&instr->as.cmp.rhs, out);
             fprintf(out, "\n");
             break;
         case x86_JMP:
-            fprintf(out, "    jmp .L%s\n", instr->jmp.identifier);
+            fprintf(out, "    jmp .L%s\n", instr->as.jmp.identifier);
             break;
         case x86_JMPCC:
-            fprintf(out, "    j%s .L%s\n", emit_cond_code(instr->jmpcc.cond), instr->jmpcc.identifier);
+            fprintf(out, "    j%s .L%s\n", emit_cond_code(instr->as.jmpcc.cond), instr->as.jmpcc.identifier);
             break;
         case x86_SETCC:
-            fprintf(out, "    set%s ", emit_cond_code(instr->setcc.cond));
-            if (instr->setcc.op.kind == x86_REG) {
-                fprintf(out, "%%%s", reg_name(instr->setcc.op.reg, true));
+            fprintf(out, "    set%s ", emit_cond_code(instr->as.setcc.cond));
+            if (instr->as.setcc.op.kind == x86_REG) {
+                fprintf(out, "%%%s", reg_name(instr->as.setcc.op.as.reg, true));
             } else {
-                emit_operand(&instr->setcc.op, out);
+                emit_operand(&instr->as.setcc.op, out);
             }
             fprintf(out, "\n");
             break;
         case x86_LABEL:
-            fprintf(out, ".L%s:\n", instr->label.identifier);
+            fprintf(out, ".L%s:\n", instr->as.label.identifier);
             break;
     }
 }
