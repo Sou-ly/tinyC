@@ -39,6 +39,7 @@ static bool is_binop(Token* tok) {
 		case TOK_XOR_EQ:
 		case TOK_RSHIFT_EQ:
 		case TOK_LSHIFT_EQ:
+		case TOK_QUESTION_MARK:
 			return true;
 		default:
 			return false;
@@ -76,7 +77,14 @@ static int precedence(Token* tok) {
 		case TOK_XOR_EQ:	return 1;
 		case TOK_RSHIFT_EQ:	return 1;
 		case TOK_LSHIFT_EQ:	return 1;
-		default:			break;
+		case TOK_QUESTION_MARK:	return 3;
+		// not binary operators: no precedence. Listed explicitly (rather than a
+		// `default`) so -Wswitch flags any new operator left without one.
+		case TOK_DECR:
+		case TOK_INCR:
+		case TOK_NOT:
+		case TOK_LNOT:
+			break;
 	}
 	ICE("precedence: unrecognized token operator");
 }
@@ -112,7 +120,14 @@ static AstBinopType tok_to_binop(TokenOperator op) {
 		case TOK_XOR_EQ:	return BINOP_ASSIGN;
 		case TOK_RSHIFT_EQ:	return BINOP_ASSIGN;
 		case TOK_LSHIFT_EQ:	return BINOP_ASSIGN;
-		default:			break;
+		case TOK_QUESTION_MARK:	return BINOP_CONDITION;
+		// not binary operators. Listed explicitly (rather than a `default`) so
+		// -Wswitch flags any new operator left without a mapping.
+		case TOK_DECR:
+		case TOK_INCR:
+		case TOK_NOT:
+		case TOK_LNOT:
+			break;
 	}
 	ICE("binop: unrecognized token operator");
 }
@@ -234,12 +249,15 @@ static AstExp* parse_expression(Parser* p, int min_prec) {
         AstBinopType op = tok_to_binop(current(p)->op);
 		int prec = precedence(tok);
 		advance(p);
-		// assign operator is right associative
-		// everything else is left associative
 		AstExp* rhs;
 		if (op == BINOP_ASSIGN) {
 			rhs = parse_expression(p, prec);
 			lhs = create_assign_exp(tok_to_assign_op(tok->op), lhs, rhs);
+		} else if (op == BINOP_CONDITION) {
+			AstExp* mid = parse_expression(p, 0);
+			expect_separator(p, TOK_COLON);
+			rhs = parse_expression(p, prec);
+			lhs = create_conditional_exp(lhs, mid, rhs);
 		} else {
 			rhs = parse_expression(p, prec + 1);
 			lhs = create_binop_exp(op, lhs, rhs);
@@ -431,6 +449,11 @@ static AstExp* resolve_expression(AstExp* exp, VarMap* map) {
 		case EXP_BINOP:
 			exp->as.binop.lhs = resolve_expression(exp->as.binop.lhs, map);
 			exp->as.binop.rhs = resolve_expression(exp->as.binop.rhs, map);
+			return exp;
+		case EXP_CONDITIONAL:
+			exp->as.conditional.lhs = resolve_expression(exp->as.conditional.lhs, map);
+			exp->as.conditional.mid = resolve_expression(exp->as.conditional.mid, map);
+			exp->as.conditional.rhs = resolve_expression(exp->as.conditional.rhs, map);
 			return exp;
 	}
 	return exp;

@@ -38,7 +38,8 @@ typedef enum {
 	BINOP_LEQ,
 	BINOP_GEQ,
 	// special
-	BINOP_ASSIGN
+	BINOP_ASSIGN,
+	BINOP_CONDITION
 } AstBinopType;
 
 typedef enum {
@@ -60,7 +61,8 @@ typedef enum {
 	EXP_UNOP,
 	EXP_BINOP,
 	EXP_VAR,
-	EXP_ASSIGN
+	EXP_ASSIGN,
+	EXP_CONDITIONAL
 } AstExpKind;
 
 typedef struct AstExp AstExp;
@@ -70,15 +72,17 @@ typedef struct { AstUnopType op_type; AstExp* operand; }			AstExpUnary;
 typedef struct { AstBinopType op_type; AstExp* lhs; AstExp* rhs; }	AstExpBinop;
 typedef struct { char* identifier; }								AstExpVar;
 typedef struct { AstAssignOp op; AstExp* lhs; AstExp* rhs; }		AstExpAssign;
+typedef struct { AstExp* lhs; AstExp* mid; AstExp* rhs; }			AstExpConditional;
 
 struct AstExp {
     AstExpKind kind;
     union {
-        AstExpInt		int_lit;
-        AstExpUnary		unary;
-        AstExpBinop		binop;
-        AstExpVar		variable;
-        AstExpAssign	assign;
+        AstExpInt			int_lit;
+        AstExpUnary			unary;
+        AstExpBinop			binop;
+        AstExpVar			variable;
+        AstExpAssign		assign;
+		AstExpConditional	conditional;
     } as;
 };
 
@@ -87,6 +91,7 @@ AstExp* create_unary_exp(AstUnopType op_type, AstExp* operand);
 AstExp* create_binop_exp(AstBinopType op_type, AstExp* lhs, AstExp* rhs);
 AstExp* create_variable_exp(const char* identifier);
 AstExp* create_assign_exp(AstAssignOp op, AstExp* lhs, AstExp* rhs);
+AstExp* create_conditional_exp(AstExp* lhs, AstExp* mid, AstExp* rhs);
 void destroy_exp(AstExp* exp);
 
 // --- Statements ---

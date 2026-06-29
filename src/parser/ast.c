@@ -43,6 +43,15 @@ AstExp* create_binop_exp(AstBinopType op_type, AstExp* lhs, AstExp* rhs) {
     return e;
 }
 
+AstExp* create_conditional_exp(AstExp* lhs, AstExp* mid, AstExp* rhs) {
+    AstExp* e = malloc(sizeof(AstExp));
+    e->kind = EXP_CONDITIONAL;
+    e->as.conditional.lhs = lhs;
+    e->as.conditional.mid = mid;
+    e->as.conditional.rhs = rhs;
+    return e;
+}
+
 void destroy_exp(AstExp* exp) {
     if (!exp) return;
     switch (exp->kind) {
@@ -62,6 +71,10 @@ void destroy_exp(AstExp* exp) {
 			destroy_exp(exp->as.assign.lhs);
 			destroy_exp(exp->as.assign.rhs);
 			break;
+		case EXP_CONDITIONAL:
+			destroy_exp(exp->as.conditional.lhs);
+			destroy_exp(exp->as.conditional.mid);
+			destroy_exp(exp->as.conditional.rhs);
     }
     free(exp);
 }
