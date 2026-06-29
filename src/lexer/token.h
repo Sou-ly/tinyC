@@ -21,7 +21,6 @@ typedef enum {
 	TOK_COMMA,
 	TOK_SEMICOLON,
 	TOK_COLON,
-	TOK_QUESTION_MARK
 } TokenSeparator;
 
 typedef enum {
@@ -61,7 +60,8 @@ typedef enum {
 	TOK_OR_EQ,
 	TOK_XOR_EQ,
 	TOK_RSHIFT_EQ,
-	TOK_LSHIFT_EQ
+	TOK_LSHIFT_EQ,
+	TOK_QUESTION_MARK
 } TokenOperator;
 
 typedef enum {

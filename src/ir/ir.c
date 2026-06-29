@@ -66,6 +66,7 @@ static IrBinopType convert_ir_binop(AstBinopType ast_op) {
 		case BINOP_LEQ:		return IR_LEQ;
 		case BINOP_GEQ:		return IR_GEQ;
 		case BINOP_ASSIGN:	break; // handled separately in EXP_ASSIGN
+		case BINOP_CONDITION:	break; // never a binop node; see EXP_CONDITIONAL
 	}
 	ICE("ir: unsupported binary operator");
 }

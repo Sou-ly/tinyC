@@ -25,7 +25,6 @@ const char *separator_name(TokenSeparator s) {
 		case TOK_COMMA:     	return ",";
 		case TOK_SEMICOLON: 	return ";";
 		case TOK_COLON:			return ":";
-		case TOK_QUESTION_MARK: return "?";
 	}
 	return "<unknown>";
 }
@@ -44,6 +43,7 @@ const char *operator_name(TokenOperator o) {
 		case TOK_OR:        return "|";
 		case TOK_XOR:       return "^";
 		case TOK_ASSIGN:	return "=";
+		case TOK_QUESTION_MARK: return "?";
 		case TOK_LSHIFT:    return "<<";
 		case TOK_RSHIFT:    return ">>";
 		case TOK_LNOT:		return "!";
@@ -127,7 +127,7 @@ static const PunctEntry punct_table[] = {
 	SEP(")", TOK_RPAR),			SEP("{", TOK_LBRACE), 
 	SEP("}", TOK_RBRACE),		SEP(",", TOK_COMMA),
 	SEP(";", TOK_SEMICOLON),	SEP(":", TOK_COLON),
-	SEP("?", TOK_QUESTION_MARK)
+	OP("?", TOK_QUESTION_MARK)
 };
 
 #undef OP
