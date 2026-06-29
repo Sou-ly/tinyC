@@ -3,7 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "token.h"
-#include "../list.h"
+#include "token_list.h"
 
 const char *token_kind_name(TokenKind kind) {
 	switch (kind) {

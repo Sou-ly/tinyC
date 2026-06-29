@@ -89,6 +89,11 @@ AstStatement make_exp_stmt(AstExp* exp) {
     return (AstStatement){ .kind = STMT_EXP, .as.exp_stmt = { exp } };
 }
 
+// then_br and else_br are heap-owned; else_br may be NULL (a plain `if`).
+AstStatement make_if_stmt(AstExp* cond, AstStatement* then_br, AstStatement* else_br) {
+    return (AstStatement){ .kind = STMT_IF, .as.if_cond = { cond, then_br, else_br } };
+}
+
 void destroy_stmt(AstStatement* stmt) {
     switch (stmt->kind) {
         case STMT_RETURN:
@@ -96,6 +101,15 @@ void destroy_stmt(AstStatement* stmt) {
             break;
         case STMT_EXP:
             destroy_exp(stmt->as.exp_stmt.exp);
+            break;
+        case STMT_IF:
+            destroy_exp(stmt->as.if_cond.cond);
+            destroy_stmt(stmt->as.if_cond.then_br);
+            free(stmt->as.if_cond.then_br);
+            if (stmt->as.if_cond.else_br != NULL) {
+                destroy_stmt(stmt->as.if_cond.else_br);
+                free(stmt->as.if_cond.else_br);
+            }
             break;
     }
 }

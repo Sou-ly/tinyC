@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include "../src/parser/ast.h"
 #include "../src/parser/parser.h"
-#include "../src/list.h"
+#include "../src/lexer/token_list.h"
 
 // --- AST unit tests ---
 
@@ -36,6 +36,17 @@ void test_create_binop_exp() {
     assert(e->as.binop.rhs->as.int_lit.value == 7);
     destroy_exp(e);
     printf("  PASS: test_create_binop_exp\n");
+}
+
+void test_create_conditional_exp() {
+    AstExp* e = create_conditional_exp(create_int_exp(1), create_int_exp(2), create_int_exp(3));
+    assert(e != NULL);
+    assert(e->kind == EXP_CONDITIONAL);
+    assert(e->as.conditional.lhs->as.int_lit.value == 1);
+    assert(e->as.conditional.mid->as.int_lit.value == 2);
+    assert(e->as.conditional.rhs->as.int_lit.value == 3);
+    destroy_exp(e);
+    printf("  PASS: test_create_conditional_exp\n");
 }
 
 void test_create_return_stmt() {
@@ -138,6 +149,7 @@ static const char* binop_name(AstBinopType op) {
         case BINOP_LEQ:    return "<=";
         case BINOP_GEQ:    return ">=";
         case BINOP_ASSIGN: return "=";
+        case BINOP_CONDITION: return "?:";
     }
     return "<unknown>";
 }
@@ -180,6 +192,15 @@ static void print_exp(const AstExp* exp) {
             print_exp(exp->as.assign.rhs);
             printf(")");
             break;
+        case EXP_CONDITIONAL:
+            printf("(");
+            print_exp(exp->as.conditional.lhs);
+            printf(" ? ");
+            print_exp(exp->as.conditional.mid);
+            printf(" : ");
+            print_exp(exp->as.conditional.rhs);
+            printf(")");
+            break;
     }
 }
 
@@ -202,6 +223,10 @@ static bool exp_equals(const AstExp* a, const AstExp* b) {
         case EXP_ASSIGN:
             return exp_equals(a->as.assign.lhs, b->as.assign.lhs)
                 && exp_equals(a->as.assign.rhs, b->as.assign.rhs);
+        case EXP_CONDITIONAL:
+            return exp_equals(a->as.conditional.lhs, b->as.conditional.lhs)
+                && exp_equals(a->as.conditional.mid, b->as.conditional.mid)
+                && exp_equals(a->as.conditional.rhs, b->as.conditional.rhs);
     }
     return false;
 }
@@ -509,11 +534,71 @@ void test_parse_postfix_decrement() {
         create_unary_exp(UNOP_POSTDEC, create_variable_exp("x")));
 }
 
+// --- Conditional (ternary) tests ---
+//
+// `cond ? then : else`. The condition binds like a normal binary operand, the
+// middle is a full expression (parsed down to 0), and the operator is
+// right-associative. Each case is parsed as `int main() { return <exp>; }`.
+
+// Basic shape: `1 ? 2 : 3` -> conditional(1, 2, 3).
+void test_parse_conditional_basic() {
+    Token toks[] = {
+        make_int_token(1), make_op_token(TOK_QUESTION_MARK),
+        make_int_token(2), make_sep_token(TOK_COLON), make_int_token(3),
+    };
+    check_return_exp("1 ? 2 : 3", toks, COUNT_OF(toks),
+        create_conditional_exp(create_int_exp(1), create_int_exp(2), create_int_exp(3)));
+}
+
+// The condition is lower precedence than arithmetic: `1 + 2 ? 3 : 4` groups as
+// `(1 + 2) ? 3 : 4`.
+void test_parse_conditional_below_arithmetic() {
+    Token toks[] = {
+        make_int_token(1), make_op_token(TOK_PLUS), make_int_token(2),
+        make_op_token(TOK_QUESTION_MARK),
+        make_int_token(3), make_sep_token(TOK_COLON), make_int_token(4),
+    };
+    check_return_exp("1 + 2 ? 3 : 4", toks, COUNT_OF(toks),
+        create_conditional_exp(
+            create_binop_exp(BINOP_ADD, create_int_exp(1), create_int_exp(2)),
+            create_int_exp(3), create_int_exp(4)));
+}
+
+// The middle branch is a full expression, so a bare binop there stays grouped:
+// `1 ? 2 + 3 : 4` -> conditional(1, (2 + 3), 4).
+void test_parse_conditional_middle_is_full_exp() {
+    Token toks[] = {
+        make_int_token(1), make_op_token(TOK_QUESTION_MARK),
+        make_int_token(2), make_op_token(TOK_PLUS), make_int_token(3),
+        make_sep_token(TOK_COLON), make_int_token(4),
+    };
+    check_return_exp("1 ? 2 + 3 : 4", toks, COUNT_OF(toks),
+        create_conditional_exp(create_int_exp(1),
+            create_binop_exp(BINOP_ADD, create_int_exp(2), create_int_exp(3)),
+            create_int_exp(4)));
+}
+
+// Conditionals are right-associative: `1 ? 2 : 3 ? 4 : 5` groups as
+// `1 ? 2 : (3 ? 4 : 5)`.
+void test_parse_conditional_right_assoc() {
+    Token toks[] = {
+        make_int_token(1), make_op_token(TOK_QUESTION_MARK),
+        make_int_token(2), make_sep_token(TOK_COLON),
+        make_int_token(3), make_op_token(TOK_QUESTION_MARK),
+        make_int_token(4), make_sep_token(TOK_COLON), make_int_token(5),
+    };
+    check_return_exp("1 ? 2 : 3 ? 4 : 5", toks, COUNT_OF(toks),
+        create_conditional_exp(create_int_exp(1), create_int_exp(2),
+            create_conditional_exp(create_int_exp(3), create_int_exp(4),
+                create_int_exp(5))));
+}
+
 int main(void) {
     printf("Running parser tests...\n");
     test_create_int_exp();
     test_create_unary_exp();
     test_create_binop_exp();
+    test_create_conditional_exp();
     test_create_return_stmt();
     test_create_function_decl();
     test_parse_return_2();
@@ -530,6 +615,10 @@ int main(void) {
     test_parse_prefix_decrement();
     test_parse_postfix_increment();
     test_parse_postfix_decrement();
+    test_parse_conditional_basic();
+    test_parse_conditional_below_arithmetic();
+    test_parse_conditional_middle_is_full_exp();
+    test_parse_conditional_right_assoc();
     printf("All parser tests passed!\n");
     return 0;
 }

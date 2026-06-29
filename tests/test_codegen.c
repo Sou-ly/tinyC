@@ -54,6 +54,44 @@ static AstProgram make_test_program(AstExp* expr) {
     return ast_program_create(functions, 1);
 }
 
+// Wrap a single statement (rather than a bare return expression) into a "main"
+// program — used for if-statement codegen.
+static AstProgram make_stmt_program(AstStatement stmt) {
+    AstFunction fn = ast_function_make("main", 8);
+    ast_function_append(&fn, (AstBlockItem){
+        .type = AST_STATEMENT,
+        .as.stmt = stmt,
+    });
+    AstFunction* functions = malloc(sizeof(AstFunction));
+    functions[0] = fn;
+    return ast_program_create(functions, 1);
+}
+
+// Heap-allocate a statement so an if-statement's branch pointers can own it.
+static AstStatement* heap_stmt(AstStatement stmt) {
+    AstStatement* p = malloc(sizeof(AstStatement));
+    *p = stmt;
+    return p;
+}
+
+// Render a fully-lowered program (codegen -> rename -> allocate -> emit) to a
+// heap string the caller must free.
+static char* emit_program_text(AstProgram* program) {
+    IrProgram ir = emit_ir(program);
+    x86_Program asm_prog = codegen(&ir);
+    int stack_offset = rename_registers(&asm_prog.functions[0]);
+    allocate_stack(&asm_prog.functions[0], stack_offset);
+
+    char* buf = NULL;
+    size_t buf_size = 0;
+    FILE* out = open_memstream(&buf, &buf_size);
+    emit_asm(&asm_prog, out);
+    fclose(out);
+
+    destroy_x86_program(&asm_prog);
+    return buf;
+}
+
 // --- codegen integration test ---
 
 void test_codegen_return_2() {
@@ -1032,6 +1070,75 @@ void test_emit_incdec_program() {
     printf("  PASS: test_emit_incdec_program\n");
 }
 
+// --- conditional expression / if-statement codegen ---
+//
+// The ternary and if-statement lower entirely to control-flow IR (jump_zero,
+// jump, label) that codegen already supports, so no new codegen is needed —
+// these tests confirm the full pipeline handles them and leaves no pseudos.
+
+// int main() { return 1 ? 2 : 3; }  renders the ternary's conditional jump, the
+// unconditional skip, and both labels.
+void test_codegen_conditional_expression() {
+    AstProgram program = make_test_program(
+        create_conditional_exp(create_int_exp(1), create_int_exp(2), create_int_exp(3)));
+    char* buf = emit_program_text(&program);
+
+    assert(strstr(buf, "cmpl") != NULL);     // test the condition against zero
+    assert(strstr(buf, "je .L") != NULL);    // branch to the false arm when zero
+    assert(strstr(buf, "jmp .L") != NULL);   // true arm skips past the false arm
+    assert(strstr(buf, ".L") != NULL);       // labels are emitted
+    assert(strstr(buf, "<pseudo:") == NULL);
+    assert(strstr(buf, "???") == NULL);
+
+    free(buf);
+    destroy_program(&program);
+    printf("  PASS: test_codegen_conditional_expression\n");
+}
+
+// int main() { if (1) return 2; }  renders a single forward conditional branch
+// to the end label — no unconditional jump, since there is no else arm.
+void test_codegen_if_no_else() {
+    AstProgram program = make_stmt_program(make_if_stmt(
+        create_int_exp(1),
+        heap_stmt(make_return_stmt(create_int_exp(2))),
+        NULL));
+    char* buf = emit_program_text(&program);
+
+    assert(strstr(buf, "cmpl") != NULL);
+    assert(strstr(buf, "je .L") != NULL);    // skip the body when the cond is zero
+    assert(strstr(buf, "jmp .L") == NULL);   // no unconditional jump without an else
+    assert(strstr(buf, "<pseudo:") == NULL);
+    assert(strstr(buf, "???") == NULL);
+
+    free(buf);
+    destroy_program(&program);
+    printf("  PASS: test_codegen_if_no_else\n");
+}
+
+// int main() { if (1) return 2; else return 3; }  renders the conditional branch
+// to the else arm plus the unconditional jump the then arm uses to skip it.
+void test_codegen_if_with_else() {
+    AstProgram program = make_stmt_program(make_if_stmt(
+        create_int_exp(1),
+        heap_stmt(make_return_stmt(create_int_exp(2))),
+        heap_stmt(make_return_stmt(create_int_exp(3)))));
+    char* buf = emit_program_text(&program);
+
+    assert(strstr(buf, "cmpl") != NULL);
+    assert(strstr(buf, "je .L") != NULL);    // branch to the else arm
+    assert(strstr(buf, "jmp .L") != NULL);   // then arm skips the else arm
+
+    // both return arms reach the assembler
+    assert(strstr(buf, "$2") != NULL);
+    assert(strstr(buf, "$3") != NULL);
+    assert(strstr(buf, "<pseudo:") == NULL);
+    assert(strstr(buf, "???") == NULL);
+
+    free(buf);
+    destroy_program(&program);
+    printf("  PASS: test_codegen_if_with_else\n");
+}
+
 int main(void) {
     printf("Running codegen tests...\n");
     test_create_x86_function();
@@ -1063,6 +1170,9 @@ int main(void) {
     test_emit_short_circuit_program();
     test_codegen_incdec_binop();
     test_emit_incdec_program();
+    test_codegen_conditional_expression();
+    test_codegen_if_no_else();
+    test_codegen_if_with_else();
     printf("All codegen tests passed!\n");
     return 0;
 }

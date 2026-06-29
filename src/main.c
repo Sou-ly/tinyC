@@ -4,7 +4,7 @@
 #include <stdbool.h>
 
 #include "lexer/token.h"
-#include "list.h"
+#include "lexer/token_list.h"
 #include "parser/parser.h"
 #include "ir/ir.h"
 #include "codegen/codegen.h"

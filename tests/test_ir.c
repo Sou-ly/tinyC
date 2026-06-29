@@ -719,6 +719,237 @@ void test_emit_prefix_decrement()  { check_prefix("return --x", UNOP_PREDEC, IR_
 void test_emit_postfix_increment() { check_postfix("return x++", UNOP_POSTINC, IR_ADD); }
 void test_emit_postfix_decrement() { check_postfix("return x--", UNOP_POSTDEC, IR_SUB); }
 
+// --- conditional expression (ternary) lowering ---
+
+// Heap-allocate a statement so it can be owned by an if-statement's branch
+// pointers (which destroy_stmt frees).
+static AstStatement* heap_stmt(AstStatement stmt) {
+    AstStatement* p = malloc(sizeof(AstStatement));
+    *p = stmt;
+    return p;
+}
+
+// int main() { return 1 ? 2 : 3; }  lowers to:
+//   jump_zero(1, false)
+//   copy 2 -> result
+//   jump end
+// false:
+//   copy 3 -> result
+// end:
+//   return result
+void test_emit_conditional_expression() {
+    AstProgram ast = program_of_stmt(make_return_stmt(
+        create_conditional_exp(create_int_exp(1), create_int_exp(2), create_int_exp(3))));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.functions[0];
+    assert(fn->size == 7);
+
+    IrInstruction* jz         = &fn->instructions[0];
+    IrInstruction* copy_true  = &fn->instructions[1];
+    IrInstruction* jmp_end    = &fn->instructions[2];
+    IrInstruction* false_lbl  = &fn->instructions[3];
+    IrInstruction* copy_false = &fn->instructions[4];
+    IrInstruction* end_lbl    = &fn->instructions[5];
+    IrInstruction* ret        = &fn->instructions[6];
+
+    // condition (constant 1) jumps to the false branch when zero
+    assert(jz->type == IR_JUMP_ZERO);
+    assert(jump_cond(jz).kind == IR_CONSTANT && jump_cond(jz).as.int_val == 1);
+    assert(strcmp(jump_target(jz), false_lbl->as.label.identifier) == 0);
+
+    // true branch copies 2 into the shared result temp, then skips the false arm
+    assert(copy_true->type == IR_COPY);
+    assert(copy_true->as.copy.src.kind == IR_CONSTANT && copy_true->as.copy.src.as.int_val == 2);
+    assert(copy_true->as.copy.dst.kind == IR_VARIABLE);
+    assert(jmp_end->type == IR_JUMP);
+    assert(strcmp(jmp_end->as.jump.target, end_lbl->as.label.identifier) == 0);
+
+    // false branch copies 3 into the *same* result temp
+    assert(false_lbl->type == IR_LABEL);
+    assert(copy_false->type == IR_COPY);
+    assert(copy_false->as.copy.src.kind == IR_CONSTANT && copy_false->as.copy.src.as.int_val == 3);
+    assert(strcmp(copy_false->as.copy.dst.as.name, copy_true->as.copy.dst.as.name) == 0);
+
+    // the two labels are distinct, and the result temp is what's returned
+    assert(end_lbl->type == IR_LABEL);
+    assert(strcmp(false_lbl->as.label.identifier, end_lbl->as.label.identifier) != 0);
+    assert(ret->type == IR_RETURN);
+    assert(strcmp(ret->as.ret.val.as.name, copy_true->as.copy.dst.as.name) == 0);
+
+    free_ir_program(&ir);
+    destroy_program(&ast);
+    printf("  PASS: test_emit_conditional_expression\n");
+}
+
+// Each ternary allocates its own label pair, so nesting one in the true arm
+// yields four distinct labels.
+void test_emit_conditional_nested_unique_labels() {
+    // 1 ? (2 ? 3 : 4) : 5
+    AstExp* inner = create_conditional_exp(
+        create_int_exp(2), create_int_exp(3), create_int_exp(4));
+    AstExp* outer = create_conditional_exp(create_int_exp(1), inner, create_int_exp(5));
+    AstProgram ast = program_of_stmt(make_return_stmt(outer));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.functions[0];
+    const char* labels[8];
+    int num_labels = 0;
+    for (int i = 0; i < fn->size; i++) {
+        if (fn->instructions[i].type == IR_LABEL) {
+            labels[num_labels++] = fn->instructions[i].as.label.identifier;
+        }
+    }
+    assert(num_labels == 4);
+    for (int a = 0; a < num_labels; a++) {
+        for (int b = a + 1; b < num_labels; b++) {
+            assert(strcmp(labels[a], labels[b]) != 0);
+        }
+    }
+
+    free_ir_program(&ir);
+    destroy_program(&ast);
+    printf("  PASS: test_emit_conditional_nested_unique_labels\n");
+}
+
+// --- if-statement lowering ---
+
+// int main() { if (1) return 2; }  with no else lowers to a single forward
+// branch — no else label and no unconditional jump:
+//   jump_zero(1, end)
+//   return 2
+// end:
+void test_emit_if_no_else() {
+    AstProgram ast = program_of_stmt(make_if_stmt(
+        create_int_exp(1),
+        heap_stmt(make_return_stmt(create_int_exp(2))),
+        NULL));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.functions[0];
+    assert(fn->size == 3);
+
+    IrInstruction* jz      = &fn->instructions[0];
+    IrInstruction* ret     = &fn->instructions[1];
+    IrInstruction* end_lbl = &fn->instructions[2];
+
+    assert(jz->type == IR_JUMP_ZERO);
+    assert(jump_cond(jz).kind == IR_CONSTANT && jump_cond(jz).as.int_val == 1);
+    // the false path jumps straight to the end label
+    assert(strcmp(jump_target(jz), end_lbl->as.label.identifier) == 0);
+
+    assert(ret->type == IR_RETURN);
+    assert(ret->as.ret.val.kind == IR_CONSTANT && ret->as.ret.val.as.int_val == 2);
+
+    assert(end_lbl->type == IR_LABEL);
+
+    // no unconditional jump and no second label are emitted when there is no else
+    for (int i = 0; i < fn->size; i++) {
+        assert(fn->instructions[i].type != IR_JUMP);
+    }
+
+    free_ir_program(&ir);
+    destroy_program(&ast);
+    printf("  PASS: test_emit_if_no_else\n");
+}
+
+// int main() { if (1) return 2; else return 3; }  lowers to:
+//   jump_zero(1, else)
+//   return 2
+//   jump end
+// else:
+//   return 3
+// end:
+void test_emit_if_with_else() {
+    AstProgram ast = program_of_stmt(make_if_stmt(
+        create_int_exp(1),
+        heap_stmt(make_return_stmt(create_int_exp(2))),
+        heap_stmt(make_return_stmt(create_int_exp(3)))));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.functions[0];
+    assert(fn->size == 6);
+
+    IrInstruction* jz       = &fn->instructions[0];
+    IrInstruction* then_ret = &fn->instructions[1];
+    IrInstruction* jmp_end  = &fn->instructions[2];
+    IrInstruction* else_lbl = &fn->instructions[3];
+    IrInstruction* else_ret = &fn->instructions[4];
+    IrInstruction* end_lbl  = &fn->instructions[5];
+
+    // condition jumps to the else label when zero
+    assert(jz->type == IR_JUMP_ZERO);
+    assert(strcmp(jump_target(jz), else_lbl->as.label.identifier) == 0);
+
+    // then branch returns 2, then skips past the else branch
+    assert(then_ret->type == IR_RETURN && then_ret->as.ret.val.as.int_val == 2);
+    assert(jmp_end->type == IR_JUMP);
+    assert(strcmp(jmp_end->as.jump.target, end_lbl->as.label.identifier) == 0);
+
+    // else branch returns 3
+    assert(else_lbl->type == IR_LABEL);
+    assert(else_ret->type == IR_RETURN && else_ret->as.ret.val.as.int_val == 3);
+
+    // the else and end labels are distinct
+    assert(end_lbl->type == IR_LABEL);
+    assert(strcmp(else_lbl->as.label.identifier, end_lbl->as.label.identifier) != 0);
+
+    free_ir_program(&ir);
+    destroy_program(&ast);
+    printf("  PASS: test_emit_if_with_else\n");
+}
+
+// The condition is a real expression: `if (a < b)` lowers the comparison into a
+// temp first, and that temp (not a constant) is what the jump tests.
+void test_emit_if_cond_is_expression() {
+    AstProgram ast = program_of_stmt(make_if_stmt(
+        create_binop_exp(BINOP_LESS, create_variable_exp("a"), create_variable_exp("b")),
+        heap_stmt(make_return_stmt(create_int_exp(1))),
+        NULL));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.functions[0];
+
+    // the relational compare is lowered before the branch
+    IrInstruction* cmp = &fn->instructions[0];
+    assert(cmp->type == IR_BINOP && cmp->as.binop.op == IR_LESS);
+
+    IrInstruction* jz = &fn->instructions[1];
+    assert(jz->type == IR_JUMP_ZERO);
+    // the branch tests the compare's result temp, not a constant
+    assert(jump_cond(jz).kind == IR_VARIABLE);
+    assert(strcmp(jump_cond(jz).as.name, cmp->as.binop.dst.as.name) == 0);
+
+    free_ir_program(&ir);
+    destroy_program(&ast);
+    printf("  PASS: test_emit_if_cond_is_expression\n");
+}
+
+// A nested if (if inside the then branch) lowers recursively: the outer branch
+// guards the inner branch, producing two distinct jump_zero/label pairs.
+void test_emit_if_nested() {
+    AstStatement* inner = heap_stmt(make_if_stmt(
+        create_int_exp(1),
+        heap_stmt(make_return_stmt(create_int_exp(2))),
+        NULL));
+    AstProgram ast = program_of_stmt(make_if_stmt(create_int_exp(3), inner, NULL));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.functions[0];
+    int jump_zeros = 0, labels = 0;
+    for (int i = 0; i < fn->size; i++) {
+        if (fn->instructions[i].type == IR_JUMP_ZERO) jump_zeros++;
+        if (fn->instructions[i].type == IR_LABEL) labels++;
+    }
+    // one branch + end label per if
+    assert(jump_zeros == 2);
+    assert(labels == 2);
+
+    free_ir_program(&ir);
+    destroy_program(&ast);
+    printf("  PASS: test_emit_if_nested\n");
+}
+
 int main(void) {
     printf("Running IR tests...\n");
     test_emit_return_constant();
@@ -745,6 +976,12 @@ int main(void) {
     test_emit_prefix_decrement();
     test_emit_postfix_increment();
     test_emit_postfix_decrement();
+    test_emit_conditional_expression();
+    test_emit_conditional_nested_unique_labels();
+    test_emit_if_no_else();
+    test_emit_if_with_else();
+    test_emit_if_cond_is_expression();
+    test_emit_if_nested();
     printf("All IR tests passed!\n");
     return 0;
 }

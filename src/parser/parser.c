@@ -1,5 +1,5 @@
 #include "parser.h"
-#include "../ice.h"
+#include "../common/ice.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -466,6 +466,13 @@ static AstStatement resolve_statement(AstStatement stmt, VarMap* map) {
 			break;
 		case STMT_EXP:
 			stmt.as.exp_stmt.exp = resolve_expression(stmt.as.exp_stmt.exp, map);
+			break;
+		case STMT_IF:
+			stmt.as.if_cond.cond = resolve_expression(stmt.as.if_cond.cond, map);
+			*stmt.as.if_cond.then_br = resolve_statement(*stmt.as.if_cond.then_br, map);
+			if (stmt.as.if_cond.else_br != NULL) {
+				*stmt.as.if_cond.else_br = resolve_statement(*stmt.as.if_cond.else_br, map);
+			}
 			break;
 	}
 	return stmt;
