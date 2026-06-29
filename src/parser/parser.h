@@ -2,7 +2,7 @@
 
 #include "ast.h"
 #include "../lexer/token.h"
-#include "../list.h"
+#include "../lexer/token_list.h"
 
 typedef struct {
     TokenList* tokens;

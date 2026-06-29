@@ -1,5 +1,5 @@
 #include "codegen.h"
-#include "../ice.h"
+#include "../common/ice.h"
 #include <stdio.h>
 #include <string.h>
 

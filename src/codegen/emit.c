@@ -1,5 +1,5 @@
 #include "emit.h"
-#include "../ice.h"
+#include "../common/ice.h"
 #include <stdbool.h>
 #include <string.h>
 

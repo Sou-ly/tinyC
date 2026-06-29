@@ -98,7 +98,8 @@ void destroy_exp(AstExp* exp);
 
 typedef enum {
     STMT_RETURN,
-    STMT_EXP
+    STMT_EXP,
+    STMT_IF
 } AstStatementKind;
 
 typedef struct AstStatement AstStatement;

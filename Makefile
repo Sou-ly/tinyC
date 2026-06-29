@@ -4,9 +4,12 @@ CC = gcc
 CFLAGS = -Wall -Wextra -g -Isrc
 LDFLAGS =
 
+BUILD_DIR = build
+
 SRCS = src/main.c \
-       src/list.c \
+       src/common/string_list.c \
        src/lexer/token.c \
+       src/lexer/token_list.c \
        src/parser/ast.c \
        src/parser/parser.c \
        src/ir/ir.c \
@@ -15,7 +18,7 @@ SRCS = src/main.c \
        src/codegen/emit.c \
        src/strlib/str.c
 
-OBJS = $(SRCS:.c=.o)
+OBJS = $(SRCS:src/%.c=$(BUILD_DIR)/%.o)
 
 TEST_TARGETS = tests/test_list tests/test_token tests/test_parser tests/test_str tests/test_codegen tests/test_ir
 
@@ -24,7 +27,8 @@ all: $(TARGET)
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-%.o: %.c
+$(BUILD_DIR)/%.o: src/%.c
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 test: build_tests
@@ -38,19 +42,19 @@ test: build_tests
 
 build_tests: tests/test_list tests/test_token tests/test_parser tests/test_codegen tests/test_ir
 
-tests/test_list: tests/test_list.c src/list.o src/lexer/token.o
+tests/test_list: tests/test_list.c $(BUILD_DIR)/common/string_list.o $(BUILD_DIR)/lexer/token_list.o $(BUILD_DIR)/lexer/token.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-tests/test_token: tests/test_token.c src/list.o src/lexer/token.o
+tests/test_token: tests/test_token.c $(BUILD_DIR)/lexer/token_list.o $(BUILD_DIR)/lexer/token.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-tests/test_parser: tests/test_parser.c src/parser/ast.o src/parser/parser.o src/list.o src/lexer/token.o src/strlib/str.o
+tests/test_parser: tests/test_parser.c $(BUILD_DIR)/parser/ast.o $(BUILD_DIR)/parser/parser.o $(BUILD_DIR)/common/string_list.o $(BUILD_DIR)/lexer/token_list.o $(BUILD_DIR)/lexer/token.o $(BUILD_DIR)/strlib/str.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-tests/test_codegen: tests/test_codegen.c src/codegen/x86/x86_ast.o src/codegen/codegen.o src/codegen/emit.o src/ir/ir.o src/parser/ast.o
+tests/test_codegen: tests/test_codegen.c $(BUILD_DIR)/codegen/x86/x86_ast.o $(BUILD_DIR)/codegen/codegen.o $(BUILD_DIR)/codegen/emit.o $(BUILD_DIR)/ir/ir.o $(BUILD_DIR)/parser/ast.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-tests/test_ir: tests/test_ir.c src/ir/ir.o src/parser/ast.o
+tests/test_ir: tests/test_ir.c $(BUILD_DIR)/ir/ir.o $(BUILD_DIR)/parser/ast.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 tests/test_str:
@@ -59,6 +63,7 @@ tests/test_str:
 	@# dummy target
 
 clean:
+	rm -rf $(BUILD_DIR)
 	find . -name "*.o" -delete
 	rm -f $(TARGET) $(TEST_TARGETS)
 	find . -name "*.dSYM" -type d -exec rm -rf {} +

@@ -2,7 +2,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include "../src/list.h"
+#include "../src/lexer/token_list.h"
+#include "../src/common/string_list.h"
 
 // Identifiers strdup their spelling — pushing transfers ownership to the
 // list, which frees it on destroy.

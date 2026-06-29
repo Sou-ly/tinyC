@@ -1,5 +1,5 @@
 #include "ir.h"
-#include "../ice.h"
+#include "../common/ice.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -206,25 +206,61 @@ static IrVal emit_ir_expression(const AstExp* exp, IrFunction* ir_function) {
 			append_ir_instruction(ir_function, instruction);
 			return result;
 		}
+		case EXP_CONDITIONAL: {
+			IrVal result = { IR_VARIABLE, .as.name = generate_variable_name() };
+			IrVal cond = emit_ir_expression(exp->as.conditional.lhs, ir_function);
+			char* false_target = generate_label_name();
+			char* end_target = generate_label_name();
+			append_ir_instruction(ir_function, (IrInstruction) { IR_JUMP_ZERO, .as.jump_zero = { .cond = cond, .target = false_target } });
+			IrVal true_res = emit_ir_expression(exp->as.conditional.mid, ir_function);
+			append_ir_instruction(ir_function, (IrInstruction) { IR_COPY, .as.copy = { .src = true_res, .dst = result } });
+			append_ir_instruction(ir_function, (IrInstruction) { IR_JUMP, .as.jump = { .target = end_target } });
+			append_ir_instruction(ir_function, (IrInstruction) { IR_LABEL, .as.label = { .identifier = false_target } });
+			IrVal false_res = emit_ir_expression(exp->as.conditional.rhs, ir_function);
+			append_ir_instruction(ir_function, (IrInstruction) { IR_COPY, .as.copy = { .src = false_res, .dst = result } });
+			append_ir_instruction(ir_function, (IrInstruction) { IR_LABEL, .as.label = { .identifier = end_target } });
+			return result;
+		}
 		default:
 			break;
 	}
 	ICE("ir: unsupported expression");
 }
 
+static void emit_ir_statement(IrFunction* ir_function, const AstStatement* stmt) {
+	switch (stmt->kind) {
+		case STMT_EXP:
+			emit_ir_expression(stmt->as.exp_stmt.exp, ir_function);
+			return;
+		case STMT_RETURN: {
+			IrVal val = emit_ir_expression(stmt->as.ret.exp, ir_function);
+			IrInstruction ret_instr = { IR_RETURN, .as.ret = { val } };
+			append_ir_instruction(ir_function, ret_instr);
+			return;
+		}
+		case STMT_IF: {
+			IrVal cond = emit_ir_expression(stmt->as.if_cond.cond, ir_function);
+			char* end_target = generate_label_name();
+			if (stmt->as.if_cond.else_br != NULL) {
+				char* else_target = generate_label_name();
+				append_ir_instruction(ir_function, (IrInstruction) { IR_JUMP_ZERO, .as.jump_zero = { .cond = cond, .target = else_target } });
+				emit_ir_statement(ir_function, stmt->as.if_cond.then_br);
+				append_ir_instruction(ir_function, (IrInstruction) { IR_JUMP, .as.jump = { .target = end_target } });
+				append_ir_instruction(ir_function, (IrInstruction) { IR_LABEL, .as.label = { .identifier = else_target } });
+				emit_ir_statement(ir_function, stmt->as.if_cond.else_br);
+			} else {
+				append_ir_instruction(ir_function, (IrInstruction) { IR_JUMP_ZERO, .as.jump_zero = { .cond = cond, .target = end_target } });
+				emit_ir_statement(ir_function, stmt->as.if_cond.then_br);
+			}
+			append_ir_instruction(ir_function, (IrInstruction) { IR_LABEL, .as.label = { .identifier = end_target } });
+			return;
+		}
+	}
+}
+
 static void emit_ir_block(IrFunction* ir_function, const AstBlockItem block_item) {
 	if (block_item.type == AST_STATEMENT) {
-		switch (block_item.as.stmt.kind) {
-			case STMT_EXP:
-				emit_ir_expression(block_item.as.stmt.as.exp_stmt.exp, ir_function);
-				return;
-			case STMT_RETURN: {
-				IrVal val = emit_ir_expression(block_item.as.stmt.as.ret.exp, ir_function);
-				IrInstruction ret_instr = { IR_RETURN, .as.ret = { val } };
-				append_ir_instruction(ir_function, ret_instr);
-				return;
-			}
-		}
+		emit_ir_statement(ir_function, &block_item.as.stmt);
 	} else if (block_item.type == AST_DECLARATION && block_item.as.decl.exp != NULL) {
 		IrVal result = emit_ir_expression(block_item.as.decl.exp, ir_function);
 		IrVal var = { IR_VARIABLE, .as.name = strdup(block_item.as.decl.identifier) };
