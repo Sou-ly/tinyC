@@ -20,7 +20,7 @@ SRCS = src/main.c \
 
 OBJS = $(SRCS:src/%.c=$(BUILD_DIR)/%.o)
 
-TEST_TARGETS = tests/test_list tests/test_token tests/test_parser tests/test_str tests/test_codegen tests/test_ir
+TEST_TARGETS = tests/test_list tests/test_token tests/test_parser tests/test_str tests/test_codegen tests/test_ir tests/test_ast tests/test_scoping
 
 all: $(TARGET)
 
@@ -38,9 +38,11 @@ test: build_tests
 	@./tests/test_parser
 	@./tests/test_codegen
 	@./tests/test_ir
+	@./tests/test_ast
+	@./tests/test_scoping
 	@echo "test_str skipped: str_split not yet implemented"
 
-build_tests: tests/test_list tests/test_token tests/test_parser tests/test_codegen tests/test_ir
+build_tests: tests/test_list tests/test_token tests/test_parser tests/test_codegen tests/test_ir tests/test_ast tests/test_scoping
 
 tests/test_list: tests/test_list.c $(BUILD_DIR)/common/string_list.o $(BUILD_DIR)/lexer/token_list.o $(BUILD_DIR)/lexer/token.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
@@ -55,6 +57,12 @@ tests/test_codegen: tests/test_codegen.c $(BUILD_DIR)/codegen/x86/x86_ast.o $(BU
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 tests/test_ir: tests/test_ir.c $(BUILD_DIR)/ir/ir.o $(BUILD_DIR)/parser/ast.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+tests/test_ast: tests/test_ast.c $(BUILD_DIR)/parser/ast.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+tests/test_scoping: tests/test_scoping.c $(BUILD_DIR)/parser/ast.o $(BUILD_DIR)/parser/parser.o $(BUILD_DIR)/common/string_list.o $(BUILD_DIR)/lexer/token_list.o $(BUILD_DIR)/lexer/token.o $(BUILD_DIR)/strlib/str.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 tests/test_str:

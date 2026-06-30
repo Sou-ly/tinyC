@@ -10,7 +10,7 @@
 // Wrap a list of statements into a single-function ("main") program.
 // Takes ownership of `stmts` (each statement is copied into the function).
 static AstProgram program_of(AstStatement* stmts, int num_stmts) {
-    AstFunction fn = ast_function_make("main", num_stmts > 0 ? num_stmts : 1);
+    AstFunction fn = ast_function_make("main", ast_block_make(num_stmts > 0 ? num_stmts : 1));
     for (int i = 0; i < num_stmts; i++) {
         ast_function_append(&fn, (AstBlockItem){
             .type = AST_STATEMENT,
@@ -212,10 +212,10 @@ void test_emit_expr_statement_no_instruction() {
 
 // A program with more than one function lowers each independently.
 void test_emit_multiple_functions() {
-    AstFunction foo = ast_function_make("foo", 1);
+    AstFunction foo = ast_function_make("foo", ast_block_make(1));
     ast_function_append(&foo, (AstBlockItem){
         .type = AST_STATEMENT, .as.stmt = make_return_stmt(create_int_exp(1))});
-    AstFunction bar = ast_function_make("bar", 1);
+    AstFunction bar = ast_function_make("bar", ast_block_make(1));
     ast_function_append(&bar, (AstBlockItem){
         .type = AST_STATEMENT, .as.stmt = make_return_stmt(create_int_exp(2))});
 

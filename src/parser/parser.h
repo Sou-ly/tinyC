@@ -22,6 +22,7 @@ AstProgram parse_program(Parser* p);
 typedef struct {
     char* key;
     char* val;
+	bool is_cur_scope;
 } VarMapEntry;
 
 typedef struct {
@@ -31,8 +32,9 @@ typedef struct {
 } VarMap;
 
 VarMap varmap_create(int capacity);
+VarMap varmap_copy(VarMap map);
 void varmap_destroy(VarMap* map);
-char* varmap_get(VarMap* map, const char* key);
-void varmap_put(VarMap* map, const char* key, const char* val);
+VarMapEntry* varmap_get(VarMap* map, const char* key);
+void varmap_put(VarMap* map, VarMapEntry entry);
 
 AstProgram resolve_variables(AstProgram program);

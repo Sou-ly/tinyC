@@ -280,8 +280,8 @@ static void append_ir_function(IrProgram* program, IrFunction function) {
 static IrFunction emit_ir_function(const AstFunction* ast_function) {
 	IrFunction ir_function = {NULL, NULL, 0};
 	ir_function.name = strdup(ast_function->identifier);
-	for (size_t i = 0; i < ast_function->size; i++) {
-		emit_ir_block(&ir_function, ast_function->body[i]);
+	for (size_t i = 0; i < ast_function->body.size; i++) {
+		emit_ir_block(&ir_function, ast_function->body.items[i]);
 	}
 	return ir_function;
 }

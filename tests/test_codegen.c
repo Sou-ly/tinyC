@@ -44,7 +44,7 @@ void test_create_x86_program() {
 // --- helpers ---
 
 static AstProgram make_test_program(AstExp* expr) {
-    AstFunction fn = ast_function_make("main", 8);
+    AstFunction fn = ast_function_make("main", ast_block_make(8));
     ast_function_append(&fn, (AstBlockItem){
         .type = AST_STATEMENT,
         .as.stmt = make_return_stmt(expr),
@@ -57,7 +57,7 @@ static AstProgram make_test_program(AstExp* expr) {
 // Wrap a single statement (rather than a bare return expression) into a "main"
 // program — used for if-statement codegen.
 static AstProgram make_stmt_program(AstStatement stmt) {
-    AstFunction fn = ast_function_make("main", 8);
+    AstFunction fn = ast_function_make("main", ast_block_make(8));
     ast_function_append(&fn, (AstBlockItem){
         .type = AST_STATEMENT,
         .as.stmt = stmt,
