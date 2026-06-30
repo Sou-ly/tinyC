@@ -317,6 +317,17 @@ static AstBlockItem parse_block_item(Parser* p) {
 	return block_item;
 }
 
+static AstBlock parse_block(Parser* p) {
+    expect_separator(p, TOK_LBRACE);
+	AstBlock block = ast_block_make(8);
+    while (!at_end(p) && !(current(p)->kind == TOK_SEPARATOR && current(p)->sep == TOK_RBRACE)) {
+		AstBlockItem block_item = parse_block_item(p);
+		ast_block_append(&block, block_item);
+    }
+    expect_separator(p, TOK_RBRACE);
+    return block;
+}
+
 static AstFunction parse_function(Parser* p) {
     // expect: int <name> ( )  { block-items  }
     expect_keyword(p, TOK_INT);
@@ -324,18 +335,12 @@ static AstFunction parse_function(Parser* p) {
         fprintf(stderr, "parse error at %zu:%zu: expected function name\n", current(p)->line, current(p)->col);
         exit(1);
     }
-    char* name = current(p)->ident;
+    char* name = strdup(current(p)->ident);
     advance(p);
     expect_separator(p, TOK_LPAR);
     expect_separator(p, TOK_RPAR);
-    expect_separator(p, TOK_LBRACE);
-    // parse body
-	AstFunction function = ast_function_make(name, 8);
-    while (!at_end(p) && !(current(p)->kind == TOK_SEPARATOR && current(p)->sep == TOK_RBRACE)) {
-		AstBlockItem block_item = parse_block_item(p);
-		ast_function_append(&function, block_item);
-    }
-    expect_separator(p, TOK_RBRACE);
+	AstBlock block = parse_block(p);
+	AstFunction function = ast_function_make(name, block);
     return function;
 }
 
@@ -388,6 +393,21 @@ VarMap varmap_create(int capacity) {
 	};
 }
 
+VarMap varmap_copy(VarMap map) {
+	VarMap copy = varmap_create(map.capacity);
+	for (int i = 0; i < map.size; i++) {
+		// entries inherited from an enclosing scope: a declaration with
+		// the same name in the new (inner) scope is shadowing, not a dup
+		copy.entries[i] = (VarMapEntry){
+			.key = strdup(map.entries[i].key),
+			.val = strdup(map.entries[i].val),
+			.is_cur_scope = false,
+		};
+	}
+	copy.size = map.size;
+	return copy;
+}
+
 void varmap_destroy(VarMap* map) {
 	for (int i = 0; i < map->size; i++) {
 		free(map->entries[i].key);
@@ -396,25 +416,22 @@ void varmap_destroy(VarMap* map) {
 	free(map->entries);
 }
 
-char* varmap_get(VarMap* map, const char* key) {
+VarMapEntry* varmap_get(VarMap* map, const char* key) {
 	// search backwards so later entries shadow earlier ones
 	for (int i = map->size - 1; i >= 0; i--) {
 		if (strcmp(map->entries[i].key, key) == 0) {
-			return map->entries[i].val;
+			return &map->entries[i];
 		}
 	}
 	return NULL;
 }
 
-void varmap_put(VarMap* map, const char* key, const char* val) {
+void varmap_put(VarMap* map, VarMapEntry entry) {
 	if (map->size == map->capacity) {
 		map->capacity *= 2;
 		map->entries = realloc(map->entries, sizeof(VarMapEntry) * map->capacity);
 	}
-	map->entries[map->size] = (VarMapEntry){
-		.key = strdup(key),
-		.val = strdup(val),
-	};
+	map->entries[map->size] = entry;
 	map->size++;
 }
 
@@ -424,14 +441,14 @@ static AstExp* resolve_expression(AstExp* exp, VarMap* map) {
 		case EXP_INT:
 			return exp;
 		case EXP_VAR: {
-			char* resolved = varmap_get(map, exp->as.variable.identifier);
+			VarMapEntry* resolved = varmap_get(map, exp->as.variable.identifier);
 			if (!resolved) {
 				fprintf(stderr, "error: undeclared variable '%s'\n",
 						exp->as.variable.identifier);
 				exit(1);
 			}
 			free(exp->as.variable.identifier);
-			exp->as.variable.identifier = strdup(resolved);
+			exp->as.variable.identifier = strdup(resolved->val);
 			return exp;
 		}
 		case EXP_ASSIGN: {
@@ -459,6 +476,8 @@ static AstExp* resolve_expression(AstExp* exp, VarMap* map) {
 	return exp;
 }
 
+static AstBlock resolve_block(AstBlock block, VarMap* map);
+
 static AstStatement resolve_statement(AstStatement stmt, VarMap* map) {
 	switch (stmt.kind) {
 		case STMT_RETURN:
@@ -474,6 +493,15 @@ static AstStatement resolve_statement(AstStatement stmt, VarMap* map) {
 				*stmt.as.if_cond.else_br = resolve_statement(*stmt.as.if_cond.else_br, map);
 			}
 			break;
+		case STMT_COMPOUND: {
+			// the inner block resolves against a copy, so declarations there
+			// don't leak into the enclosing scope
+			VarMap new_map = varmap_copy(*map);
+			AstStatement resolved =
+				make_compound_stmt(resolve_block(stmt.as.compound, &new_map));
+			varmap_destroy(&new_map);
+			return resolved;
+		}
 	}
 	return stmt;
 }
@@ -482,14 +510,18 @@ static AstDeclaration resolve_declaration(AstDeclaration decl, VarMap* map) {
 	// check for duplicate in current scope
 	// (linear scan is fine — we only check exact key matches at the top level)
 	for (int i = 0; i < map->size; i++) {
-		if (strcmp(map->entries[i].key, decl.identifier) == 0) {
+		if (map->entries[i].is_cur_scope &&
+				strcmp(map->entries[i].key, decl.identifier) == 0) {
 			fprintf(stderr, "error: duplicate variable declaration '%s'\n",
 					decl.identifier);
 			exit(1);
 		}
 	}
 	char* unique = make_unique_name(decl.identifier);
-	varmap_put(map, decl.identifier, unique);
+	// the map owns its own key/val copies: decl.identifier is freed below and
+	// reassigned to `unique`, which the AST owns — aliasing either here would
+	// leave the map with a dangling key or double-free `unique` at cleanup.
+	varmap_put(map, (VarMapEntry) { .key=strdup(decl.identifier), .val=strdup(unique), .is_cur_scope=true });
 
 	// resolve the initializer (if any) AFTER recording the mapping
 	// so `int a = a;` is technically allowed (C behavior)
@@ -513,11 +545,16 @@ static AstBlockItem resolve_block_item(AstBlockItem item, VarMap* map) {
 	return item;
 }
 
+static AstBlock resolve_block(AstBlock block, VarMap* map) {
+	for (size_t i = 0; i < block.size; i++) {
+		block.items[i] = resolve_block_item(block.items[i], map);
+	}
+	return block;
+}
+
 static AstFunction resolve_function(AstFunction func) {
 	VarMap map = varmap_create(16);
-	for (size_t i = 0; i < func.size; i++) {
-		func.body[i] = resolve_block_item(func.body[i], &map);
-	}
+	func.body = resolve_block(func.body, &map);
 	varmap_destroy(&map);
 	return func;
 }

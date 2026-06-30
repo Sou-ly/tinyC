@@ -94,15 +94,35 @@ AstExp* create_assign_exp(AstAssignOp op, AstExp* lhs, AstExp* rhs);
 AstExp* create_conditional_exp(AstExp* lhs, AstExp* mid, AstExp* rhs);
 void destroy_exp(AstExp* exp);
 
+
+
+// --- Blocks ---
+//
+// A block is a list of block items; each item is a statement or a
+// declaration. A compound statement (STMT_COMPOUND) is just a block, so
+// blocks nest through statements. The mutual recursion forces this
+// ordering: AstBlock holds AstBlockItem* (pointer, so a forward decl is
+// enough), AstStatement embeds AstBlock by value, and AstBlockItem embeds
+// AstStatement by value — so statements must be fully defined before block
+// items.
+
+typedef struct AstStatement AstStatement;
+typedef struct AstBlockItem AstBlockItem;
+
+typedef struct {
+	size_t capacity;
+	size_t size;
+	AstBlockItem* items;
+} AstBlock;
+
 // --- Statements ---
 
 typedef enum {
     STMT_RETURN,
     STMT_EXP,
-    STMT_IF
+    STMT_IF,
+	STMT_COMPOUND
 } AstStatementKind;
-
-typedef struct AstStatement AstStatement;
 
 typedef struct { AstExp* exp; }													AstStmtReturn;
 typedef struct { AstExp* exp; }													AstStmtExp;
@@ -114,15 +134,17 @@ struct AstStatement {
         AstStmtReturn	ret;
         AstStmtExp		exp_stmt;
         AstStmtIf		if_cond;
+        AstBlock		compound;
     } as;
 };
 
 AstStatement make_return_stmt(AstExp* exp);
 AstStatement make_exp_stmt(AstExp* exp);
 AstStatement make_if_stmt(AstExp* cond, AstStatement* then_br, AstStatement* else_br);
+AstStatement make_compound_stmt(AstBlock block);
 void destroy_stmt(AstStatement* stmt);
 
-// --- Declarations ---
+// --- Declarations & block items ---
 
 typedef enum {
     AST_DECLARATION,
@@ -134,22 +156,26 @@ typedef struct {
 	AstExp* exp; // nullable
 } AstDeclaration;
 
-typedef struct {
+struct AstBlockItem {
 	AstBlockItemType type;
 	union {
 		AstDeclaration	decl;
 		AstStatement	stmt;
 	} as;
-} AstBlockItem;
+};
+
+AstBlock ast_block_make(size_t capacity);
+void ast_block_append(AstBlock* block, AstBlockItem block_item);
+void ast_block_destroy(AstBlock* block);
+
+// --- Functions ---
 
 typedef struct {
 	char* identifier;
-	size_t size;
-	size_t capacity;
-	AstBlockItem* body;
+	AstBlock body;
 } AstFunction;
 
-AstFunction ast_function_make(const char* name, size_t capacity);
+AstFunction ast_function_make(const char* name, AstBlock block);
 void ast_function_append(AstFunction* function, AstBlockItem block_item);
 void ast_function_destroy(AstFunction* function);
 

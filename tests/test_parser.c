@@ -58,16 +58,16 @@ void test_create_return_stmt() {
 }
 
 void test_create_function_decl() {
-    AstFunction fn = ast_function_make("main", 8);
+    AstFunction fn = ast_function_make("main", ast_block_make(8));
     ast_function_append(&fn, (AstBlockItem){
         .type = AST_STATEMENT,
         .as.stmt = make_return_stmt(create_int_exp(0)),
     });
 
     assert(strcmp(fn.identifier, "main") == 0);
-    assert(fn.size == 1);
-    assert(fn.body[0].type == AST_STATEMENT);
-    assert(fn.body[0].as.stmt.kind == STMT_RETURN);
+    assert(fn.body.size == 1);
+    assert(fn.body.items[0].type == AST_STATEMENT);
+    assert(fn.body.items[0].as.stmt.kind == STMT_RETURN);
     ast_function_destroy(&fn);
     printf("  PASS: test_create_function_decl\n");
 }
@@ -93,11 +93,11 @@ void test_parse_return_2() {
 
     assert(prog.num_functions == 1);
     assert(strcmp(prog.functions[0].identifier, "main") == 0);
-    assert(prog.functions[0].size == 1);
-    assert(prog.functions[0].body[0].type == AST_STATEMENT);
-    assert(prog.functions[0].body[0].as.stmt.kind == STMT_RETURN);
-    assert(prog.functions[0].body[0].as.stmt.as.ret.exp->kind == EXP_INT);
-    assert(prog.functions[0].body[0].as.stmt.as.ret.exp->as.int_lit.value == 2);
+    assert(prog.functions[0].body.size == 1);
+    assert(prog.functions[0].body.items[0].type == AST_STATEMENT);
+    assert(prog.functions[0].body.items[0].as.stmt.kind == STMT_RETURN);
+    assert(prog.functions[0].body.items[0].as.stmt.as.ret.exp->kind == EXP_INT);
+    assert(prog.functions[0].body.items[0].as.stmt.as.ret.exp->as.int_lit.value == 2);
 
     destroy_program(&prog);
     free(tokens.items);
@@ -252,7 +252,7 @@ static void check_return_exp(const char* description, const Token* exp_tokens,
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstExp* actual = prog.functions[0].body[0].as.stmt.as.ret.exp;
+    AstExp* actual = prog.functions[0].body.items[0].as.stmt.as.ret.exp;
     if (!exp_equals(actual, expected)) {
         printf("  FAIL: %s\n    expected: ", description);
         print_exp(expected);
@@ -435,7 +435,7 @@ static void check_assign_op(const char* description, TokenOperator tok_op,
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstBlockItem item = prog.functions[0].body[0];
+    AstBlockItem item = prog.functions[0].body.items[0];
     assert(item.type == AST_STATEMENT);
     assert(item.as.stmt.kind == STMT_EXP);
     AstExp* exp = item.as.stmt.as.exp_stmt.exp;
@@ -489,7 +489,7 @@ void test_parse_compound_assign_right_assoc() {
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstExp* outer = prog.functions[0].body[0].as.stmt.as.exp_stmt.exp;
+    AstExp* outer = prog.functions[0].body.items[0].as.stmt.as.exp_stmt.exp;
     assert(outer->kind == EXP_ASSIGN && outer->as.assign.op == ASSIGN_ADD);
     assert(outer->as.assign.lhs->kind == EXP_VAR);
     assert(strcmp(outer->as.assign.lhs->as.variable.identifier, "x") == 0);

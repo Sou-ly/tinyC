@@ -52,6 +52,40 @@ AstExp* create_conditional_exp(AstExp* lhs, AstExp* mid, AstExp* rhs) {
     return e;
 }
 
+AstBlock ast_block_make(size_t capacity) {
+	AstBlock block;
+	block.size = 0;
+	block.capacity = capacity;
+	block.items = malloc(capacity * sizeof(AstBlockItem));
+	return block;
+}
+
+void ast_block_append(AstBlock* block, AstBlockItem block_item) {
+	if (block->size >= block->capacity) {
+		block->capacity *= 2;
+		block->items = realloc(block->items, block->capacity * sizeof(AstBlockItem));
+	}
+	block->items[block->size++] = block_item;
+	return;
+}
+
+void ast_block_destroy(AstBlock* block) {
+	for (size_t i = 0; i < block->size; i++) {
+		AstBlockItem* block_item = block->items+i;
+		switch (block_item->type) {
+			case AST_DECLARATION:
+				free(block_item->as.decl.identifier);
+				destroy_exp(block_item->as.decl.exp);
+				break;
+			case AST_STATEMENT:
+				destroy_stmt(&block_item->as.stmt);
+				break;
+		}
+	}
+	free(block->items);
+	return;
+}
+
 void destroy_exp(AstExp* exp) {
     if (!exp) return;
     switch (exp->kind) {
@@ -94,6 +128,10 @@ AstStatement make_if_stmt(AstExp* cond, AstStatement* then_br, AstStatement* els
     return (AstStatement){ .kind = STMT_IF, .as.if_cond = { cond, then_br, else_br } };
 }
 
+AstStatement make_compound_stmt(AstBlock block) {
+	return (AstStatement) {.kind=STMT_COMPOUND, .as.compound=block};
+}
+
 void destroy_stmt(AstStatement* stmt) {
     switch (stmt->kind) {
         case STMT_RETURN:
@@ -111,42 +149,26 @@ void destroy_stmt(AstStatement* stmt) {
                 free(stmt->as.if_cond.else_br);
             }
             break;
+        case STMT_COMPOUND:
+            ast_block_destroy(&stmt->as.compound);
+            break;
     }
 }
 
-AstFunction ast_function_make(const char* name, size_t capacity) {
+AstFunction ast_function_make(const char* name, AstBlock block) {
 	AstFunction function;
 	function.identifier = strdup(name);
-	function.size = 0;
-	function.capacity = capacity;
-	function.body = malloc(capacity * sizeof(AstBlockItem));
+	function.body = block;
 	return function;
 }
 
 void ast_function_append(AstFunction* function, AstBlockItem block_item) {
-	if (function->size >= function->capacity) {
-		function->capacity *= 2;
-		function->body = realloc(function->body, function->capacity * sizeof(AstBlockItem));
-	}
-	function->body[function->size++] = block_item;
-	return;
+	ast_block_append(&function->body, block_item);
 }
 
 void ast_function_destroy(AstFunction* function) {
 	free(function->identifier);
-	for (size_t i = 0; i < function->size; i++) {
-		AstBlockItem* block_item = function->body+i;
-		switch (block_item->type) {
-			case AST_DECLARATION:
-				free(block_item->as.decl.identifier);
-				destroy_exp(block_item->as.decl.exp);
-				break;
-			case AST_STATEMENT:
-				destroy_stmt(&block_item->as.stmt);
-				break;
-		}
-	}
-	free(function->body);
+	ast_block_destroy(&function->body);
 	return;
 }
 
