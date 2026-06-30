@@ -227,6 +227,8 @@ static IrVal emit_ir_expression(const AstExp* exp, IrFunction* ir_function) {
 	ICE("ir: unsupported expression");
 }
 
+static void emit_ir_block(IrFunction* ir_function, const AstBlock block);
+
 static void emit_ir_statement(IrFunction* ir_function, const AstStatement* stmt) {
 	switch (stmt->kind) {
 		case STMT_EXP:
@@ -255,10 +257,13 @@ static void emit_ir_statement(IrFunction* ir_function, const AstStatement* stmt)
 			append_ir_instruction(ir_function, (IrInstruction) { IR_LABEL, .as.label = { .identifier = end_target } });
 			return;
 		}
+		case STMT_COMPOUND:
+			emit_ir_block(ir_function, stmt->as.compound);
+			return;
 	}
 }
 
-static void emit_ir_block(IrFunction* ir_function, const AstBlockItem block_item) {
+static void emit_ir_block_item(IrFunction* ir_function, const AstBlockItem block_item) {
 	if (block_item.type == AST_STATEMENT) {
 		emit_ir_statement(ir_function, &block_item.as.stmt);
 	} else if (block_item.type == AST_DECLARATION && block_item.as.decl.exp != NULL) {
@@ -271,6 +276,12 @@ static void emit_ir_block(IrFunction* ir_function, const AstBlockItem block_item
 	return;
 }
 
+static void emit_ir_block(IrFunction* ir_function, const AstBlock block) {
+	for (size_t i = 0; i < block.size; i++) {
+		emit_ir_block_item(ir_function, block.items[i]);
+	}
+}
+
 static void append_ir_function(IrProgram* program, IrFunction function) {
 	program->size++;
 	program->functions = realloc(program->functions, program->size * sizeof(IrFunction));
@@ -280,9 +291,7 @@ static void append_ir_function(IrProgram* program, IrFunction function) {
 static IrFunction emit_ir_function(const AstFunction* ast_function) {
 	IrFunction ir_function = {NULL, NULL, 0};
 	ir_function.name = strdup(ast_function->identifier);
-	for (size_t i = 0; i < ast_function->body.size; i++) {
-		emit_ir_block(&ir_function, ast_function->body.items[i]);
-	}
+	emit_ir_block(&ir_function, ast_function->body);
 	return ir_function;
 }
 
