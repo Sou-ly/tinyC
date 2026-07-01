@@ -108,6 +108,7 @@ void destroy_exp(AstExp* exp);
 
 typedef struct AstStatement AstStatement;
 typedef struct AstBlockItem AstBlockItem;
+typedef struct AstDeclaration AstDeclaration;
 
 typedef struct {
 	size_t capacity;
@@ -121,12 +122,57 @@ typedef enum {
     STMT_RETURN,
     STMT_EXP,
     STMT_IF,
-	STMT_COMPOUND
+	STMT_COMPOUND,
+	STMT_FOR,
+	STMT_WHILE,
+	STMT_DO_WHILE,
+	STMT_BREAK,
+	STMT_CONTINUE,
 } AstStatementKind;
 
-typedef struct { AstExp* exp; }													AstStmtReturn;
-typedef struct { AstExp* exp; }													AstStmtExp;
-typedef struct { AstExp* cond; AstStatement* then_br; AstStatement* else_br; }	AstStmtIf;
+typedef struct { AstExp* exp; }	AstStmtReturn;
+typedef struct { AstExp* exp; }	AstStmtExp;
+typedef struct { char* label; }	AstStmtContinue;
+typedef struct { char* label; }	AstStmtBreak;
+
+typedef struct { char* label;
+	AstExp* cond;
+	AstStatement* then_br;
+	AstStatement* else_br;
+} AstStmtIf;
+
+typedef struct AstStmtWhile {
+	char* label;
+	AstExp* cond;
+	AstStatement* body;
+} AstStmtWhile;
+
+typedef struct AstStmtDoWhile {
+	char* label;
+	AstExp* cond;
+	AstStatement* body;
+} AstStmtDoWhile;
+
+typedef enum {
+	AST_INIT_DECL,
+	AST_INIT_EXP,
+} AstForInitType;
+
+typedef struct {
+	AstForInitType init_type;
+	union {
+		AstDeclaration* decl;
+		AstExp*			exp;
+	} as;
+} AstForInit;
+
+typedef struct AstStmtFor {
+	char*			label;
+	AstForInit		init;
+	AstExp*			cond; // nullable
+	AstExp*			post; // nullable
+	AstStatement*	body;
+} AstStmtFor;
 
 struct AstStatement {
     AstStatementKind kind;
@@ -135,6 +181,11 @@ struct AstStatement {
         AstStmtExp		exp_stmt;
         AstStmtIf		if_cond;
         AstBlock		compound;
+		AstStmtFor		for_loop;
+		AstStmtWhile	while_loop;
+		AstStmtDoWhile	do_while_loop;
+		AstStmtContinue	continue_stmt;
+		AstStmtBreak	break_stmt;
     } as;
 };
 
@@ -142,6 +193,13 @@ AstStatement make_return_stmt(AstExp* exp);
 AstStatement make_exp_stmt(AstExp* exp);
 AstStatement make_if_stmt(AstExp* cond, AstStatement* then_br, AstStatement* else_br);
 AstStatement make_compound_stmt(AstBlock block);
+AstStatement make_for_stmt(AstForInit init, AstExp* cond, AstExp* post, AstStatement* body);
+AstStatement make_while_stmt(AstExp* cond, AstStatement* body);
+AstStatement make_do_while_stmt(AstExp* cond, AstStatement* body);
+AstStatement make_break_stmt(char* label);
+AstStatement make_continue_stmt(char * label);
+AstForInit make_for_init_decl(AstDeclaration* decl);
+AstForInit make_for_init_exp(AstExp* exp);
 void destroy_stmt(AstStatement* stmt);
 
 // --- Declarations & block items ---
@@ -151,10 +209,10 @@ typedef enum {
     AST_STATEMENT
 } AstBlockItemType;
 
-typedef struct {
+struct AstDeclaration {
 	char* identifier;
 	AstExp* exp; // nullable
-} AstDeclaration;
+};
 
 struct AstBlockItem {
 	AstBlockItemType type;

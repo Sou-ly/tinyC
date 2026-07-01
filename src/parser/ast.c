@@ -125,11 +125,42 @@ AstStatement make_exp_stmt(AstExp* exp) {
 
 // then_br and else_br are heap-owned; else_br may be NULL (a plain `if`).
 AstStatement make_if_stmt(AstExp* cond, AstStatement* then_br, AstStatement* else_br) {
-    return (AstStatement){ .kind = STMT_IF, .as.if_cond = { cond, then_br, else_br } };
+    return (AstStatement){ .kind = STMT_IF, .as.if_cond = { .label = NULL, .cond = cond, .then_br = then_br, .else_br = else_br } };
 }
 
 AstStatement make_compound_stmt(AstBlock block) {
 	return (AstStatement) {.kind=STMT_COMPOUND, .as.compound=block};
+}
+
+AstForInit make_for_init_decl(AstDeclaration* decl) {
+	return (AstForInit){ .init_type = AST_INIT_DECL, .as.decl = decl };
+}
+
+AstForInit make_for_init_exp(AstExp* exp) {
+	return (AstForInit){ .init_type = AST_INIT_EXP, .as.exp = exp };
+}
+
+// init.cond, init.post may be NULL; body is heap-owned.
+AstStatement make_for_stmt(AstForInit init, AstExp* cond, AstExp* post, AstStatement* body) {
+	return (AstStatement){ .kind = STMT_FOR, .as.for_loop = { .label = NULL, .init = init, .cond = cond, .post = post, .body = body } };
+}
+
+// body is heap-owned.
+AstStatement make_while_stmt(AstExp* cond, AstStatement* body) {
+	return (AstStatement){ .kind = STMT_WHILE, .as.while_loop = { .label = NULL, .cond = cond, .body = body } };
+}
+
+// body is heap-owned.
+AstStatement make_do_while_stmt(AstExp* cond, AstStatement* body) {
+	return (AstStatement){ .kind = STMT_DO_WHILE, .as.do_while_loop = { .label = NULL, .cond = cond, .body = body } };
+}
+
+AstStatement make_break_stmt(char* label) {
+	return (AstStatement){ .kind = STMT_BREAK, .as.break_stmt = { .label = strdup(label) } };
+}
+
+AstStatement make_continue_stmt(char* label) {
+	return (AstStatement){ .kind = STMT_CONTINUE, .as.continue_stmt = { .label = NULL } };
 }
 
 void destroy_stmt(AstStatement* stmt) {
@@ -151,6 +182,43 @@ void destroy_stmt(AstStatement* stmt) {
             break;
         case STMT_COMPOUND:
             ast_block_destroy(&stmt->as.compound);
+            break;
+        case STMT_FOR:
+            free(stmt->as.for_loop.label);
+            switch (stmt->as.for_loop.init.init_type) {
+                case AST_INIT_DECL:
+                    if (stmt->as.for_loop.init.as.decl != NULL) {
+                        free(stmt->as.for_loop.init.as.decl->identifier);
+                        destroy_exp(stmt->as.for_loop.init.as.decl->exp);
+                        free(stmt->as.for_loop.init.as.decl);
+                    }
+                    break;
+                case AST_INIT_EXP:
+                    destroy_exp(stmt->as.for_loop.init.as.exp);
+                    break;
+            }
+            destroy_exp(stmt->as.for_loop.cond);
+            destroy_exp(stmt->as.for_loop.post);
+            destroy_stmt(stmt->as.for_loop.body);
+            free(stmt->as.for_loop.body);
+            break;
+        case STMT_WHILE:
+            free(stmt->as.while_loop.label);
+            destroy_exp(stmt->as.while_loop.cond);
+            destroy_stmt(stmt->as.while_loop.body);
+            free(stmt->as.while_loop.body);
+            break;
+        case STMT_DO_WHILE:
+            free(stmt->as.do_while_loop.label);
+            destroy_exp(stmt->as.do_while_loop.cond);
+            destroy_stmt(stmt->as.do_while_loop.body);
+            free(stmt->as.do_while_loop.body);
+            break;
+        case STMT_BREAK:
+            free(stmt->as.break_stmt.label);
+            break;
+        case STMT_CONTINUE:
+            free(stmt->as.continue_stmt.label);
             break;
     }
 }

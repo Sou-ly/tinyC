@@ -304,6 +304,67 @@ void test_resolve_inner_decl_does_not_leak() {
     printf("  PASS: test_resolve_inner_decl_does_not_leak\n");
 }
 
+// Heap-allocate a statement so an if-statement's branch pointers can own it
+// (resolve rewrites the branches in place; destroy_stmt frees them).
+static AstStatement* heap_stmt(AstStatement stmt) {
+    AstStatement* p = malloc(sizeof(AstStatement));
+    *p = stmt;
+    return p;
+}
+
+// An if-statement resolves its condition and both branches against the current
+// scope (an unbraced if introduces no scope of its own), rewriting every
+// reference to the matching unique name.
+void test_resolve_if_statement() {
+    AstBlock body = ast_block_make(4);
+    ast_block_append(&body, decl_item("a", NULL));   // a.0
+    ast_block_append(&body, decl_item("b", NULL));   // b.1
+    // if (a) return b; else return a;
+    ast_block_append(&body, stmt_item(make_if_stmt(
+        create_variable_exp("a"),
+        heap_stmt(make_return_stmt(create_variable_exp("b"))),
+        heap_stmt(make_return_stmt(create_variable_exp("a"))))));
+    AstProgram prog = program_with_body(body);
+
+    prog = resolve_variables(prog);
+
+    assert(strcmp(decl_name(&prog, 0), "a.0") == 0);
+    assert(strcmp(decl_name(&prog, 1), "b.1") == 0);
+
+    AstStmtIf* if_stmt = &item(&prog, 2)->as.stmt.as.if_cond;
+    assert(strcmp(if_stmt->cond->as.variable.identifier, "a.0") == 0);
+    assert(strcmp(if_stmt->then_br->as.ret.exp->as.variable.identifier, "b.1") == 0);
+    assert(strcmp(if_stmt->else_br->as.ret.exp->as.variable.identifier, "a.0") == 0);
+
+    destroy_program(&prog);
+    printf("  PASS: test_resolve_if_statement\n");
+}
+
+// A conditional (ternary) expression resolves all three sub-expressions, so
+// each variable reference inside it is rewritten to its unique name.
+void test_resolve_conditional_expression() {
+    AstBlock body = ast_block_make(4);
+    ast_block_append(&body, decl_item("a", NULL));   // a.0
+    ast_block_append(&body, decl_item("b", NULL));   // b.1
+    // return a ? a : b;
+    ast_block_append(&body, stmt_item(make_return_stmt(create_conditional_exp(
+        create_variable_exp("a"),
+        create_variable_exp("a"),
+        create_variable_exp("b")))));
+    AstProgram prog = program_with_body(body);
+
+    prog = resolve_variables(prog);
+
+    AstExp* cond = item(&prog, 2)->as.stmt.as.ret.exp;
+    assert(cond->kind == EXP_CONDITIONAL);
+    assert(strcmp(cond->as.conditional.lhs->as.variable.identifier, "a.0") == 0);
+    assert(strcmp(cond->as.conditional.mid->as.variable.identifier, "a.0") == 0);
+    assert(strcmp(cond->as.conditional.rhs->as.variable.identifier, "b.1") == 0);
+
+    destroy_program(&prog);
+    printf("  PASS: test_resolve_conditional_expression\n");
+}
+
 // ---------------------------------------------------------------------------
 // resolve_variables — error cases (exit(1))
 // ---------------------------------------------------------------------------
@@ -389,6 +450,8 @@ int main(void) {
     test_resolve_inner_reads_outer();
     test_resolve_sibling_scopes();
     test_resolve_inner_decl_does_not_leak();
+    test_resolve_if_statement();
+    test_resolve_conditional_expression();
 
     test_resolve_errors();
 
