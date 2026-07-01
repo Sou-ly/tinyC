@@ -31,62 +31,72 @@ const char *separator_name(TokenSeparator s) {
 
 const char *operator_name(TokenOperator o) {
 	switch (o) {
-		case TOK_PLUS:      return "+";
-		case TOK_MINUS:     return "-";
-		case TOK_STAR:      return "*";
-		case TOK_PERCENT:   return "%";
-		case TOK_FSLASH:    return "/";
-		case TOK_DECR:      return "--";
-		case TOK_INCR:      return "++";
-		case TOK_NOT:       return "~";
-		case TOK_AND:       return "&";
-		case TOK_OR:        return "|";
-		case TOK_XOR:       return "^";
-		case TOK_ASSIGN:	return "=";
+		case TOK_PLUS:			return "+";
+		case TOK_MINUS:     	return "-";
+		case TOK_STAR:      	return "*";
+		case TOK_PERCENT:   	return "%";
+		case TOK_FSLASH:    	return "/";
+		case TOK_DECR:      	return "--";
+		case TOK_INCR:      	return "++";
+		case TOK_NOT:       	return "~";
+		case TOK_AND:       	return "&";
+		case TOK_OR:        	return "|";
+		case TOK_XOR:       	return "^";
+		case TOK_ASSIGN:		return "=";
 		case TOK_QUESTION_MARK: return "?";
-		case TOK_LSHIFT:    return "<<";
-		case TOK_RSHIFT:    return ">>";
-		case TOK_LNOT:		return "!";
-		case TOK_LAND:		return "&&";
-		case TOK_LOR:		return "||";
-		case TOK_EQ:        return "==";
-		case TOK_NEQ:       return "!=";
-		case TOK_LESS:		return "<";
-		case TOK_GREATER:	return ">";
-		case TOK_LEQ:		return "<=";
-		case TOK_GEQ:		return ">=";
-		case TOK_PLUS_EQ:	return "+=";
-		case TOK_MINUS_EQ:	return "-=";
-		case TOK_MUL_EQ:	return "*=";
-		case TOK_DIV_EQ:	return "/=";
-		case TOK_MOD_EQ:	return "%=";
-		case TOK_AND_EQ:	return "&=";
-		case TOK_OR_EQ:		return "|=";
-		case TOK_XOR_EQ:	return "^=";
-		case TOK_RSHIFT_EQ:	return ">>=";
-		case TOK_LSHIFT_EQ:	return "<<=";
+		case TOK_LSHIFT:		return "<<";
+		case TOK_RSHIFT:    	return ">>";
+		case TOK_LNOT:			return "!";
+		case TOK_LAND:			return "&&";
+		case TOK_LOR:			return "||";
+		case TOK_EQ:        	return "==";
+		case TOK_NEQ:       	return "!=";
+		case TOK_LESS:			return "<";
+		case TOK_GREATER:		return ">";
+		case TOK_LEQ:			return "<=";
+		case TOK_GEQ:			return ">=";
+		case TOK_PLUS_EQ:		return "+=";
+		case TOK_MINUS_EQ:		return "-=";
+		case TOK_MUL_EQ:		return "*=";
+		case TOK_DIV_EQ:		return "/=";
+		case TOK_MOD_EQ:		return "%=";
+		case TOK_AND_EQ:		return "&=";
+		case TOK_OR_EQ:			return "|=";
+		case TOK_XOR_EQ:		return "^=";
+		case TOK_RSHIFT_EQ:		return ">>=";
+		case TOK_LSHIFT_EQ:		return "<<=";
 	}
 	return "<unknown>";
 }
 
 const char *keyword_name(TokenKeyword k) {
 	switch (k) {
-		case TOK_IF:     return "if";
-		case TOK_ELSE:   return "else";
-		case TOK_INT:    return "int";
-		case TOK_RETURN: return "return";
-		case TOK_VOID:   return "void";
+		case TOK_IF:		return "if";
+		case TOK_ELSE:   	return "else";
+		case TOK_INT:    	return "int";
+		case TOK_RETURN: 	return "return";
+		case TOK_VOID:   	return "void";
+		case TOK_FOR:		return "for";
+		case TOK_WHILE:		return "while";
+		case TOK_DO:		return "do";
+		case TOK_BREAK:		return "break";
+		case TOK_CONTINUE:	return "continue";
 	}
 	return "<unknown>";
 }
 
 static int keyword_lookup(const char *word, size_t len) {
 	static const struct { const char *name; size_t len; TokenKeyword kw; } table[] = {
-		{ "if",     2, TOK_IF     },
-		{ "else",   4, TOK_ELSE   },
-		{ "int",    3, TOK_INT    },
-		{ "return", 6, TOK_RETURN },
-		{ "void",   4, TOK_VOID   },
+		{ "if",			2, TOK_IF		},
+		{ "else",   	4, TOK_ELSE   	},
+		{ "int",    	3, TOK_INT    	},
+		{ "return", 	6, TOK_RETURN 	},
+		{ "void",   	4, TOK_VOID   	},
+		{ "for",		3, TOK_FOR	  	},
+		{ "while",  	6, TOK_WHILE	},
+		{ "do",			2, TOK_DO		},
+		{ "break",  	6, TOK_BREAK	},
+		{ "continue",	8, TOK_CONTINUE },
 	};
 	for (size_t i = 0; i < sizeof table / sizeof table[0]; i++) {
 		if (table[i].len == len && strncmp(word, table[i].name, len) == 0)

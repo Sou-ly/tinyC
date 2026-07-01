@@ -268,17 +268,30 @@ static AstExp* parse_expression(Parser* p, int min_prec) {
 }
 
 static AstStatement parse_statement(Parser* p) {
-    if (current(p)->kind == TOK_KEYWORD && current(p)->kw == TOK_RETURN) {
-        advance(p); // consume 'return'
-        AstExp* exp = parse_expression(p, 0);
-        expect_separator(p, TOK_SEMICOLON);
-        return make_return_stmt(exp);
+    if (current(p)->kind != TOK_KEYWORD) { 
+		AstExp* exp = parse_expression(p, 0);
+    	expect_separator(p, TOK_SEMICOLON);
+    	return make_exp_stmt(exp);
     }
 
-    // expression statement: exp ;
-    AstExp* exp = parse_expression(p, 0);
-    expect_separator(p, TOK_SEMICOLON);
-    return make_exp_stmt(exp);
+	switch(current(p)->kw) {
+		case TOK_RETURN:
+			advance(p); // consume 'return'
+    		AstExp* exp = parse_expression(p, 0);
+    		expect_separator(p, TOK_SEMICOLON);
+    		return make_return_stmt(exp);
+		case TOK_IF:
+			advance(p)
+				
+		case TOK_ELSE:
+			// error?
+		case TOK_FOR:
+			
+		case TOK_CONTINUE:
+
+		case TOK_BREAK:
+
+	}
 }
 
 static AstDeclaration parse_declaration(Parser* p) {

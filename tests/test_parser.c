@@ -57,6 +57,50 @@ void test_create_return_stmt() {
     printf("  PASS: test_create_return_stmt\n");
 }
 
+// make_if_stmt takes heap-owned branches, so wrap each statement.
+static AstStatement* heap_stmt(AstStatement stmt) {
+    AstStatement* p = malloc(sizeof(AstStatement));
+    *p = stmt;
+    return p;
+}
+
+// An if with both branches records the condition and both heap-owned branches,
+// and leaves the (loop/label pass) label unset.
+void test_create_if_stmt_with_else() {
+    AstStatement s = make_if_stmt(
+        create_int_exp(1),
+        heap_stmt(make_return_stmt(create_int_exp(2))),
+        heap_stmt(make_return_stmt(create_int_exp(3))));
+
+    assert(s.kind == STMT_IF);
+    assert(s.as.if_cond.label == NULL);
+    assert(s.as.if_cond.cond->kind == EXP_INT);
+    assert(s.as.if_cond.cond->as.int_lit.value == 1);
+    assert(s.as.if_cond.then_br->kind == STMT_RETURN);
+    assert(s.as.if_cond.then_br->as.ret.exp->as.int_lit.value == 2);
+    assert(s.as.if_cond.else_br != NULL);
+    assert(s.as.if_cond.else_br->kind == STMT_RETURN);
+    assert(s.as.if_cond.else_br->as.ret.exp->as.int_lit.value == 3);
+
+    destroy_stmt(&s);
+    printf("  PASS: test_create_if_stmt_with_else\n");
+}
+
+// A plain if leaves else_br NULL; destroy_stmt must tolerate the missing branch.
+void test_create_if_stmt_no_else() {
+    AstStatement s = make_if_stmt(
+        create_int_exp(1),
+        heap_stmt(make_return_stmt(create_int_exp(2))),
+        NULL);
+
+    assert(s.kind == STMT_IF);
+    assert(s.as.if_cond.then_br->kind == STMT_RETURN);
+    assert(s.as.if_cond.else_br == NULL);
+
+    destroy_stmt(&s);
+    printf("  PASS: test_create_if_stmt_no_else\n");
+}
+
 void test_create_function_decl() {
     AstFunction fn = ast_function_make("main", ast_block_make(8));
     ast_function_append(&fn, (AstBlockItem){
@@ -600,6 +644,8 @@ int main(void) {
     test_create_binop_exp();
     test_create_conditional_exp();
     test_create_return_stmt();
+    test_create_if_stmt_with_else();
+    test_create_if_stmt_no_else();
     test_create_function_decl();
     test_parse_return_2();
     test_precedence_mul_over_add();
