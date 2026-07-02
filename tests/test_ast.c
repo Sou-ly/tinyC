@@ -34,8 +34,8 @@ void test_block_append_keeps_order() {
 
     assert(block.size == 2);
     assert(block.items[0].type == AST_STATEMENT);
-    assert(block.items[0].as.stmt.kind == STMT_RETURN);
-    assert(block.items[1].as.stmt.kind == STMT_EXP);
+    assert(block.items[0].as.stmt->kind == STMT_RETURN);
+    assert(block.items[1].as.stmt->kind == STMT_EXP);
     ast_block_destroy(&block);
     printf("  PASS: test_block_append_keeps_order\n");
 }
@@ -53,8 +53,8 @@ void test_block_append_grows() {
     assert(block.size == 10);
     assert(block.capacity >= 10);
     for (int i = 0; i < 10; i++) {
-        assert(block.items[i].as.stmt.kind == STMT_RETURN);
-        assert(block.items[i].as.stmt.as.ret.exp->as.int_lit.value == i);
+        assert(block.items[i].as.stmt->kind == STMT_RETURN);
+        assert(block.items[i].as.stmt->as.ret.exp->as.int_lit.value == i);
     }
     ast_block_destroy(&block);
     printf("  PASS: test_block_append_grows\n");
@@ -90,11 +90,11 @@ void test_compound_stmt_wraps_block() {
         .as.stmt = make_return_stmt(create_int_exp(0)),
     });
 
-    AstStatement stmt = make_compound_stmt(block);
-    assert(stmt.kind == STMT_COMPOUND);
-    assert(stmt.as.compound.size == 1);
-    assert(stmt.as.compound.items[0].as.stmt.kind == STMT_RETURN);
-    destroy_stmt(&stmt);
+    AstStatement* stmt = make_compound_stmt(block);
+    assert(stmt->kind == STMT_COMPOUND);
+    assert(stmt->as.compound.size == 1);
+    assert(stmt->as.compound.items[0].as.stmt->kind == STMT_RETURN);
+    destroy_stmt(stmt);
     printf("  PASS: test_compound_stmt_wraps_block\n");
 }
 
@@ -113,10 +113,10 @@ void test_nested_compound_block() {
         .as.stmt = make_compound_stmt(inner),
     });
 
-    assert(outer.items[0].as.stmt.kind == STMT_COMPOUND);
-    AstBlock nested = outer.items[0].as.stmt.as.compound;
+    assert(outer.items[0].as.stmt->kind == STMT_COMPOUND);
+    AstBlock nested = outer.items[0].as.stmt->as.compound;
     assert(nested.size == 1);
-    assert(nested.items[0].as.stmt.as.ret.exp->as.int_lit.value == 42);
+    assert(nested.items[0].as.stmt->as.ret.exp->as.int_lit.value == 42);
     ast_block_destroy(&outer);
     printf("  PASS: test_nested_compound_block\n");
 }
@@ -132,7 +132,7 @@ void test_function_holds_block() {
     assert(strcmp(fn.identifier, "main") == 0);
     assert(fn.body.size == 1);
     assert(fn.body.items[0].type == AST_STATEMENT);
-    assert(fn.body.items[0].as.stmt.kind == STMT_RETURN);
+    assert(fn.body.items[0].as.stmt->kind == STMT_RETURN);
     ast_function_destroy(&fn);
     printf("  PASS: test_function_holds_block\n");
 }

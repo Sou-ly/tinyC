@@ -9,7 +9,7 @@
 
 // Wrap a list of statements into a single-function ("main") program.
 // Takes ownership of `stmts` (each statement is copied into the function).
-static AstProgram program_of(AstStatement* stmts, int num_stmts) {
+static AstProgram program_of(AstStatement** stmts, int num_stmts) {
     AstFunction fn = ast_function_make("main", ast_block_make(num_stmts > 0 ? num_stmts : 1));
     for (int i = 0; i < num_stmts; i++) {
         ast_function_append(&fn, (AstBlockItem){
@@ -24,8 +24,8 @@ static AstProgram program_of(AstStatement* stmts, int num_stmts) {
 }
 
 // Wrap a single statement into a one-statement "main" program.
-static AstProgram program_of_stmt(AstStatement stmt) {
-    AstStatement* body = malloc(sizeof(AstStatement));
+static AstProgram program_of_stmt(AstStatement* stmt) {
+    AstStatement** body = malloc(sizeof(AstStatement*));
     body[0] = stmt;
     return program_of(body, 1);
 }
@@ -195,7 +195,7 @@ void test_emit_nested_unary() {
 // A bare-constant expression statement produces no instruction.
 // int main() { 5; return 0; }  ->  only the return is emitted.
 void test_emit_expr_statement_no_instruction() {
-    AstStatement* body = malloc(2 * sizeof(AstStatement));
+    AstStatement** body = malloc(2 * sizeof(AstStatement*));
     body[0] = make_exp_stmt(create_int_exp(5));
     body[1] = make_return_stmt(create_int_exp(0));
     AstProgram ast = program_of(body, 2);
@@ -721,12 +721,10 @@ void test_emit_postfix_decrement() { check_postfix("return x--", UNOP_POSTDEC, I
 
 // --- conditional expression (ternary) lowering ---
 
-// Heap-allocate a statement so it can be owned by an if-statement's branch
-// pointers (which destroy_stmt frees).
-static AstStatement* heap_stmt(AstStatement stmt) {
-    AstStatement* p = malloc(sizeof(AstStatement));
-    *p = stmt;
-    return p;
+// make_*_stmt already heap-allocates, so a branch pointer can own the result
+// directly; this pass-through is kept for readability at the call sites.
+static AstStatement* heap_stmt(AstStatement* stmt) {
+    return stmt;
 }
 
 // int main() { return 1 ? 2 : 3; }  lowers to:

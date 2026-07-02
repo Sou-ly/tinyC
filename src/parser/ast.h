@@ -189,15 +189,15 @@ struct AstStatement {
     } as;
 };
 
-AstStatement make_return_stmt(AstExp* exp);
-AstStatement make_exp_stmt(AstExp* exp);
-AstStatement make_if_stmt(AstExp* cond, AstStatement* then_br, AstStatement* else_br);
-AstStatement make_compound_stmt(AstBlock block);
-AstStatement make_for_stmt(AstForInit init, AstExp* cond, AstExp* post, AstStatement* body);
-AstStatement make_while_stmt(AstExp* cond, AstStatement* body);
-AstStatement make_do_while_stmt(AstExp* cond, AstStatement* body);
-AstStatement make_break_stmt(char* label);
-AstStatement make_continue_stmt(char * label);
+AstStatement* make_return_stmt(AstExp* exp);
+AstStatement* make_exp_stmt(AstExp* exp);
+AstStatement* make_if_stmt(AstExp* cond, AstStatement* then_br, AstStatement* else_br);
+AstStatement* make_compound_stmt(AstBlock block);
+AstStatement* make_for_stmt(AstForInit init, AstExp* cond, AstExp* post, AstStatement* body);
+AstStatement* make_while_stmt(AstExp* cond, AstStatement* body);
+AstStatement* make_do_while_stmt(AstExp* cond, AstStatement* body);
+AstStatement* make_break_stmt(char* label);
+AstStatement* make_continue_stmt(char * label);
 AstForInit make_for_init_decl(AstDeclaration* decl);
 AstForInit make_for_init_exp(AstExp* exp);
 void destroy_stmt(AstStatement* stmt);
@@ -218,7 +218,7 @@ struct AstBlockItem {
 	AstBlockItemType type;
 	union {
 		AstDeclaration	decl;
-		AstStatement	stmt;
+		AstStatement*	stmt;
 	} as;
 };
 

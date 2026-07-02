@@ -28,7 +28,7 @@ static AstBlockItem decl_item(const char* name, AstExp* init) {
     };
 }
 
-static AstBlockItem stmt_item(AstStatement stmt) {
+static AstBlockItem stmt_item(AstStatement* stmt) {
     return (AstBlockItem){ .type = AST_STATEMENT, .as.stmt = stmt };
 }
 
@@ -171,7 +171,7 @@ void test_resolve_single_declaration() {
     prog = resolve_variables(prog);
 
     assert(strcmp(decl_name(&prog, 0), "a.0") == 0);
-    AstExp* ret = item(&prog, 1)->as.stmt.as.ret.exp;
+    AstExp* ret = item(&prog, 1)->as.stmt->as.ret.exp;
     assert(ret->kind == EXP_VAR);
     assert(strcmp(ret->as.variable.identifier, "a.0") == 0);
 
@@ -229,9 +229,9 @@ void test_resolve_inner_shadows_outer() {
     prog = resolve_variables(prog);
 
     assert(strcmp(decl_name(&prog, 0), "a.0") == 0);  // outer
-    AstBlock* blk = &item(&prog, 1)->as.stmt.as.compound;
+    AstBlock* blk = &item(&prog, 1)->as.stmt->as.compound;
     assert(strcmp(blk->items[0].as.decl.identifier, "a.1") == 0);  // inner shadow
-    AstExp* ret = blk->items[1].as.stmt.as.ret.exp;
+    AstExp* ret = blk->items[1].as.stmt->as.ret.exp;
     assert(strcmp(ret->as.variable.identifier, "a.1") == 0);  // binds to inner
 
     destroy_program(&prog);
@@ -251,8 +251,8 @@ void test_resolve_inner_reads_outer() {
     prog = resolve_variables(prog);
 
     assert(strcmp(decl_name(&prog, 0), "a.0") == 0);
-    AstBlock* blk = &item(&prog, 1)->as.stmt.as.compound;
-    AstExp* ret = blk->items[0].as.stmt.as.ret.exp;
+    AstBlock* blk = &item(&prog, 1)->as.stmt->as.compound;
+    AstExp* ret = blk->items[0].as.stmt->as.ret.exp;
     assert(strcmp(ret->as.variable.identifier, "a.0") == 0);  // outer binding
 
     destroy_program(&prog);
@@ -274,8 +274,8 @@ void test_resolve_sibling_scopes() {
 
     prog = resolve_variables(prog);
 
-    const char* a0 = item(&prog, 0)->as.stmt.as.compound.items[0].as.decl.identifier;
-    const char* a1 = item(&prog, 1)->as.stmt.as.compound.items[0].as.decl.identifier;
+    const char* a0 = item(&prog, 0)->as.stmt->as.compound.items[0].as.decl.identifier;
+    const char* a1 = item(&prog, 1)->as.stmt->as.compound.items[0].as.decl.identifier;
     assert(strcmp(a0, "a.0") == 0);
     assert(strcmp(a1, "a.1") == 0);
 
@@ -297,19 +297,18 @@ void test_resolve_inner_decl_does_not_leak() {
 
     prog = resolve_variables(prog);
 
-    AstExp* ret = item(&prog, 2)->as.stmt.as.ret.exp;
+    AstExp* ret = item(&prog, 2)->as.stmt->as.ret.exp;
     assert(strcmp(ret->as.variable.identifier, "a.0") == 0);
 
     destroy_program(&prog);
     printf("  PASS: test_resolve_inner_decl_does_not_leak\n");
 }
 
-// Heap-allocate a statement so an if-statement's branch pointers can own it
-// (resolve rewrites the branches in place; destroy_stmt frees them).
-static AstStatement* heap_stmt(AstStatement stmt) {
-    AstStatement* p = malloc(sizeof(AstStatement));
-    *p = stmt;
-    return p;
+// make_*_stmt already heap-allocates, so an if-statement's branch pointers can
+// own the result directly (resolve rewrites the branches in place; destroy_stmt
+// frees them). This pass-through is kept for readability at the call sites.
+static AstStatement* heap_stmt(AstStatement* stmt) {
+    return stmt;
 }
 
 // An if-statement resolves its condition and both branches against the current
@@ -331,7 +330,7 @@ void test_resolve_if_statement() {
     assert(strcmp(decl_name(&prog, 0), "a.0") == 0);
     assert(strcmp(decl_name(&prog, 1), "b.1") == 0);
 
-    AstStmtIf* if_stmt = &item(&prog, 2)->as.stmt.as.if_cond;
+    AstStmtIf* if_stmt = &item(&prog, 2)->as.stmt->as.if_cond;
     assert(strcmp(if_stmt->cond->as.variable.identifier, "a.0") == 0);
     assert(strcmp(if_stmt->then_br->as.ret.exp->as.variable.identifier, "b.1") == 0);
     assert(strcmp(if_stmt->else_br->as.ret.exp->as.variable.identifier, "a.0") == 0);
@@ -355,7 +354,7 @@ void test_resolve_conditional_expression() {
 
     prog = resolve_variables(prog);
 
-    AstExp* cond = item(&prog, 2)->as.stmt.as.ret.exp;
+    AstExp* cond = item(&prog, 2)->as.stmt->as.ret.exp;
     assert(cond->kind == EXP_CONDITIONAL);
     assert(strcmp(cond->as.conditional.lhs->as.variable.identifier, "a.0") == 0);
     assert(strcmp(cond->as.conditional.mid->as.variable.identifier, "a.0") == 0);
