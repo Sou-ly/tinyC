@@ -265,7 +265,7 @@ static void emit_ir_statement(IrFunction* ir_function, const AstStatement* stmt)
 
 static void emit_ir_block_item(IrFunction* ir_function, const AstBlockItem block_item) {
 	if (block_item.type == AST_STATEMENT) {
-		emit_ir_statement(ir_function, &block_item.as.stmt);
+		emit_ir_statement(ir_function, block_item.as.stmt);
 	} else if (block_item.type == AST_DECLARATION && block_item.as.decl.exp != NULL) {
 		IrVal result = emit_ir_expression(block_item.as.decl.exp, ir_function);
 		IrVal var = { IR_VARIABLE, .as.name = strdup(block_item.as.decl.identifier) };

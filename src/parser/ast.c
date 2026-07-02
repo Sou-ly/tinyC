@@ -78,7 +78,7 @@ void ast_block_destroy(AstBlock* block) {
 				destroy_exp(block_item->as.decl.exp);
 				break;
 			case AST_STATEMENT:
-				destroy_stmt(&block_item->as.stmt);
+				destroy_stmt(block_item->as.stmt);
 				break;
 		}
 	}
@@ -115,21 +115,31 @@ void destroy_exp(AstExp* exp) {
 
 // --- Statements ---
 
-AstStatement make_return_stmt(AstExp* exp) {
-    return (AstStatement){ .kind = STMT_RETURN, .as.ret = { exp } };
+// All make_*_stmt constructors heap-allocate the node and return an owning
+// pointer, mirroring create_*_exp. Nested statements (if branches, loop
+// bodies) are likewise pointers, so the whole statement tree is uniform;
+// destroy_stmt frees a node and everything it owns, including itself.
+static AstStatement* alloc_stmt(AstStatement value) {
+    AstStatement* stmt = malloc(sizeof(AstStatement));
+    *stmt = value;
+    return stmt;
 }
 
-AstStatement make_exp_stmt(AstExp* exp) {
-    return (AstStatement){ .kind = STMT_EXP, .as.exp_stmt = { exp } };
+AstStatement* make_return_stmt(AstExp* exp) {
+    return alloc_stmt((AstStatement){ .kind = STMT_RETURN, .as.ret = { exp } });
+}
+
+AstStatement* make_exp_stmt(AstExp* exp) {
+    return alloc_stmt((AstStatement){ .kind = STMT_EXP, .as.exp_stmt = { exp } });
 }
 
 // then_br and else_br are heap-owned; else_br may be NULL (a plain `if`).
-AstStatement make_if_stmt(AstExp* cond, AstStatement* then_br, AstStatement* else_br) {
-    return (AstStatement){ .kind = STMT_IF, .as.if_cond = { .label = NULL, .cond = cond, .then_br = then_br, .else_br = else_br } };
+AstStatement* make_if_stmt(AstExp* cond, AstStatement* then_br, AstStatement* else_br) {
+    return alloc_stmt((AstStatement){ .kind = STMT_IF, .as.if_cond = { .label = NULL, .cond = cond, .then_br = then_br, .else_br = else_br } });
 }
 
-AstStatement make_compound_stmt(AstBlock block) {
-	return (AstStatement) {.kind=STMT_COMPOUND, .as.compound=block};
+AstStatement* make_compound_stmt(AstBlock block) {
+	return alloc_stmt((AstStatement) {.kind=STMT_COMPOUND, .as.compound=block});
 }
 
 AstForInit make_for_init_decl(AstDeclaration* decl) {
@@ -140,30 +150,37 @@ AstForInit make_for_init_exp(AstExp* exp) {
 	return (AstForInit){ .init_type = AST_INIT_EXP, .as.exp = exp };
 }
 
-// init.cond, init.post may be NULL; body is heap-owned.
-AstStatement make_for_stmt(AstForInit init, AstExp* cond, AstExp* post, AstStatement* body) {
-	return (AstStatement){ .kind = STMT_FOR, .as.for_loop = { .label = NULL, .init = init, .cond = cond, .post = post, .body = body } };
+// init.cond, init.post may be NULL; body is heap-owned. label is left NULL here
+// and filled in later by the loop-labelling pass.
+AstStatement* make_for_stmt(AstForInit init, AstExp* cond, AstExp* post, AstStatement* body) {
+	return alloc_stmt((AstStatement){ .kind = STMT_FOR, .as.for_loop = { .label = NULL, .init = init, .cond = cond, .post = post, .body = body } });
 }
 
-// body is heap-owned.
-AstStatement make_while_stmt(AstExp* cond, AstStatement* body) {
-	return (AstStatement){ .kind = STMT_WHILE, .as.while_loop = { .label = NULL, .cond = cond, .body = body } };
+// body is heap-owned; label filled in later by the loop-labelling pass.
+AstStatement* make_while_stmt(AstExp* cond, AstStatement* body) {
+	return alloc_stmt((AstStatement){ .kind = STMT_WHILE, .as.while_loop = { .label = NULL, .cond = cond, .body = body } });
 }
 
-// body is heap-owned.
-AstStatement make_do_while_stmt(AstExp* cond, AstStatement* body) {
-	return (AstStatement){ .kind = STMT_DO_WHILE, .as.do_while_loop = { .label = NULL, .cond = cond, .body = body } };
+// body is heap-owned; label filled in later by the loop-labelling pass.
+AstStatement* make_do_while_stmt(AstExp* cond, AstStatement* body) {
+	return alloc_stmt((AstStatement){ .kind = STMT_DO_WHILE, .as.do_while_loop = { .label = NULL, .cond = cond, .body = body } });
 }
 
-AstStatement make_break_stmt(char* label) {
-	return (AstStatement){ .kind = STMT_BREAK, .as.break_stmt = { .label = strdup(label) } };
+// label is NULL until the loop-labelling pass fills it in; stored directly
+// (destroy_stmt frees it, and free(NULL) is a no-op).
+AstStatement* make_break_stmt(char* label) {
+	return alloc_stmt((AstStatement){ .kind = STMT_BREAK, .as.break_stmt = { .label = label } });
 }
 
-AstStatement make_continue_stmt(char* label) {
-	return (AstStatement){ .kind = STMT_CONTINUE, .as.continue_stmt = { .label = NULL } };
+AstStatement* make_continue_stmt(char* label) {
+	return alloc_stmt((AstStatement){ .kind = STMT_CONTINUE, .as.continue_stmt = { .label = label } });
 }
 
+// Frees the statement and everything it owns, including the node itself.
+// Nested statements are heap-owned pointers, so destroy_stmt recurses into
+// them directly (no separate free at the call site). NULL-safe.
 void destroy_stmt(AstStatement* stmt) {
+    if (!stmt) return;
     switch (stmt->kind) {
         case STMT_RETURN:
             destroy_exp(stmt->as.ret.exp);
@@ -174,11 +191,7 @@ void destroy_stmt(AstStatement* stmt) {
         case STMT_IF:
             destroy_exp(stmt->as.if_cond.cond);
             destroy_stmt(stmt->as.if_cond.then_br);
-            free(stmt->as.if_cond.then_br);
-            if (stmt->as.if_cond.else_br != NULL) {
-                destroy_stmt(stmt->as.if_cond.else_br);
-                free(stmt->as.if_cond.else_br);
-            }
+            destroy_stmt(stmt->as.if_cond.else_br);
             break;
         case STMT_COMPOUND:
             ast_block_destroy(&stmt->as.compound);
@@ -200,19 +213,16 @@ void destroy_stmt(AstStatement* stmt) {
             destroy_exp(stmt->as.for_loop.cond);
             destroy_exp(stmt->as.for_loop.post);
             destroy_stmt(stmt->as.for_loop.body);
-            free(stmt->as.for_loop.body);
             break;
         case STMT_WHILE:
             free(stmt->as.while_loop.label);
             destroy_exp(stmt->as.while_loop.cond);
             destroy_stmt(stmt->as.while_loop.body);
-            free(stmt->as.while_loop.body);
             break;
         case STMT_DO_WHILE:
             free(stmt->as.do_while_loop.label);
             destroy_exp(stmt->as.do_while_loop.cond);
             destroy_stmt(stmt->as.do_while_loop.body);
-            free(stmt->as.do_while_loop.body);
             break;
         case STMT_BREAK:
             free(stmt->as.break_stmt.label);
@@ -221,6 +231,7 @@ void destroy_stmt(AstStatement* stmt) {
             free(stmt->as.continue_stmt.label);
             break;
     }
+    free(stmt);
 }
 
 AstFunction ast_function_make(const char* name, AstBlock block) {

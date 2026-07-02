@@ -56,7 +56,7 @@ static AstProgram make_test_program(AstExp* expr) {
 
 // Wrap a single statement (rather than a bare return expression) into a "main"
 // program — used for if-statement codegen.
-static AstProgram make_stmt_program(AstStatement stmt) {
+static AstProgram make_stmt_program(AstStatement* stmt) {
     AstFunction fn = ast_function_make("main", ast_block_make(8));
     ast_function_append(&fn, (AstBlockItem){
         .type = AST_STATEMENT,
@@ -67,11 +67,10 @@ static AstProgram make_stmt_program(AstStatement stmt) {
     return ast_program_create(functions, 1);
 }
 
-// Heap-allocate a statement so an if-statement's branch pointers can own it.
-static AstStatement* heap_stmt(AstStatement stmt) {
-    AstStatement* p = malloc(sizeof(AstStatement));
-    *p = stmt;
-    return p;
+// make_*_stmt already heap-allocates, so an if-statement's branch pointers can
+// own the result directly; this pass-through is kept for readability.
+static AstStatement* heap_stmt(AstStatement* stmt) {
+    return stmt;
 }
 
 // Render a fully-lowered program (codegen -> rename -> allocate -> emit) to a

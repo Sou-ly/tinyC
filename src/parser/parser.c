@@ -175,6 +175,7 @@ static void expect_separator(Parser* p, TokenSeparator sep) {
 // --- Parsing ---
 
 static AstExp* parse_expression(Parser* p, int min_prec);
+static AstDeclaration* parse_declaration(Parser* p);
 
 // factor ::= int | ("!" | "-") factor | "(" exp ")"  | ++id | --id | id++ | id--
 static AstExp* parse_factor(Parser* p) {
@@ -267,31 +268,87 @@ static AstExp* parse_expression(Parser* p, int min_prec) {
     return lhs;
 }
 
-static AstStatement parse_statement(Parser* p) {
-    if (current(p)->kind != TOK_KEYWORD) { 
+static AstStatement* parse_statement(Parser* p) {
+    if (current(p)->kind != TOK_KEYWORD) {
 		AstExp* exp = parse_expression(p, 0);
     	expect_separator(p, TOK_SEMICOLON);
     	return make_exp_stmt(exp);
     }
 
 	switch(current(p)->kw) {
-		case TOK_RETURN:
+		case TOK_RETURN: {
 			advance(p); // consume 'return'
     		AstExp* exp = parse_expression(p, 0);
     		expect_separator(p, TOK_SEMICOLON);
     		return make_return_stmt(exp);
-		case TOK_IF:
-			advance(p)
-				
+		}
+		case TOK_IF: {
+			advance(p);
+			expect_separator(p, TOK_LPAR);
+			AstExp* cond = parse_expression(p, 0);
+			expect_separator(p, TOK_RPAR);
+			AstStatement* then_br = parse_statement(p);
+			AstStatement* else_br = NULL;
+			if (current(p)->kind == TOK_KEYWORD && current(p)->kw == TOK_ELSE) {
+				advance(p);
+				else_br = parse_statement(p);
+			}
+			return make_if_stmt(cond, then_br, else_br);
+		}
+		case TOK_FOR: {
+			advance(p);
+			expect_separator(p, TOK_LPAR);
+			AstForInit for_init;
+			if (current(p)->kind == TOK_KEYWORD && current(p)->kw == TOK_INT) {
+				AstDeclaration* decl = parse_declaration(p);
+				for_init = make_for_init_decl(decl);
+			} else {
+				AstExp* exp = parse_expression(p, 0);
+				expect_separator(p, TOK_SEMICOLON);
+				for_init = make_for_init_exp(exp);
+			}
+			AstExp* cond = parse_expression(p, 0);
+			expect_separator(p, TOK_SEMICOLON);
+			AstExp* post = parse_expression(p, 0);
+			expect_separator(p, TOK_RPAR);
+			AstStatement* body = parse_statement(p);
+			return make_for_stmt(for_init, cond, post, body);
+		}
+		case TOK_WHILE: {
+			advance(p);
+			expect_separator(p, TOK_LPAR);
+			AstExp* cond = parse_expression(p, 0);
+			expect_separator(p, TOK_RPAR);
+			AstStatement* body = parse_statement(p);
+			return make_while_stmt(cond, body);
+		}
+		case TOK_DO: {
+			advance(p);
+			AstStatement* body = parse_statement(p);
+			expect_keyword(p, TOK_WHILE);
+			expect_separator(p, TOK_LPAR);
+			AstExp* cond = parse_expression(p, 0);
+			expect_separator(p, TOK_RPAR);
+			expect_separator(p, TOK_SEMICOLON);
+			return make_do_while_stmt(cond, body);
+		}
 		case TOK_ELSE:
-			// error?
-		case TOK_FOR:
-			
+			fprintf(stderr, "Missing if statement\n");
+			exit(1);
 		case TOK_CONTINUE:
-
+			advance(p);
+			expect_separator(p, TOK_SEMICOLON);
+			return make_continue_stmt(NULL); // label assigned by loop-labelling pass
 		case TOK_BREAK:
-
+			advance(p);
+			expect_separator(p, TOK_SEMICOLON);
+			return make_break_stmt(NULL); // label assigned by loop-labelling pass
+		default:
+			break;
 	}
+	fprintf(stderr, "parse error at %zu:%zu: unexpected keyword in statement\n",
+			current(p)->line, current(p)->col);
+	exit(1);
 }
 
 static AstDeclaration parse_declaration(Parser* p) {
@@ -491,32 +548,30 @@ static AstExp* resolve_expression(AstExp* exp, VarMap* map) {
 
 static AstBlock resolve_block(AstBlock block, VarMap* map);
 
-static AstStatement resolve_statement(AstStatement stmt, VarMap* map) {
-	switch (stmt.kind) {
+static void resolve_statement(AstStatement* stmt, VarMap* map) {
+	switch (stmt->kind) {
 		case STMT_RETURN:
-			stmt.as.ret.exp = resolve_expression(stmt.as.ret.exp, map);
+			stmt->as.ret.exp = resolve_expression(stmt->as.ret.exp, map);
 			break;
 		case STMT_EXP:
-			stmt.as.exp_stmt.exp = resolve_expression(stmt.as.exp_stmt.exp, map);
+			stmt->as.exp_stmt.exp = resolve_expression(stmt->as.exp_stmt.exp, map);
 			break;
 		case STMT_IF:
-			stmt.as.if_cond.cond = resolve_expression(stmt.as.if_cond.cond, map);
-			*stmt.as.if_cond.then_br = resolve_statement(*stmt.as.if_cond.then_br, map);
-			if (stmt.as.if_cond.else_br != NULL) {
-				*stmt.as.if_cond.else_br = resolve_statement(*stmt.as.if_cond.else_br, map);
+			stmt->as.if_cond.cond = resolve_expression(stmt->as.if_cond.cond, map);
+			resolve_statement(stmt->as.if_cond.then_br, map);
+			if (stmt->as.if_cond.else_br != NULL) {
+				resolve_statement(stmt->as.if_cond.else_br, map);
 			}
 			break;
 		case STMT_COMPOUND: {
 			// the inner block resolves against a copy, so declarations there
 			// don't leak into the enclosing scope
 			VarMap new_map = varmap_copy(*map);
-			AstStatement resolved =
-				make_compound_stmt(resolve_block(stmt.as.compound, &new_map));
+			stmt->as.compound = resolve_block(stmt->as.compound, &new_map);
 			varmap_destroy(&new_map);
-			return resolved;
+			break;
 		}
 	}
-	return stmt;
 }
 
 static AstDeclaration resolve_declaration(AstDeclaration decl, VarMap* map) {
@@ -552,7 +607,7 @@ static AstBlockItem resolve_block_item(AstBlockItem item, VarMap* map) {
 			item.as.decl = resolve_declaration(item.as.decl, map);
 			break;
 		case AST_STATEMENT:
-			item.as.stmt = resolve_statement(item.as.stmt, map);
+			resolve_statement(item.as.stmt, map);
 			break;
 	}
 	return item;
