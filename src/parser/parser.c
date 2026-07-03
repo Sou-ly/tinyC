@@ -503,6 +503,15 @@ void varmap_put(VarMap* map, VarMapEntry entry) {
 	}
 	map->entries[map->size] = entry;
 	map->size++;
+o
+
+static AstForInit resolve_for_init(AstForInit for_init, VarMap* var_map) {
+	switch (for_init->type) {
+		case AST_INIT_DECL:
+			return make_for_init_decl(resolve_declaration(for_init.as.decl, var_map));
+		case AST_INIT_EXP:
+			return make_for_init_exp(resolve_expression(for_init.as.exp, var_map));
+	}
 }
 
 static AstExp* resolve_expression(AstExp* exp, VarMap* map) {
@@ -564,10 +573,31 @@ static void resolve_statement(AstStatement* stmt, VarMap* map) {
 			}
 			break;
 		case STMT_COMPOUND: {
-			// the inner block resolves against a copy, so declarations there
-			// don't leak into the enclosing scope
 			VarMap new_map = varmap_copy(*map);
 			stmt->as.compound = resolve_block(stmt->as.compound, &new_map);
+			varmap_destroy(&new_map);
+			break;
+		}
+		case STMT_FOR: {
+			VarMap new_map = varmap_copy(*map);
+			stmt->as.for_loop.for_init = resolve_for_init(stmt->as.for_loop.for_init, new_map); 
+			stmt->as.for_loop.cond = resolve_expression(stmt->as.for_loop.cond, new_map); 
+			stmt->as.for_loop.post = resolve_expression(stmt->as.for_loop.post, new_map); 
+			stmt->as.for_loop.body = resolve_statement(stmt->as.for_loop.body, new_map); 
+			varmap_destroy(&new_map);
+			break;
+		}
+		case STMT_WHILE: {
+			VarMap new_map = varmap_copy(*map);
+			stmt->as.while_loop.cond = resolve_expression(stmt->as.while_loop.cond, new_map); 
+			stmt->as.while_loop.body = resolve_statement(stmt->as.while_loop.body, new_map); 
+			varmap_destroy(&new_map);
+			break;
+		}
+		case STMT_DO_WHILE: {
+			VarMap new_map = varmap_copy(*map);
+			stmt->as.do_while_loop.cond = resolve_expression(stmt->as.do_while_loop.cond, new_map); 
+			stmt->as.do_while_loop.body = resolve_statement(stmt->as.do_while_loop.body, new_map); 
 			varmap_destroy(&new_map);
 			break;
 		}
@@ -575,8 +605,6 @@ static void resolve_statement(AstStatement* stmt, VarMap* map) {
 }
 
 static AstDeclaration resolve_declaration(AstDeclaration decl, VarMap* map) {
-	// check for duplicate in current scope
-	// (linear scan is fine — we only check exact key matches at the top level)
 	for (int i = 0; i < map->size; i++) {
 		if (map->entries[i].is_cur_scope &&
 				strcmp(map->entries[i].key, decl.identifier) == 0) {
@@ -586,16 +614,10 @@ static AstDeclaration resolve_declaration(AstDeclaration decl, VarMap* map) {
 		}
 	}
 	char* unique = make_unique_name(decl.identifier);
-	// the map owns its own key/val copies: decl.identifier is freed below and
-	// reassigned to `unique`, which the AST owns — aliasing either here would
-	// leave the map with a dangling key or double-free `unique` at cleanup.
 	varmap_put(map, (VarMapEntry) { .key=strdup(decl.identifier), .val=strdup(unique), .is_cur_scope=true });
 
-	// resolve the initializer (if any) AFTER recording the mapping
-	// so `int a = a;` is technically allowed (C behavior)
 	decl.exp = resolve_expression(decl.exp, map);
 
-	// rename the declaration itself
 	free(decl.identifier);
 	decl.identifier = unique;
 	return decl;
@@ -633,4 +655,41 @@ AstProgram resolve_variables(AstProgram program) {
 		program.functions[i] = resolve_function(program.functions[i]);
 	}
 	return program;
+}
+
+static AstStatement* label_statement(AstStatement* statement, char* current_label) {
+	switch (statement->kind) {
+		case STMT_FOR:	
+		case STMT_WHILE:
+		case STMT_DO_WHILE:
+		case STMT_BREAK:
+			if (current_label == NULL) {
+				fprintf(stderr, "break statmeent outside of loop\n");
+				exit(1);
+			}
+			statement->as.break_stmt.label = strdup(current_label);
+			return statement;	
+		case STMT_CONTINUE:
+			if (current_label == NULL) {
+				fprintf(stderr, "continue statmeent outside of loop\n");
+				exit(1);
+			}
+			statement->as.continue_stmt.label = strdup(current_label);
+			return statement;	
+		default:
+			return statement;
+	}
+}
+
+AstProgram resolve_labels(AstProgram program) {
+	RESOLVE_COUNTER = 0;
+	for (int i = 0; i < program.num_functions; i++) {
+		AstFunction function = program.function[i];
+		for (size_t j = 0; j < function.body.size; j++) {
+			AstBlockitem block_item = function.body.items[j];
+			if (block_item.type == AST_STATEMENT) {
+				block_item.as.stmt = label_statement(block_item.as.stmt, NULL);
+			}
+		}
+	}
 }
