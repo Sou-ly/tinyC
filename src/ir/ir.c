@@ -30,6 +30,54 @@ static void append_ir_instruction(IrFunction* function, IrInstruction instructio
 	function->instructions[function->size - 1] = instruction;
 }
 
+// --- IR constructors ---
+// See ir.h for the ownership convention: string fields are stored by pointer.
+
+IrVal ir_constant(int value) {
+	return (IrVal){ .kind = IR_CONSTANT, .as.int_val = value };
+}
+
+IrVal ir_variable(char* name) {
+	return (IrVal){ .kind = IR_VARIABLE, .as.name = name };
+}
+
+IrInstruction ir_return(IrVal val) {
+	return (IrInstruction){ IR_RETURN, .as.ret = { val } };
+}
+
+IrInstruction ir_unary(IrUnopType op, IrVal src, IrVal dst) {
+	return (IrInstruction){ IR_UNOP, .as.unary = { op, src, dst } };
+}
+
+IrInstruction ir_binop(IrBinopType op, IrVal lhs, IrVal rhs, IrVal dst) {
+	return (IrInstruction){ IR_BINOP, .as.binop = { op, lhs, rhs, dst } };
+}
+
+IrInstruction ir_copy(IrVal src, IrVal dst) {
+	return (IrInstruction){ IR_COPY, .as.copy = { src, dst } };
+}
+
+IrInstruction ir_jump(char* target) {
+	return (IrInstruction){ IR_JUMP, .as.jump = { target } };
+}
+
+IrInstruction ir_jump_zero(IrVal cond, char* target) {
+	return (IrInstruction){ IR_JUMP_ZERO, .as.jump_zero = { cond, target } };
+}
+
+IrInstruction ir_jump_not_zero(IrVal cond, char* target) {
+	return (IrInstruction){ IR_JUMP_NOT_ZERO, .as.jump_not_zero = { cond, target } };
+}
+
+IrInstruction ir_label(char* identifier) {
+	return (IrInstruction){ IR_LABEL, .as.label = { identifier } };
+}
+
+// A fresh variable value backed by a newly generated temp name.
+static IrVal new_temp(void) {
+	return ir_variable(generate_variable_name());
+}
+
 static IrUnopType convert_ir_unary(AstUnopType ast_op) {
 	switch (ast_op) {
 		case UNOP_COMP:		return IR_COMP;
@@ -71,48 +119,61 @@ static IrBinopType convert_ir_binop(AstBinopType ast_op) {
 	ICE("ir: unsupported binary operator");
 }
 
+// Maps a compound-assignment operator (`+=`, `<<=`, ...) to the IR binary op
+// used to combine the variable with the right-hand side. ASSIGN_NOP is a plain
+// copy and is handled by the caller, not here.
+static IrBinopType compound_assign_op(AstAssignOp op) {
+	switch (op) {
+		case ASSIGN_ADD:	return IR_ADD;
+		case ASSIGN_SUB:	return IR_SUB;
+		case ASSIGN_MUL:	return IR_MUL;
+		case ASSIGN_DIV:	return IR_DIV;
+		case ASSIGN_MOD:	return IR_MOD;
+		case ASSIGN_AND:	return IR_AND;
+		case ASSIGN_OR:		return IR_OR;
+		case ASSIGN_XOR:	return IR_XOR;
+		case ASSIGN_RSHIFT:	return IR_RSHIFT;
+		case ASSIGN_LSHIFT:	return IR_LSHIFT;
+		case ASSIGN_NOP:	break; // plain copy, handled in EXP_ASSIGN
+	}
+	ICE("ir: unsupported compound assignment operator");
+}
+
 static IrVal emit_ir_expression(const AstExp* exp, IrFunction* ir_function);
 
 // emits && and ||: both evaluate operands left to right and jump to a
 // short-circuit label as soon as one operand decides the result.
 // && short-circuits to 0 when an operand is zero, || to 1 when non-zero.
-// jumps are built through .as.jump_zero regardless of jump_type, which is
-// fine since jump_zero and jump_not_zero have the same layout.
 static IrVal emit_ir_short_circuit(const AstExp* exp, IrFunction* ir_function) {
 	bool is_and = exp->as.binop.op_type == BINOP_LAND;
-	IrInstructionType jump_type = is_and ? IR_JUMP_ZERO : IR_JUMP_NOT_ZERO;
 	int short_circuit_value = is_and ? 0 : 1;
-	IrInstruction short_circuit_label = { IR_LABEL, .as.label = { generate_label_name() } };
-	IrInstruction end_label = { IR_LABEL, .as.label = { generate_label_name() } };
-	IrVal dst = { IR_VARIABLE, .as.name = generate_variable_name() };
-	// evaluate v1, short-circuit if it decides the result
+	char* short_circuit_target = generate_label_name();
+	char* end_target = generate_label_name();
+	IrVal dst = new_temp();
+	// evaluate v1, short-circuit if it decides the result. jump_zero and
+	// jump_not_zero share a layout, so the right constructor is picked by is_and.
 	IrVal lhs = emit_ir_expression(exp->as.binop.lhs, ir_function);
-	IrInstruction jump_lhs = { jump_type, .as.jump_zero = { lhs, short_circuit_label.as.label.identifier } };
-	append_ir_instruction(ir_function, jump_lhs);
+	append_ir_instruction(ir_function, is_and ? ir_jump_zero(lhs, short_circuit_target)
+											  : ir_jump_not_zero(lhs, short_circuit_target));
 	// evaluate v2, short-circuit if it decides the result
 	IrVal rhs = emit_ir_expression(exp->as.binop.rhs, ir_function);
-	IrInstruction jump_rhs = { jump_type, .as.jump_zero = { rhs, short_circuit_label.as.label.identifier } };
-	append_ir_instruction(ir_function, jump_rhs);
+	append_ir_instruction(ir_function, is_and ? ir_jump_zero(rhs, short_circuit_target)
+											  : ir_jump_not_zero(rhs, short_circuit_target));
 	// fall-through: result is the opposite of the short-circuit value
-	IrInstruction store_fallthrough = { IR_COPY, .as.copy = { { IR_CONSTANT, .as.int_val = !short_circuit_value }, dst } };
-	append_ir_instruction(ir_function, store_fallthrough);
-	IrInstruction jump_end = { IR_JUMP, .as.jump = { end_label.as.label.identifier } };
-	append_ir_instruction(ir_function, jump_end);
+	append_ir_instruction(ir_function, ir_copy(ir_constant(!short_circuit_value), dst));
+	append_ir_instruction(ir_function, ir_jump(end_target));
 	// short-circuit
-	append_ir_instruction(ir_function, short_circuit_label);
-	IrInstruction store_short_circuit = { IR_COPY, .as.copy = { { IR_CONSTANT, .as.int_val = short_circuit_value }, dst } };
-	append_ir_instruction(ir_function, store_short_circuit);
+	append_ir_instruction(ir_function, ir_label(short_circuit_target));
+	append_ir_instruction(ir_function, ir_copy(ir_constant(short_circuit_value), dst));
 	// end
-	append_ir_instruction(ir_function, end_label);
+	append_ir_instruction(ir_function, ir_label(end_target));
 	return dst;
 }
 
 static IrVal emit_ir_expression(const AstExp* exp, IrFunction* ir_function) {
 	switch (exp->kind) {
-		case EXP_INT: {
-			IrVal constant = { IR_CONSTANT, .as.int_val = exp->as.int_lit.value };
-			return constant;
-		}
+		case EXP_INT:
+			return ir_constant(exp->as.int_lit.value);
 		case EXP_UNOP: {
 			if (exp->as.unary.op_type == UNOP_POSTINC || exp->as.unary.op_type == UNOP_POSTDEC) {
 				// postfix: save the old value, mutate in place, yield the saved temp.
@@ -120,30 +181,21 @@ static IrVal emit_ir_expression(const AstExp* exp, IrFunction* ir_function) {
 				assert(exp->as.unary.operand->kind == EXP_VAR);
 				IrVal var = emit_ir_expression(exp->as.unary.operand, ir_function);
 				IrBinopType step_op = exp->as.unary.op_type == UNOP_POSTINC ? IR_ADD : IR_SUB;
-				IrVal one = { IR_CONSTANT, .as.int_val = 1 };
-				IrVal old = { IR_VARIABLE, .as.name = generate_variable_name() };
-				IrInstruction save = { IR_COPY, .as.copy = { .src = var, .dst = old } };
-				append_ir_instruction(ir_function, save);
-				IrInstruction step = { IR_BINOP, .as.binop = { .op = step_op, .lhs = var, .rhs = one, .dst = var } };
-				append_ir_instruction(ir_function, step);
+				IrVal old = new_temp();
+				append_ir_instruction(ir_function, ir_copy(var, old));
+				append_ir_instruction(ir_function, ir_binop(step_op, var, ir_constant(1), var));
 				return old;
 			} else if (exp->as.unary.op_type == UNOP_PREINC || exp->as.unary.op_type == UNOP_PREDEC) {
 				// prefix: mutate in place first, yield the variable itself.
 				assert(exp->as.unary.operand->kind == EXP_VAR);
 				IrVal var = emit_ir_expression(exp->as.unary.operand, ir_function);
 				IrBinopType step_op = exp->as.unary.op_type == UNOP_PREINC ? IR_ADD : IR_SUB;
-				IrVal one = { IR_CONSTANT, .as.int_val = 1 };
-				IrInstruction step = { IR_BINOP, .as.binop = { .op = step_op, .lhs = var, .rhs = one, .dst = var } };
-				append_ir_instruction(ir_function, step);
+				append_ir_instruction(ir_function, ir_binop(step_op, var, ir_constant(1), var));
 				return var;
 			} else {
 				IrVal src = emit_ir_expression(exp->as.unary.operand, ir_function);
-				IrVal dst = { IR_VARIABLE, .as.name = generate_variable_name() };
-				IrInstruction instruction = {
-					IR_UNOP,
-					.as.unary = { convert_ir_unary(exp->as.unary.op_type), src, dst }
-				};
-				append_ir_instruction(ir_function, instruction);
+				IrVal dst = new_temp();
+				append_ir_instruction(ir_function, ir_unary(convert_ir_unary(exp->as.unary.op_type), src, dst));
 				return dst;
 			}
 		}
@@ -154,71 +206,38 @@ static IrVal emit_ir_expression(const AstExp* exp, IrFunction* ir_function) {
 			}
 			IrVal lhs = emit_ir_expression(exp->as.binop.lhs, ir_function);
 			IrVal rhs = emit_ir_expression(exp->as.binop.rhs, ir_function);
-			IrVal dst = { IR_VARIABLE, .as.name = generate_variable_name() };
-			IrInstruction instruction = { IR_BINOP, .as.binop = { optype, lhs, rhs, dst } };
-			append_ir_instruction(ir_function, instruction);
-			return dst;	
+			IrVal dst = new_temp();
+			append_ir_instruction(ir_function, ir_binop(optype, lhs, rhs, dst));
+			return dst;
 		}
-		case EXP_VAR: {
-			IrVal var = { .kind = IR_VARIABLE, .as.name = strdup(exp->as.variable.identifier) };
-			return var;
-		}
+		case EXP_VAR:
+			return ir_variable(strdup(exp->as.variable.identifier));
 		case EXP_ASSIGN: {
 			assert(exp->as.assign.lhs->kind == EXP_VAR);
 			IrVal var = emit_ir_expression(exp->as.assign.lhs, ir_function);
 			IrVal result = emit_ir_expression(exp->as.assign.rhs, ir_function);
-			IrInstruction instruction;
-			switch(exp->as.assign.op) {
-				case ASSIGN_NOP: 
-					instruction = (IrInstruction) { IR_COPY, .as.copy = { .src = result, .dst = var}}; 
-					break;
-				case ASSIGN_ADD: 
-					instruction = (IrInstruction) { IR_BINOP, .as.binop = { .op = IR_ADD, .lhs = var, .rhs = result, .dst = var }  }; 
-					break;
-				case ASSIGN_SUB: 
-					instruction = (IrInstruction) { IR_BINOP, .as.binop = { .op = IR_SUB, .lhs = var, .rhs = result, .dst = var }  }; 
-					break;
-				case ASSIGN_MUL: 
-					instruction = (IrInstruction) { IR_BINOP, .as.binop = { .op = IR_MUL, .lhs = var, .rhs = result, .dst = var }  }; 
-					break;
-				case ASSIGN_DIV: 
-					instruction = (IrInstruction) { IR_BINOP, .as.binop = { .op = IR_DIV, .lhs = var, .rhs = result, .dst = var }  }; 
-					break;
-				case ASSIGN_MOD: 
-					instruction = (IrInstruction) { IR_BINOP, .as.binop = { .op = IR_MOD, .lhs = var, .rhs = result, .dst = var }  }; 
-					break;
-				case ASSIGN_AND: 
-					instruction = (IrInstruction) { IR_BINOP, .as.binop = { .op = IR_AND, .lhs = var, .rhs = result, .dst = var }  }; 
-					break;
-				case ASSIGN_OR: 
-					instruction = (IrInstruction) { IR_BINOP, .as.binop = { .op = IR_OR, .lhs = var, .rhs = result, .dst = var }  }; 
-					break;
-				case ASSIGN_XOR: 
-					instruction = (IrInstruction) { IR_BINOP, .as.binop = { .op = IR_XOR, .lhs = var, .rhs = result, .dst = var }  }; 
-					break;
-				case ASSIGN_RSHIFT: 
-					instruction = (IrInstruction) { IR_BINOP, .as.binop = { .op = IR_RSHIFT, .lhs = var, .rhs = result, .dst = var }  }; 
-					break;
-				case ASSIGN_LSHIFT: 
-					instruction = (IrInstruction) { IR_BINOP, .as.binop = { .op = IR_LSHIFT, .lhs = var, .rhs = result, .dst = var }  }; 
-					break;
+			// `x op= e` reads x, combines with e, and writes back into x; plain
+			// `x = e` is just a copy. compound_assign_op maps the rest to IR ops.
+			if (exp->as.assign.op == ASSIGN_NOP) {
+				append_ir_instruction(ir_function, ir_copy(result, var));
+			} else {
+				append_ir_instruction(ir_function, ir_binop(compound_assign_op(exp->as.assign.op), var, result, var));
 			}
-			append_ir_instruction(ir_function, instruction);
 			return result;
 		}
 		case EXP_CONDITIONAL: {
-			IrVal result = { IR_VARIABLE, .as.name = generate_variable_name() };
+			IrVal result = new_temp();
 			IrVal cond = emit_ir_expression(exp->as.conditional.lhs, ir_function);
 			char* false_target = generate_label_name();
 			char* end_target = generate_label_name();
-			append_ir_instruction(ir_function, (IrInstruction) { IR_JUMP_ZERO, .as.jump_zero = { .cond = cond, .target = false_target } });
+			append_ir_instruction(ir_function, ir_jump_zero(cond, false_target));
 			IrVal true_res = emit_ir_expression(exp->as.conditional.mid, ir_function);
-			append_ir_instruction(ir_function, (IrInstruction) { IR_COPY, .as.copy = { .src = true_res, .dst = result } });
-			append_ir_instruction(ir_function, (IrInstruction) { IR_JUMP, .as.jump = { .target = end_target } });
-			append_ir_instruction(ir_function, (IrInstruction) { IR_LABEL, .as.label = { .identifier = false_target } });
+			append_ir_instruction(ir_function, ir_copy(true_res, result));
+			append_ir_instruction(ir_function, ir_jump(end_target));
+			append_ir_instruction(ir_function, ir_label(false_target));
 			IrVal false_res = emit_ir_expression(exp->as.conditional.rhs, ir_function);
-			append_ir_instruction(ir_function, (IrInstruction) { IR_COPY, .as.copy = { .src = false_res, .dst = result } });
-			append_ir_instruction(ir_function, (IrInstruction) { IR_LABEL, .as.label = { .identifier = end_target } });
+			append_ir_instruction(ir_function, ir_copy(false_res, result));
+			append_ir_instruction(ir_function, ir_label(end_target));
 			return result;
 		}
 		default:
@@ -229,6 +248,25 @@ static IrVal emit_ir_expression(const AstExp* exp, IrFunction* ir_function) {
 
 static void emit_ir_block(IrFunction* ir_function, const AstBlock block);
 
+// Loops lower to labels derived from the base label the labelling pass assigns
+// to each loop: "<base>_start", "<base>_continue", "<base>_break". break and
+// continue statements carry the same base label, so they rebuild the matching
+// target names here without any shared state.
+static char* loop_label(const char* base, const char* suffix) {
+	int len = snprintf(NULL, 0, "%s_%s", base, suffix);
+	char* name = malloc(len + 1);
+	snprintf(name, len + 1, "%s_%s", base, suffix);
+	return name;
+}
+
+// A declaration with an initializer lowers to a copy of the initializer into a
+// variable named after the declared identifier; a bare declaration emits nothing.
+static void emit_ir_declaration(IrFunction* ir_function, const AstDeclaration* decl) {
+	if (decl->exp == NULL) return;
+	IrVal result = emit_ir_expression(decl->exp, ir_function);
+	append_ir_instruction(ir_function, ir_copy(result, ir_variable(strdup(decl->identifier))));
+}
+
 static void emit_ir_statement(IrFunction* ir_function, const AstStatement* stmt) {
 	switch (stmt->kind) {
 		case STMT_EXP:
@@ -236,8 +274,7 @@ static void emit_ir_statement(IrFunction* ir_function, const AstStatement* stmt)
 			return;
 		case STMT_RETURN: {
 			IrVal val = emit_ir_expression(stmt->as.ret.exp, ir_function);
-			IrInstruction ret_instr = { IR_RETURN, .as.ret = { val } };
-			append_ir_instruction(ir_function, ret_instr);
+			append_ir_instruction(ir_function, ir_return(val));
 			return;
 		}
 		case STMT_IF: {
@@ -245,20 +282,75 @@ static void emit_ir_statement(IrFunction* ir_function, const AstStatement* stmt)
 			char* end_target = generate_label_name();
 			if (stmt->as.if_cond.else_br != NULL) {
 				char* else_target = generate_label_name();
-				append_ir_instruction(ir_function, (IrInstruction) { IR_JUMP_ZERO, .as.jump_zero = { .cond = cond, .target = else_target } });
+				append_ir_instruction(ir_function, ir_jump_zero(cond, else_target));
 				emit_ir_statement(ir_function, stmt->as.if_cond.then_br);
-				append_ir_instruction(ir_function, (IrInstruction) { IR_JUMP, .as.jump = { .target = end_target } });
-				append_ir_instruction(ir_function, (IrInstruction) { IR_LABEL, .as.label = { .identifier = else_target } });
+				append_ir_instruction(ir_function, ir_jump(end_target));
+				append_ir_instruction(ir_function, ir_label(else_target));
 				emit_ir_statement(ir_function, stmt->as.if_cond.else_br);
 			} else {
-				append_ir_instruction(ir_function, (IrInstruction) { IR_JUMP_ZERO, .as.jump_zero = { .cond = cond, .target = end_target } });
+				append_ir_instruction(ir_function, ir_jump_zero(cond, end_target));
 				emit_ir_statement(ir_function, stmt->as.if_cond.then_br);
 			}
-			append_ir_instruction(ir_function, (IrInstruction) { IR_LABEL, .as.label = { .identifier = end_target } });
+			append_ir_instruction(ir_function, ir_label(end_target));
 			return;
 		}
 		case STMT_COMPOUND:
 			emit_ir_block(ir_function, stmt->as.compound);
+			return;
+		case STMT_FOR: {
+			// init; start: if(!cond) goto break; body; continue: post; goto start; break:
+			const AstStmtFor* loop = &stmt->as.for_loop;
+			char* start = loop_label(loop->label, "start");
+			char* cont = loop_label(loop->label, "continue");
+			char* brk = loop_label(loop->label, "break");
+			switch (loop->init.init_type) {
+				case AST_INIT_DECL:	emit_ir_declaration(ir_function, &loop->init.as.decl); break;
+				case AST_INIT_EXP:	if (loop->init.as.exp) emit_ir_expression(loop->init.as.exp, ir_function); break;
+			}
+			append_ir_instruction(ir_function, ir_label(start));
+			if (loop->cond != NULL) {
+				IrVal cond = emit_ir_expression(loop->cond, ir_function);
+				append_ir_instruction(ir_function, ir_jump_zero(cond, brk));
+			}
+			emit_ir_statement(ir_function, loop->body);
+			append_ir_instruction(ir_function, ir_label(cont));
+			if (loop->post != NULL) emit_ir_expression(loop->post, ir_function);
+			append_ir_instruction(ir_function, ir_jump(start));
+			append_ir_instruction(ir_function, ir_label(brk));
+			return;
+		}
+		case STMT_WHILE: {
+			// continue: if(!cond) goto break; body; goto continue; break:
+			const AstStmtWhile* loop = &stmt->as.while_loop;
+			char* cont = loop_label(loop->label, "continue");
+			char* brk = loop_label(loop->label, "break");
+			append_ir_instruction(ir_function, ir_label(cont));
+			IrVal cond = emit_ir_expression(loop->cond, ir_function);
+			append_ir_instruction(ir_function, ir_jump_zero(cond, brk));
+			emit_ir_statement(ir_function, loop->body);
+			append_ir_instruction(ir_function, ir_jump(cont));
+			append_ir_instruction(ir_function, ir_label(brk));
+			return;
+		}
+		case STMT_DO_WHILE: {
+			// start: body; continue: if(cond) goto start; break:
+			const AstStmtDoWhile* loop = &stmt->as.do_while_loop;
+			char* start = loop_label(loop->label, "start");
+			char* cont = loop_label(loop->label, "continue");
+			char* brk = loop_label(loop->label, "break");
+			append_ir_instruction(ir_function, ir_label(start));
+			emit_ir_statement(ir_function, loop->body);
+			append_ir_instruction(ir_function, ir_label(cont));
+			IrVal cond = emit_ir_expression(loop->cond, ir_function);
+			append_ir_instruction(ir_function, ir_jump_not_zero(cond, start));
+			append_ir_instruction(ir_function, ir_label(brk));
+			return;
+		}
+		case STMT_BREAK:
+			append_ir_instruction(ir_function, ir_jump(loop_label(stmt->as.break_stmt.label, "break")));
+			return;
+		case STMT_CONTINUE:
+			append_ir_instruction(ir_function, ir_jump(loop_label(stmt->as.continue_stmt.label, "continue")));
 			return;
 	}
 }
@@ -266,14 +358,9 @@ static void emit_ir_statement(IrFunction* ir_function, const AstStatement* stmt)
 static void emit_ir_block_item(IrFunction* ir_function, const AstBlockItem block_item) {
 	if (block_item.type == AST_STATEMENT) {
 		emit_ir_statement(ir_function, block_item.as.stmt);
-	} else if (block_item.type == AST_DECLARATION && block_item.as.decl.exp != NULL) {
-		IrVal result = emit_ir_expression(block_item.as.decl.exp, ir_function);
-		IrVal var = { IR_VARIABLE, .as.name = strdup(block_item.as.decl.identifier) };
-		IrInstruction copy = { IR_COPY, .as.copy = { .src = result, .dst = var } };
-		append_ir_instruction(ir_function, copy);
-		return;
+	} else if (block_item.type == AST_DECLARATION) {
+		emit_ir_declaration(ir_function, &block_item.as.decl);
 	}
-	return;
 }
 
 static void emit_ir_block(IrFunction* ir_function, const AstBlock block) {
