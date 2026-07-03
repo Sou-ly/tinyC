@@ -125,12 +125,16 @@ typedef enum {
 	STMT_DO_WHILE,
 	STMT_BREAK,
 	STMT_CONTINUE,
+	STMT_LABEL,
+	STMT_GOTO,
 } AstStatementKind;
 
 typedef struct { AstExp* exp; }	AstStmtReturn;
 typedef struct { AstExp* exp; }	AstStmtExp;
 typedef struct { char* label; }	AstStmtContinue;
 typedef struct { char* label; }	AstStmtBreak;
+typedef struct { char* identifier; }	AstStmtLabel;
+typedef struct { char* target; }		AstStmtGoto;
 
 typedef struct {
 	AstExp* cond;
@@ -183,6 +187,8 @@ struct AstStatement {
 		AstStmtDoWhile	do_while_loop;
 		AstStmtContinue	continue_stmt;
 		AstStmtBreak	break_stmt;
+		AstStmtLabel	label;
+		AstStmtGoto		goto_stmt;
     } as;
 };
 
@@ -195,6 +201,8 @@ AstStatement* make_while_stmt(AstExp* cond, AstStatement* body);
 AstStatement* make_do_while_stmt(AstExp* cond, AstStatement* body);
 AstStatement* make_break_stmt(char* label);
 AstStatement* make_continue_stmt(char * label);
+AstStatement* make_label_stmt(char* identifier);
+AstStatement* make_goto_stmt(char* target);
 AstForInit make_for_init_decl(AstDeclaration decl);
 AstForInit make_for_init_exp(AstExp* exp);
 void destroy_stmt(AstStatement* stmt);

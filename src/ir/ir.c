@@ -352,6 +352,12 @@ static void emit_ir_statement(IrFunction* ir_function, const AstStatement* stmt)
 		case STMT_CONTINUE:
 			append_ir_instruction(ir_function, ir_jump(loop_label(stmt->as.continue_stmt.label, "continue")));
 			return;
+		case STMT_LABEL:
+			append_ir_instruction(ir_function, ir_label(strdup(stmt->as.label.identifier)));
+			return;
+		case STMT_GOTO:
+			append_ir_instruction(ir_function, ir_jump(strdup(stmt->as.goto_stmt.target)));
+			return;
 	}
 }
 

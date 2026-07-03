@@ -40,3 +40,9 @@ void varmap_put(VarMap* map, VarMapEntry entry);
 void resolve_variables(AstProgram* program);
 
 void resolve_labels(AstProgram* program);
+
+// --- goto / label resolution ---
+// Renames every source label to a program-unique name and rewrites each goto to
+// its target's unique name, rejecting a goto with no matching label and two
+// labels sharing a name in one function.
+void resolve_goto_labels(AstProgram* program);

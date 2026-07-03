@@ -68,6 +68,7 @@ typedef enum {
 	TOK_DO,
 	TOK_BREAK,
 	TOK_CONTINUE,
+	TOK_GOTO,
 	TOK_INT,
 	TOK_RETURN,
 	TOK_VOID,

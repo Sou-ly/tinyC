@@ -5,6 +5,56 @@
 #include "../src/lexer/token.h"
 #include "../src/lexer/token_list.h"
 
+// Assert that `src` lexes to exactly one token of the given kind/value. Kept as
+// a helper (rather than a loop over a table) so each call site below names one
+// concrete token on its own line: a failure's line number and printed lexeme
+// point straight at the offending case.
+// On any failure these print the offending lexeme and what it actually lexed
+// to, then exit(1) -- so a broken case names itself instead of aborting on a
+// bare assert that only shows the helper's line number.
+static void fail_lex(const char *src, const char *kind_wanted, const Token *got) {
+	printf("  FAIL: \"%s\" did not lex as a single %s token", src, kind_wanted);
+	if (got) printf(" (got kind %s)", token_kind_name(got->kind));
+	printf("\n");
+	exit(1);
+}
+
+static void check_lexes_keyword(const char *src, TokenKeyword expected) {
+	TokenList tl = token_list_create(4);
+	if (tokenize(src, &tl) != ERR_OK || tl.count != 1) fail_lex(src, "keyword", NULL);
+	if (tl.items[0].kind != TOK_KEYWORD) fail_lex(src, "keyword", &tl.items[0]);
+	if (tl.items[0].kw != expected) {
+		printf("  FAIL: \"%s\" lexed as keyword %s, expected %s\n",
+		       src, keyword_name(tl.items[0].kw), keyword_name(expected));
+		exit(1);
+	}
+	token_list_destroy(&tl);
+}
+
+static void check_lexes_separator(const char *src, TokenSeparator expected) {
+	TokenList tl = token_list_create(4);
+	if (tokenize(src, &tl) != ERR_OK || tl.count != 1) fail_lex(src, "separator", NULL);
+	if (tl.items[0].kind != TOK_SEPARATOR) fail_lex(src, "separator", &tl.items[0]);
+	if (tl.items[0].sep != expected) {
+		printf("  FAIL: \"%s\" lexed as separator %s, expected %s\n",
+		       src, separator_name(tl.items[0].sep), separator_name(expected));
+		exit(1);
+	}
+	token_list_destroy(&tl);
+}
+
+static void check_lexes_operator(const char *src, TokenOperator expected) {
+	TokenList tl = token_list_create(4);
+	if (tokenize(src, &tl) != ERR_OK || tl.count != 1) fail_lex(src, "operator", NULL);
+	if (tl.items[0].kind != TOK_OPERATOR) fail_lex(src, "operator", &tl.items[0]);
+	if (tl.items[0].op != expected) {
+		printf("  FAIL: \"%s\" lexed as operator %s, expected %s\n",
+		       src, operator_name(tl.items[0].op), operator_name(expected));
+		exit(1);
+	}
+	token_list_destroy(&tl);
+}
+
 // ---- token_kind_name ----
 
 void test_token_kind_name() {
@@ -30,6 +80,7 @@ void test_separator_name() {
 	assert(strcmp(separator_name(TOK_RBRACE),    "}") == 0);
 	assert(strcmp(separator_name(TOK_COMMA),     ",") == 0);
 	assert(strcmp(separator_name(TOK_SEMICOLON), ";") == 0);
+	assert(strcmp(separator_name(TOK_COLON),     ":") == 0);
 	printf("  PASS: separator_name\n");
 }
 
@@ -41,22 +92,29 @@ void test_separator_name_unknown() {
 // ---- operator_name ----
 
 void test_operator_name() {
-	assert(strcmp(operator_name(TOK_PLUS),       "+")  == 0);
-	assert(strcmp(operator_name(TOK_MINUS),      "-")  == 0);
-	assert(strcmp(operator_name(TOK_STAR),       "*")  == 0);
-	assert(strcmp(operator_name(TOK_PERCENT),    "%")  == 0);
-	assert(strcmp(operator_name(TOK_FSLASH),     "/")  == 0);
-	assert(strcmp(operator_name(TOK_EQ),         "==") == 0);
-	assert(strcmp(operator_name(TOK_NEQ),        "!=") == 0);
-	assert(strcmp(operator_name(TOK_AND),        "&") == 0);
-	assert(strcmp(operator_name(TOK_OR),         "|") == 0);
-	assert(strcmp(operator_name(TOK_XOR),        "^") == 0);
-	assert(strcmp(operator_name(TOK_NOT),        "~")  == 0);
-	assert(strcmp(operator_name(TOK_RSHIFT),     ">>") == 0);
-	assert(strcmp(operator_name(TOK_LSHIFT),     "<<") == 0);
-	assert(strcmp(operator_name(TOK_DECR),       "--") == 0);
-	assert(strcmp(operator_name(TOK_INCR),       "++") == 0);
-	assert(strcmp(operator_name(TOK_ASSIGN),     "=") == 0);
+	assert(strcmp(operator_name(TOK_PLUS),       "+")   == 0);
+	assert(strcmp(operator_name(TOK_MINUS),      "-")   == 0);
+	assert(strcmp(operator_name(TOK_STAR),       "*")   == 0);
+	assert(strcmp(operator_name(TOK_FSLASH),     "/")   == 0);
+	assert(strcmp(operator_name(TOK_PERCENT),    "%")   == 0);
+	assert(strcmp(operator_name(TOK_DECR),       "--")  == 0);
+	assert(strcmp(operator_name(TOK_INCR),       "++")  == 0);
+	assert(strcmp(operator_name(TOK_AND),        "&")   == 0);
+	assert(strcmp(operator_name(TOK_OR),         "|")   == 0);
+	assert(strcmp(operator_name(TOK_XOR),        "^")   == 0);
+	assert(strcmp(operator_name(TOK_LSHIFT),     "<<")  == 0);
+	assert(strcmp(operator_name(TOK_RSHIFT),     ">>")  == 0);
+	assert(strcmp(operator_name(TOK_NOT),        "~")   == 0);
+	assert(strcmp(operator_name(TOK_LNOT),       "!")   == 0);
+	assert(strcmp(operator_name(TOK_LAND),       "&&")  == 0);
+	assert(strcmp(operator_name(TOK_LOR),        "||")  == 0);
+	assert(strcmp(operator_name(TOK_EQ),         "==")  == 0);
+	assert(strcmp(operator_name(TOK_NEQ),        "!=")  == 0);
+	assert(strcmp(operator_name(TOK_LESS),       "<")   == 0);
+	assert(strcmp(operator_name(TOK_GREATER),    ">")   == 0);
+	assert(strcmp(operator_name(TOK_LEQ),        "<=")  == 0);
+	assert(strcmp(operator_name(TOK_GEQ),        ">=")  == 0);
+	assert(strcmp(operator_name(TOK_ASSIGN),     "=")   == 0);
 	assert(strcmp(operator_name(TOK_PLUS_EQ),    "+=")  == 0);
 	assert(strcmp(operator_name(TOK_MINUS_EQ),   "-=")  == 0);
 	assert(strcmp(operator_name(TOK_MUL_EQ),     "*=")  == 0);
@@ -67,6 +125,7 @@ void test_operator_name() {
 	assert(strcmp(operator_name(TOK_XOR_EQ),     "^=")  == 0);
 	assert(strcmp(operator_name(TOK_RSHIFT_EQ),  ">>=") == 0);
 	assert(strcmp(operator_name(TOK_LSHIFT_EQ),  "<<=") == 0);
+	assert(strcmp(operator_name(TOK_QUESTION_MARK), "?") == 0);
 	printf("  PASS: operator_name\n");
 }
 
@@ -78,10 +137,17 @@ void test_operator_name_unknown() {
 // ---- keyword_name ----
 
 void test_keyword_name() {
-	assert(strcmp(keyword_name(TOK_IF),     "if")     == 0);
-	assert(strcmp(keyword_name(TOK_INT),    "int")    == 0);
-	assert(strcmp(keyword_name(TOK_RETURN), "return") == 0);
-	assert(strcmp(keyword_name(TOK_VOID),   "void")   == 0);
+	assert(strcmp(keyword_name(TOK_IF),       "if")       == 0);
+	assert(strcmp(keyword_name(TOK_ELSE),     "else")     == 0);
+	assert(strcmp(keyword_name(TOK_FOR),      "for")      == 0);
+	assert(strcmp(keyword_name(TOK_WHILE),    "while")    == 0);
+	assert(strcmp(keyword_name(TOK_DO),       "do")       == 0);
+	assert(strcmp(keyword_name(TOK_BREAK),    "break")    == 0);
+	assert(strcmp(keyword_name(TOK_CONTINUE), "continue") == 0);
+	assert(strcmp(keyword_name(TOK_GOTO),     "goto")     == 0);
+	assert(strcmp(keyword_name(TOK_INT),      "int")      == 0);
+	assert(strcmp(keyword_name(TOK_RETURN),   "return")   == 0);
+	assert(strcmp(keyword_name(TOK_VOID),     "void")     == 0);
 	printf("  PASS: keyword_name\n");
 }
 
@@ -118,16 +184,77 @@ void test_tokenize_single_keyword() {
 	printf("  PASS: tokenize_single_keyword\n");
 }
 
+// Round-trip every keyword through the lexer: each canonical spelling must lex
+// as exactly one TOK_KEYWORD with the matching enum. This is the check the old
+// 4-keyword version lacked -- it exercises keyword_lookup for `while`, `break`,
+// `goto`, etc., so a wrong length lexes them as identifiers and fails here
+// instead of silently slipping through.
 void test_tokenize_all_keywords() {
-	TokenList tl = token_list_create(4);
-	assert(tokenize("if int return void", &tl) == ERR_OK);
-	assert(tl.count == 4);
-	assert(tl.items[0].kw == TOK_IF);
-	assert(tl.items[1].kw == TOK_INT);
-	assert(tl.items[2].kw == TOK_RETURN);
-	assert(tl.items[3].kw == TOK_VOID);
-	token_list_destroy(&tl);
+	check_lexes_keyword("if",       TOK_IF);
+	check_lexes_keyword("else",     TOK_ELSE);
+	check_lexes_keyword("for",      TOK_FOR);
+	check_lexes_keyword("while",    TOK_WHILE);
+	check_lexes_keyword("do",       TOK_DO);
+	check_lexes_keyword("break",    TOK_BREAK);
+	check_lexes_keyword("continue", TOK_CONTINUE);
+	check_lexes_keyword("goto",     TOK_GOTO);
+	check_lexes_keyword("int",      TOK_INT);
+	check_lexes_keyword("return",   TOK_RETURN);
+	check_lexes_keyword("void",     TOK_VOID);
 	printf("  PASS: tokenize_all_keywords\n");
+}
+
+// Round-trip every separator through the lexer (covers ':' among the rest).
+void test_tokenize_all_separators() {
+	check_lexes_separator("(", TOK_LPAR);
+	check_lexes_separator(")", TOK_RPAR);
+	check_lexes_separator("{", TOK_LBRACE);
+	check_lexes_separator("}", TOK_RBRACE);
+	check_lexes_separator(",", TOK_COMMA);
+	check_lexes_separator(";", TOK_SEMICOLON);
+	check_lexes_separator(":", TOK_COLON);
+	printf("  PASS: tokenize_all_separators\n");
+}
+
+// Round-trip every operator through the lexer. Because each spelling is lexed in
+// isolation, this also pins maximal munch: e.g. ">>=" must come back as a single
+// TOK_RSHIFT_EQ, not ">>" followed by "=".
+void test_tokenize_all_operators() {
+	check_lexes_operator("+",   TOK_PLUS);
+	check_lexes_operator("-",   TOK_MINUS);
+	check_lexes_operator("*",   TOK_STAR);
+	check_lexes_operator("/",   TOK_FSLASH);
+	check_lexes_operator("%",   TOK_PERCENT);
+	check_lexes_operator("--",  TOK_DECR);
+	check_lexes_operator("++",  TOK_INCR);
+	check_lexes_operator("&",   TOK_AND);
+	check_lexes_operator("|",   TOK_OR);
+	check_lexes_operator("^",   TOK_XOR);
+	check_lexes_operator("<<",  TOK_LSHIFT);
+	check_lexes_operator(">>",  TOK_RSHIFT);
+	check_lexes_operator("~",   TOK_NOT);
+	check_lexes_operator("!",   TOK_LNOT);
+	check_lexes_operator("&&",  TOK_LAND);
+	check_lexes_operator("||",  TOK_LOR);
+	check_lexes_operator("==",  TOK_EQ);
+	check_lexes_operator("!=",  TOK_NEQ);
+	check_lexes_operator("<",   TOK_LESS);
+	check_lexes_operator(">",   TOK_GREATER);
+	check_lexes_operator("<=",  TOK_LEQ);
+	check_lexes_operator(">=",  TOK_GEQ);
+	check_lexes_operator("=",   TOK_ASSIGN);
+	check_lexes_operator("+=",  TOK_PLUS_EQ);
+	check_lexes_operator("-=",  TOK_MINUS_EQ);
+	check_lexes_operator("*=",  TOK_MUL_EQ);
+	check_lexes_operator("/=",  TOK_DIV_EQ);
+	check_lexes_operator("%=",  TOK_MOD_EQ);
+	check_lexes_operator("&=",  TOK_AND_EQ);
+	check_lexes_operator("|=",  TOK_OR_EQ);
+	check_lexes_operator("^=",  TOK_XOR_EQ);
+	check_lexes_operator(">>=", TOK_RSHIFT_EQ);
+	check_lexes_operator("<<=", TOK_LSHIFT_EQ);
+	check_lexes_operator("?",   TOK_QUESTION_MARK);
+	printf("  PASS: tokenize_all_operators\n");
 }
 
 void test_tokenize_identifier() {
@@ -308,6 +435,8 @@ int main() {
 	test_tokenize_whitespace_only();
 	test_tokenize_single_keyword();
 	test_tokenize_all_keywords();
+	test_tokenize_all_separators();
+	test_tokenize_all_operators();
 	test_tokenize_identifier();
 	test_tokenize_identifier_with_underscores();
 	test_tokenize_int_literal();

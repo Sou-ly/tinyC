@@ -1,9 +1,13 @@
+#define _GNU_SOURCE
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
 #include "../src/parser/ast.h"
 #include "../src/parser/parser.h"
+#include "../src/lexer/token.h"
 #include "../src/lexer/token_list.h"
 
 // --- AST unit tests ---
@@ -938,6 +942,166 @@ void test_resolve_labels_do_while() {
     printf("  PASS: test_resolve_labels_do_while\n");
 }
 
+// --- goto / label parsing tests ---
+//
+// A labeled statement is `IDENT :` on its own; a goto is `goto IDENT ;`. These
+// go through tokenize() -> parse_program (the parser copies identifiers, so the
+// token list can be freed right after) and then inspect the resulting AST.
+
+static AstProgram parse_src(const char* src) {
+    TokenList tokens = token_list_create(16);
+    assert(tokenize(src, &tokens) == ERR_OK);
+    Parser parser = parser_create(&tokens);
+    AstProgram prog = parse_program(&parser);
+    token_list_destroy(&tokens);
+    return prog;
+}
+
+static AstStatement* nth_stmt(AstProgram* prog, size_t i) {
+    assert(prog->num_functions == 1);
+    assert(i < prog->functions[0].body.size);
+    AstBlockItem item = prog->functions[0].body.items[i];
+    assert(item.type == AST_STATEMENT);
+    return item.as.stmt;
+}
+
+// `start:` is a standalone STMT_LABEL; the following `return 1;` is a separate
+// statement, so the body holds two items.
+void test_parse_label() {
+    AstProgram prog = parse_src("int main() { start: return 1; }");
+    assert(prog.functions[0].body.size == 2);
+    AstStatement* label = nth_stmt(&prog, 0);
+    assert(label->kind == STMT_LABEL);
+    assert(strcmp(label->as.label.identifier, "start") == 0);
+    assert(nth_stmt(&prog, 1)->kind == STMT_RETURN);
+    destroy_program(&prog);
+    printf("  PASS: test_parse_label\n");
+}
+
+// `goto end;` parses to STMT_GOTO carrying the target name.
+void test_parse_goto() {
+    AstProgram prog = parse_src("int main() { goto end; }");
+    assert(prog.functions[0].body.size == 1);
+    AstStatement* g = nth_stmt(&prog, 0);
+    assert(g->kind == STMT_GOTO);
+    assert(strcmp(g->as.goto_stmt.target, "end") == 0);
+    destroy_program(&prog);
+    printf("  PASS: test_parse_goto\n");
+}
+
+// A leading identifier NOT followed by ':' is an expression statement -- the
+// label lookahead must not swallow `x = 5;`.
+void test_parse_assignment_not_label() {
+    AstProgram prog = parse_src("int main() { x = 5; }");
+    AstStatement* s = nth_stmt(&prog, 0);
+    assert(s->kind == STMT_EXP);
+    assert(s->as.exp_stmt.exp->kind == EXP_ASSIGN);
+    destroy_program(&prog);
+    printf("  PASS: test_parse_assignment_not_label\n");
+}
+
+// label followed by a goto back to it: two statements, matching names.
+void test_parse_label_and_goto() {
+    AstProgram prog = parse_src("int main() { loop: goto loop; }");
+    assert(prog.functions[0].body.size == 2);
+    AstStatement* label = nth_stmt(&prog, 0);
+    AstStatement* g = nth_stmt(&prog, 1);
+    assert(label->kind == STMT_LABEL && strcmp(label->as.label.identifier, "loop") == 0);
+    assert(g->kind == STMT_GOTO && strcmp(g->as.goto_stmt.target, "loop") == 0);
+    destroy_program(&prog);
+    printf("  PASS: test_parse_label_and_goto\n");
+}
+
+// --- goto / label resolution tests ---
+//
+// resolve_goto_labels renames each source label to a program-unique name and
+// repoints each goto at its target's unique name, rejecting undefined targets
+// and duplicate labels (checked in a forked child, like the scoping tests).
+
+// A label and a goto to it: after resolution both carry the same unique name,
+// which differs from the source name and uses the ".L" infix.
+void test_resolve_goto_label_basic() {
+    AstProgram prog = parse_src("int main() { start: goto start; }");
+    resolve_goto_labels(&prog);
+    AstStatement* label = nth_stmt(&prog, 0);
+    AstStatement* g = nth_stmt(&prog, 1);
+    assert(label->kind == STMT_LABEL);
+    assert(g->kind == STMT_GOTO);
+    assert(strcmp(label->as.label.identifier, "start") != 0);       // renamed
+    assert(strstr(label->as.label.identifier, ".L") != NULL);       // unique form
+    assert(strcmp(label->as.label.identifier, g->as.goto_stmt.target) == 0); // consistent
+    destroy_program(&prog);
+    printf("  PASS: test_resolve_goto_label_basic\n");
+}
+
+// A goto may reference a label declared later in the function (forward jump).
+void test_resolve_goto_forward_reference() {
+    AstProgram prog = parse_src("int main() { goto end; end: return 0; }");
+    resolve_goto_labels(&prog);
+    AstStatement* g = nth_stmt(&prog, 0);
+    AstStatement* label = nth_stmt(&prog, 1);
+    assert(g->kind == STMT_GOTO && label->kind == STMT_LABEL);
+    assert(strcmp(g->as.goto_stmt.target, label->as.label.identifier) == 0);
+    destroy_program(&prog);
+    printf("  PASS: test_resolve_goto_forward_reference\n");
+}
+
+// Labels have function scope: a label inside an if-branch is collected and a
+// goto elsewhere in the function resolves to it.
+void test_resolve_goto_nested_in_if() {
+    AstProgram prog = parse_src("int main() { goto target; if (1) target: return 0; }");
+    resolve_goto_labels(&prog);
+    AstStatement* g = nth_stmt(&prog, 0);
+    AstStatement* if_stmt = nth_stmt(&prog, 1);
+    assert(g->kind == STMT_GOTO && if_stmt->kind == STMT_IF);
+    AstStatement* label = if_stmt->as.if_cond.then_br;
+    assert(label->kind == STMT_LABEL);
+    assert(strcmp(g->as.goto_stmt.target, label->as.label.identifier) == 0);
+    destroy_program(&prog);
+    printf("  PASS: test_resolve_goto_nested_in_if\n");
+}
+
+// The same source label name in two functions must get distinct unique names,
+// so the emitted labels do not collide.
+void test_resolve_labels_unique_across_functions() {
+    AstProgram prog = parse_src("int f() { done: return 0; } int g() { done: return 1; }");
+    resolve_goto_labels(&prog);
+    assert(prog.num_functions == 2);
+    AstStatement* l0 = prog.functions[0].body.items[0].as.stmt;
+    AstStatement* l1 = prog.functions[1].body.items[0].as.stmt;
+    assert(l0->kind == STMT_LABEL && l1->kind == STMT_LABEL);
+    assert(strcmp(l0->as.label.identifier, l1->as.label.identifier) != 0);
+    destroy_program(&prog);
+    printf("  PASS: test_resolve_labels_unique_across_functions\n");
+}
+
+// Runs parse + resolve_goto_labels in a forked child (stderr silenced) and
+// asserts it exits non-zero, i.e. the pass rejected the program.
+static void expect_goto_error(const char* description, const char* src) {
+    fflush(stdout);
+    pid_t pid = fork();
+    assert(pid >= 0);
+    if (pid == 0) {
+        freopen("/dev/null", "w", stderr);
+        AstProgram prog = parse_src(src);
+        resolve_goto_labels(&prog);  // expected to exit(1) before returning
+        destroy_program(&prog);
+        _exit(0);                    // reached only if it wrongly succeeded
+    }
+    int status = 0;
+    assert(waitpid(pid, &status, 0) == pid);
+    if (!(WIFEXITED(status) && WEXITSTATUS(status) != 0)) {
+        printf("  FAIL: %s (expected error, none occurred)\n", description);
+        exit(1);
+    }
+    printf("  PASS: %s\n", description);
+}
+
+void test_resolve_goto_errors() {
+    expect_goto_error("goto to undefined label", "int main() { goto nowhere; }");
+    expect_goto_error("duplicate label in function", "int main() { dup: dup: return 0; }");
+}
+
 int main(void) {
     printf("Running parser tests...\n");
     test_create_int_exp();
@@ -978,6 +1142,17 @@ int main(void) {
     test_resolve_labels_nested_loops();
     test_resolve_labels_through_if();
     test_resolve_labels_do_while();
+    printf("Running goto/label parsing tests...\n");
+    test_parse_label();
+    test_parse_goto();
+    test_parse_assignment_not_label();
+    test_parse_label_and_goto();
+    printf("Running goto/label resolution tests...\n");
+    test_resolve_goto_label_basic();
+    test_resolve_goto_forward_reference();
+    test_resolve_goto_nested_in_if();
+    test_resolve_labels_unique_across_functions();
+    test_resolve_goto_errors();
     printf("All parser tests passed!\n");
     return 0;
 }

@@ -81,6 +81,7 @@ const char *keyword_name(TokenKeyword k) {
 		case TOK_DO:		return "do";
 		case TOK_BREAK:		return "break";
 		case TOK_CONTINUE:	return "continue";
+		case TOK_GOTO:		return "goto";
 	}
 	return "<unknown>";
 }
@@ -93,10 +94,11 @@ static int keyword_lookup(const char *word, size_t len) {
 		{ "return", 	6, TOK_RETURN 	},
 		{ "void",   	4, TOK_VOID   	},
 		{ "for",		3, TOK_FOR	  	},
-		{ "while",  	6, TOK_WHILE	},
+		{ "while",  	5, TOK_WHILE	},
 		{ "do",			2, TOK_DO		},
-		{ "break",  	6, TOK_BREAK	},
+		{ "break",  	5, TOK_BREAK	},
 		{ "continue",	8, TOK_CONTINUE },
+		{ "goto",		4, TOK_GOTO		},
 	};
 	for (size_t i = 0; i < sizeof table / sizeof table[0]; i++) {
 		if (table[i].len == len && strncmp(word, table[i].name, len) == 0)
