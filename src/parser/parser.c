@@ -175,7 +175,7 @@ static void expect_separator(Parser* p, TokenSeparator sep) {
 // --- Parsing ---
 
 static AstExp* parse_expression(Parser* p, int min_prec);
-static AstDeclaration* parse_declaration(Parser* p);
+static AstDeclaration parse_declaration(Parser* p);
 
 // factor ::= int | ("!" | "-") factor | "(" exp ")"  | ++id | --id | id++ | id--
 static AstExp* parse_factor(Parser* p) {
@@ -300,8 +300,7 @@ static AstStatement* parse_statement(Parser* p) {
 			expect_separator(p, TOK_LPAR);
 			AstForInit for_init;
 			if (current(p)->kind == TOK_KEYWORD && current(p)->kw == TOK_INT) {
-				AstDeclaration* decl = parse_declaration(p);
-				for_init = make_for_init_decl(decl);
+				for_init = make_for_init_decl(parse_declaration(p));
 			} else {
 				AstExp* exp = parse_expression(p, 0);
 				expect_separator(p, TOK_SEMICOLON);
@@ -503,15 +502,6 @@ void varmap_put(VarMap* map, VarMapEntry entry) {
 	}
 	map->entries[map->size] = entry;
 	map->size++;
-o
-
-static AstForInit resolve_for_init(AstForInit for_init, VarMap* var_map) {
-	switch (for_init->type) {
-		case AST_INIT_DECL:
-			return make_for_init_decl(resolve_declaration(for_init.as.decl, var_map));
-		case AST_INIT_EXP:
-			return make_for_init_exp(resolve_expression(for_init.as.exp, var_map));
-	}
 }
 
 static AstExp* resolve_expression(AstExp* exp, VarMap* map) {
@@ -555,7 +545,36 @@ static AstExp* resolve_expression(AstExp* exp, VarMap* map) {
 	return exp;
 }
 
-static AstBlock resolve_block(AstBlock block, VarMap* map);
+static void resolve_declaration(AstDeclaration* decl, VarMap* map) {
+	for (int i = 0; i < map->size; i++) {
+		if (map->entries[i].is_cur_scope &&
+				strcmp(map->entries[i].key, decl->identifier) == 0) {
+			fprintf(stderr, "error: duplicate variable declaration '%s'\n",
+					decl->identifier);
+			exit(1);
+		}
+	}
+	char* unique = make_unique_name(decl->identifier);
+	varmap_put(map, (VarMapEntry) { .key=strdup(decl->identifier), .val=strdup(unique), .is_cur_scope=true });
+
+	decl->exp = resolve_expression(decl->exp, map);
+
+	free(decl->identifier);
+	decl->identifier = unique;
+}
+
+static void resolve_for_init(AstForInit* for_init, VarMap* map) {
+	switch (for_init->init_type) {
+		case AST_INIT_DECL:
+			resolve_declaration(&for_init->as.decl, map);
+			break;
+		case AST_INIT_EXP:
+			for_init->as.exp = resolve_expression(for_init->as.exp, map);
+			break;
+	}
+}
+
+static void resolve_block(AstBlock* block, VarMap* map);
 
 static void resolve_statement(AstStatement* stmt, VarMap* map) {
 	switch (stmt->kind) {
@@ -574,122 +593,139 @@ static void resolve_statement(AstStatement* stmt, VarMap* map) {
 			break;
 		case STMT_COMPOUND: {
 			VarMap new_map = varmap_copy(*map);
-			stmt->as.compound = resolve_block(stmt->as.compound, &new_map);
+			resolve_block(&stmt->as.compound, &new_map);
 			varmap_destroy(&new_map);
 			break;
 		}
 		case STMT_FOR: {
 			VarMap new_map = varmap_copy(*map);
-			stmt->as.for_loop.for_init = resolve_for_init(stmt->as.for_loop.for_init, new_map); 
-			stmt->as.for_loop.cond = resolve_expression(stmt->as.for_loop.cond, new_map); 
-			stmt->as.for_loop.post = resolve_expression(stmt->as.for_loop.post, new_map); 
-			stmt->as.for_loop.body = resolve_statement(stmt->as.for_loop.body, new_map); 
+			resolve_for_init(&stmt->as.for_loop.init, &new_map);
+			stmt->as.for_loop.cond = resolve_expression(stmt->as.for_loop.cond, &new_map);
+			stmt->as.for_loop.post = resolve_expression(stmt->as.for_loop.post, &new_map);
+			resolve_statement(stmt->as.for_loop.body, &new_map);
 			varmap_destroy(&new_map);
 			break;
 		}
 		case STMT_WHILE: {
 			VarMap new_map = varmap_copy(*map);
-			stmt->as.while_loop.cond = resolve_expression(stmt->as.while_loop.cond, new_map); 
-			stmt->as.while_loop.body = resolve_statement(stmt->as.while_loop.body, new_map); 
+			stmt->as.while_loop.cond = resolve_expression(stmt->as.while_loop.cond, &new_map);
+			resolve_statement(stmt->as.while_loop.body, &new_map);
 			varmap_destroy(&new_map);
 			break;
 		}
 		case STMT_DO_WHILE: {
 			VarMap new_map = varmap_copy(*map);
-			stmt->as.do_while_loop.cond = resolve_expression(stmt->as.do_while_loop.cond, new_map); 
-			stmt->as.do_while_loop.body = resolve_statement(stmt->as.do_while_loop.body, new_map); 
+			stmt->as.do_while_loop.cond = resolve_expression(stmt->as.do_while_loop.cond, &new_map);
+			resolve_statement(stmt->as.do_while_loop.body, &new_map);
 			varmap_destroy(&new_map);
 			break;
 		}
+		case STMT_BREAK:
+		case STMT_CONTINUE:
+			break;
 	}
 }
 
-static AstDeclaration resolve_declaration(AstDeclaration decl, VarMap* map) {
-	for (int i = 0; i < map->size; i++) {
-		if (map->entries[i].is_cur_scope &&
-				strcmp(map->entries[i].key, decl.identifier) == 0) {
-			fprintf(stderr, "error: duplicate variable declaration '%s'\n",
-					decl.identifier);
-			exit(1);
-		}
-	}
-	char* unique = make_unique_name(decl.identifier);
-	varmap_put(map, (VarMapEntry) { .key=strdup(decl.identifier), .val=strdup(unique), .is_cur_scope=true });
-
-	decl.exp = resolve_expression(decl.exp, map);
-
-	free(decl.identifier);
-	decl.identifier = unique;
-	return decl;
-}
-
-static AstBlockItem resolve_block_item(AstBlockItem item, VarMap* map) {
-	switch (item.type) {
+static void resolve_block_item(AstBlockItem* item, VarMap* map) {
+	switch (item->type) {
 		case AST_DECLARATION:
-			item.as.decl = resolve_declaration(item.as.decl, map);
+			resolve_declaration(&item->as.decl, map);
 			break;
 		case AST_STATEMENT:
-			resolve_statement(item.as.stmt, map);
+			resolve_statement(item->as.stmt, map);
 			break;
 	}
-	return item;
 }
 
-static AstBlock resolve_block(AstBlock block, VarMap* map) {
-	for (size_t i = 0; i < block.size; i++) {
-		block.items[i] = resolve_block_item(block.items[i], map);
+static void resolve_block(AstBlock* block, VarMap* map) {
+	for (size_t i = 0; i < block->size; i++) {
+		resolve_block_item(&block->items[i], map);
 	}
-	return block;
 }
 
-static AstFunction resolve_function(AstFunction func) {
+static void resolve_function(AstFunction* func) {
 	VarMap map = varmap_create(16);
-	func.body = resolve_block(func.body, &map);
+	resolve_block(&func->body, &map);
 	varmap_destroy(&map);
-	return func;
 }
 
-AstProgram resolve_variables(AstProgram program) {
+void resolve_variables(AstProgram* program) {
 	RESOLVE_COUNTER = 0;
-	for (int i = 0; i < program.num_functions; i++) {
-		program.functions[i] = resolve_function(program.functions[i]);
+	for (int i = 0; i < program->num_functions; i++) {
+		resolve_function(&program->functions[i]);
 	}
-	return program;
 }
 
-static AstStatement* label_statement(AstStatement* statement, char* current_label) {
+static int LABEL_COUNTER = 0;
+
+static char* generate_label(void) {
+	int len = snprintf(NULL, 0, "loop.%d", LABEL_COUNTER);
+	char* name = malloc(len + 1);
+	snprintf(name, len + 1, "loop.%d", LABEL_COUNTER++);
+	return name;
+}
+
+static void label_block(AstBlock* block, char* current_label);
+
+static void label_statement(AstStatement* statement, char* current_label) {
 	switch (statement->kind) {
-		case STMT_FOR:	
-		case STMT_WHILE:
-		case STMT_DO_WHILE:
+		case STMT_FOR: {
+			char* label = generate_label();
+			statement->as.for_loop.label = label;
+			label_statement(statement->as.for_loop.body, label);
+			break;
+		}
+		case STMT_WHILE: {
+			char* label = generate_label();
+			statement->as.while_loop.label = label;
+			label_statement(statement->as.while_loop.body, label);
+			break;
+		}
+		case STMT_DO_WHILE: {
+			char* label = generate_label();
+			statement->as.do_while_loop.label = label;
+			label_statement(statement->as.do_while_loop.body, label);
+			break;
+		}
 		case STMT_BREAK:
 			if (current_label == NULL) {
-				fprintf(stderr, "break statmeent outside of loop\n");
+				fprintf(stderr, "break statement outside of loop\n");
 				exit(1);
 			}
 			statement->as.break_stmt.label = strdup(current_label);
-			return statement;	
+			break;
 		case STMT_CONTINUE:
 			if (current_label == NULL) {
-				fprintf(stderr, "continue statmeent outside of loop\n");
+				fprintf(stderr, "continue statement outside of loop\n");
 				exit(1);
 			}
 			statement->as.continue_stmt.label = strdup(current_label);
-			return statement;	
+			break;
+		case STMT_IF:
+			label_statement(statement->as.if_cond.then_br, current_label);
+			if (statement->as.if_cond.else_br != NULL)
+				label_statement(statement->as.if_cond.else_br, current_label);
+			break;
+		case STMT_COMPOUND:
+			label_block(&statement->as.compound, current_label);
+			break;
 		default:
-			return statement;
+			break;
 	}
 }
 
-AstProgram resolve_labels(AstProgram program) {
-	RESOLVE_COUNTER = 0;
-	for (int i = 0; i < program.num_functions; i++) {
-		AstFunction function = program.function[i];
-		for (size_t j = 0; j < function.body.size; j++) {
-			AstBlockitem block_item = function.body.items[j];
-			if (block_item.type == AST_STATEMENT) {
-				block_item.as.stmt = label_statement(block_item.as.stmt, NULL);
-			}
+static void label_block(AstBlock* block, char* current_label) {
+	for (size_t i = 0; i < block->size; i++) {
+		AstBlockItem* item = &block->items[i];
+		if (item->type == AST_STATEMENT) {
+			label_statement(item->as.stmt, current_label);
 		}
+	}
+}
+
+void resolve_labels(AstProgram* program) {
+	LABEL_COUNTER = 0;
+	for (int i = 0; i < program->num_functions; i++) {
+		label_block(&program->functions[i].body, NULL);
 	}
 }
