@@ -135,14 +135,14 @@ AstStatement* make_exp_stmt(AstExp* exp) {
 
 // then_br and else_br are heap-owned; else_br may be NULL (a plain `if`).
 AstStatement* make_if_stmt(AstExp* cond, AstStatement* then_br, AstStatement* else_br) {
-    return alloc_stmt((AstStatement){ .kind = STMT_IF, .as.if_cond = { .label = NULL, .cond = cond, .then_br = then_br, .else_br = else_br } });
+    return alloc_stmt((AstStatement){ .kind = STMT_IF, .as.if_cond = { .cond = cond, .then_br = then_br, .else_br = else_br } });
 }
 
 AstStatement* make_compound_stmt(AstBlock block) {
 	return alloc_stmt((AstStatement) {.kind=STMT_COMPOUND, .as.compound=block});
 }
 
-AstForInit make_for_init_decl(AstDeclaration* decl) {
+AstForInit make_for_init_decl(AstDeclaration decl) {
 	return (AstForInit){ .init_type = AST_INIT_DECL, .as.decl = decl };
 }
 
@@ -200,11 +200,8 @@ void destroy_stmt(AstStatement* stmt) {
             free(stmt->as.for_loop.label);
             switch (stmt->as.for_loop.init.init_type) {
                 case AST_INIT_DECL:
-                    if (stmt->as.for_loop.init.as.decl != NULL) {
-                        free(stmt->as.for_loop.init.as.decl->identifier);
-                        destroy_exp(stmt->as.for_loop.init.as.decl->exp);
-                        free(stmt->as.for_loop.init.as.decl);
-                    }
+                    free(stmt->as.for_loop.init.as.decl.identifier);
+                    destroy_exp(stmt->as.for_loop.init.as.decl.exp);
                     break;
                 case AST_INIT_EXP:
                     destroy_exp(stmt->as.for_loop.init.as.exp);

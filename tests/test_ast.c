@@ -137,6 +137,131 @@ void test_function_holds_block() {
     printf("  PASS: test_function_holds_block\n");
 }
 
+// --- Loop statement construction tests ---
+
+// make_while_stmt creates a STMT_WHILE with label initially NULL.
+void test_while_stmt_creation() {
+    AstStatement* s = make_while_stmt(
+        create_int_exp(1),
+        make_exp_stmt(create_int_exp(2)));
+    assert(s->kind == STMT_WHILE);
+    assert(s->as.while_loop.label == NULL);
+    assert(s->as.while_loop.cond->as.int_lit.value == 1);
+    assert(s->as.while_loop.body->kind == STMT_EXP);
+    destroy_stmt(s);
+    printf("  PASS: test_while_stmt_creation\n");
+}
+
+// make_do_while_stmt creates a STMT_DO_WHILE with label initially NULL.
+void test_do_while_stmt_creation() {
+    AstStatement* s = make_do_while_stmt(
+        create_int_exp(1),
+        make_exp_stmt(create_int_exp(2)));
+    assert(s->kind == STMT_DO_WHILE);
+    assert(s->as.do_while_loop.label == NULL);
+    assert(s->as.do_while_loop.cond->as.int_lit.value == 1);
+    assert(s->as.do_while_loop.body->kind == STMT_EXP);
+    destroy_stmt(s);
+    printf("  PASS: test_do_while_stmt_creation\n");
+}
+
+// make_for_stmt creates a STMT_FOR with label NULL and nullable cond/post.
+void test_for_stmt_creation() {
+    AstForInit init = make_for_init_exp(NULL);
+    AstStatement* s = make_for_stmt(
+        init, create_int_exp(1), create_int_exp(2),
+        make_exp_stmt(create_int_exp(3)));
+    assert(s->kind == STMT_FOR);
+    assert(s->as.for_loop.label == NULL);
+    assert(s->as.for_loop.cond->as.int_lit.value == 1);
+    assert(s->as.for_loop.post->as.int_lit.value == 2);
+    assert(s->as.for_loop.body->kind == STMT_EXP);
+    destroy_stmt(s);
+    printf("  PASS: test_for_stmt_creation\n");
+}
+
+// make_for_stmt with NULL cond and post (infinite loop shape).
+void test_for_stmt_nullable_fields() {
+    AstForInit init = make_for_init_exp(NULL);
+    AstStatement* s = make_for_stmt(
+        init, NULL, NULL,
+        make_exp_stmt(create_int_exp(0)));
+    assert(s->kind == STMT_FOR);
+    assert(s->as.for_loop.cond == NULL);
+    assert(s->as.for_loop.post == NULL);
+    destroy_stmt(s);
+    printf("  PASS: test_for_stmt_nullable_fields\n");
+}
+
+// make_break_stmt and make_continue_stmt store their label (or NULL).
+void test_break_continue_creation() {
+    AstStatement* brk = make_break_stmt(NULL);
+    assert(brk->kind == STMT_BREAK);
+    assert(brk->as.break_stmt.label == NULL);
+    destroy_stmt(brk);
+
+    AstStatement* cont = make_continue_stmt(NULL);
+    assert(cont->kind == STMT_CONTINUE);
+    assert(cont->as.continue_stmt.label == NULL);
+    destroy_stmt(cont);
+
+    AstStatement* brk2 = make_break_stmt(strdup("loop.0"));
+    assert(strcmp(brk2->as.break_stmt.label, "loop.0") == 0);
+    destroy_stmt(brk2);
+
+    printf("  PASS: test_break_continue_creation\n");
+}
+
+// A while loop containing break and continue as its body (via compound).
+void test_loop_with_break_continue() {
+    AstBlock body = ast_block_make(2);
+    ast_block_append(&body, (AstBlockItem){
+        .type = AST_STATEMENT,
+        .as.stmt = make_break_stmt(NULL),
+    });
+    ast_block_append(&body, (AstBlockItem){
+        .type = AST_STATEMENT,
+        .as.stmt = make_continue_stmt(NULL),
+    });
+
+    AstStatement* loop = make_while_stmt(
+        create_int_exp(1),
+        make_compound_stmt(body));
+
+    assert(loop->kind == STMT_WHILE);
+    AstBlock* compound = &loop->as.while_loop.body->as.compound;
+    assert(compound->size == 2);
+    assert(compound->items[0].as.stmt->kind == STMT_BREAK);
+    assert(compound->items[1].as.stmt->kind == STMT_CONTINUE);
+    destroy_stmt(loop);
+    printf("  PASS: test_loop_with_break_continue\n");
+}
+
+// Nested loops: outer while containing an inner for loop.
+void test_nested_loops() {
+    AstForInit init = make_for_init_exp(NULL);
+    AstStatement* inner = make_for_stmt(
+        init, create_int_exp(1), NULL,
+        make_exp_stmt(create_int_exp(0)));
+
+    AstBlock outer_body = ast_block_make(1);
+    ast_block_append(&outer_body, (AstBlockItem){
+        .type = AST_STATEMENT,
+        .as.stmt = inner,
+    });
+
+    AstStatement* outer = make_while_stmt(
+        create_int_exp(1),
+        make_compound_stmt(outer_body));
+
+    assert(outer->kind == STMT_WHILE);
+    AstStatement* nested = outer->as.while_loop.body->as.compound.items[0].as.stmt;
+    assert(nested->kind == STMT_FOR);
+    assert(nested->as.for_loop.cond->as.int_lit.value == 1);
+    destroy_stmt(outer);
+    printf("  PASS: test_nested_loops\n");
+}
+
 int main() {
     printf("Running AST block tests...\n");
     test_block_make_empty();
@@ -146,6 +271,14 @@ int main() {
     test_compound_stmt_wraps_block();
     test_nested_compound_block();
     test_function_holds_block();
-    printf("All AST block tests passed!\n");
+    printf("Running loop statement tests...\n");
+    test_while_stmt_creation();
+    test_do_while_stmt_creation();
+    test_for_stmt_creation();
+    test_for_stmt_nullable_fields();
+    test_break_continue_creation();
+    test_loop_with_break_continue();
+    test_nested_loops();
+    printf("All AST tests passed!\n");
     return 0;
 }

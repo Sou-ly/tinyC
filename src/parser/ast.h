@@ -97,17 +97,14 @@ void destroy_exp(AstExp* exp);
 
 
 // --- Blocks ---
-//
-// A block is a list of block items; each item is a statement or a
-// declaration. A compound statement (STMT_COMPOUND) is just a block, so
-// blocks nest through statements. The mutual recursion forces this
-// ordering: AstBlock holds AstBlockItem* (pointer, so a forward decl is
-// enough), AstStatement embeds AstBlock by value, and AstBlockItem embeds
-// AstStatement by value — so statements must be fully defined before block
-// items.
 
 typedef struct AstStatement AstStatement;
 typedef struct AstBlockItem AstBlockItem;
+
+struct AstDeclaration {
+	char* identifier;
+	AstExp* exp; // nullable
+};
 typedef struct AstDeclaration AstDeclaration;
 
 typedef struct {
@@ -135,7 +132,7 @@ typedef struct { AstExp* exp; }	AstStmtExp;
 typedef struct { char* label; }	AstStmtContinue;
 typedef struct { char* label; }	AstStmtBreak;
 
-typedef struct { char* label;
+typedef struct {
 	AstExp* cond;
 	AstStatement* then_br;
 	AstStatement* else_br;
@@ -161,7 +158,7 @@ typedef enum {
 typedef struct {
 	AstForInitType init_type;
 	union {
-		AstDeclaration* decl;
+		AstDeclaration	decl;
 		AstExp*			exp;
 	} as;
 } AstForInit;
@@ -198,7 +195,7 @@ AstStatement* make_while_stmt(AstExp* cond, AstStatement* body);
 AstStatement* make_do_while_stmt(AstExp* cond, AstStatement* body);
 AstStatement* make_break_stmt(char* label);
 AstStatement* make_continue_stmt(char * label);
-AstForInit make_for_init_decl(AstDeclaration* decl);
+AstForInit make_for_init_decl(AstDeclaration decl);
 AstForInit make_for_init_exp(AstExp* exp);
 void destroy_stmt(AstStatement* stmt);
 
@@ -208,11 +205,6 @@ typedef enum {
     AST_DECLARATION,
     AST_STATEMENT
 } AstBlockItemType;
-
-struct AstDeclaration {
-	char* identifier;
-	AstExp* exp; // nullable
-};
 
 struct AstBlockItem {
 	AstBlockItemType type;

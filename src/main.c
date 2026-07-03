@@ -92,7 +92,7 @@ int main(int argc, char* argv[]) {
 
     Parser parser = parser_create(&tokens);
     AstProgram program = parse_program(&parser);
-    program = resolve_variables(program);
+    resolve_variables(&program);
 
     if (stage == STAGE_PARSE) {
         destroy_program(&program);

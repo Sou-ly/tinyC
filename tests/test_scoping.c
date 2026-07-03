@@ -168,7 +168,7 @@ void test_resolve_single_declaration() {
     ast_block_append(&body, return_var("a"));
     AstProgram prog = program_with_body(body);
 
-    prog = resolve_variables(prog);
+    resolve_variables(&prog);
 
     assert(strcmp(decl_name(&prog, 0), "a.0") == 0);
     AstExp* ret = item(&prog, 1)->as.stmt->as.ret.exp;
@@ -186,7 +186,7 @@ void test_resolve_distinct_names() {
     ast_block_append(&body, decl_item("b", NULL));
     AstProgram prog = program_with_body(body);
 
-    prog = resolve_variables(prog);
+    resolve_variables(&prog);
 
     assert(strcmp(decl_name(&prog, 0), "a.0") == 0);
     assert(strcmp(decl_name(&prog, 1), "b.1") == 0);
@@ -202,7 +202,7 @@ void test_resolve_initializer_reference() {
     ast_block_append(&body, decl_item("b", create_variable_exp("a")));
     AstProgram prog = program_with_body(body);
 
-    prog = resolve_variables(prog);
+    resolve_variables(&prog);
 
     assert(strcmp(decl_name(&prog, 0), "a.0") == 0);
     assert(strcmp(decl_name(&prog, 1), "b.1") == 0);
@@ -226,7 +226,7 @@ void test_resolve_inner_shadows_outer() {
     ast_block_append(&body, stmt_item(make_compound_stmt(inner)));
     AstProgram prog = program_with_body(body);
 
-    prog = resolve_variables(prog);
+    resolve_variables(&prog);
 
     assert(strcmp(decl_name(&prog, 0), "a.0") == 0);  // outer
     AstBlock* blk = &item(&prog, 1)->as.stmt->as.compound;
@@ -248,7 +248,7 @@ void test_resolve_inner_reads_outer() {
     ast_block_append(&body, stmt_item(make_compound_stmt(inner)));
     AstProgram prog = program_with_body(body);
 
-    prog = resolve_variables(prog);
+    resolve_variables(&prog);
 
     assert(strcmp(decl_name(&prog, 0), "a.0") == 0);
     AstBlock* blk = &item(&prog, 1)->as.stmt->as.compound;
@@ -272,7 +272,7 @@ void test_resolve_sibling_scopes() {
     ast_block_append(&body, stmt_item(make_compound_stmt(second)));
     AstProgram prog = program_with_body(body);
 
-    prog = resolve_variables(prog);
+    resolve_variables(&prog);
 
     const char* a0 = item(&prog, 0)->as.stmt->as.compound.items[0].as.decl.identifier;
     const char* a1 = item(&prog, 1)->as.stmt->as.compound.items[0].as.decl.identifier;
@@ -295,7 +295,7 @@ void test_resolve_inner_decl_does_not_leak() {
     ast_block_append(&body, return_var("a"));                            // -> a.0
     AstProgram prog = program_with_body(body);
 
-    prog = resolve_variables(prog);
+    resolve_variables(&prog);
 
     AstExp* ret = item(&prog, 2)->as.stmt->as.ret.exp;
     assert(strcmp(ret->as.variable.identifier, "a.0") == 0);
@@ -325,7 +325,7 @@ void test_resolve_if_statement() {
         heap_stmt(make_return_stmt(create_variable_exp("a"))))));
     AstProgram prog = program_with_body(body);
 
-    prog = resolve_variables(prog);
+    resolve_variables(&prog);
 
     assert(strcmp(decl_name(&prog, 0), "a.0") == 0);
     assert(strcmp(decl_name(&prog, 1), "b.1") == 0);
@@ -352,7 +352,7 @@ void test_resolve_conditional_expression() {
         create_variable_exp("b")))));
     AstProgram prog = program_with_body(body);
 
-    prog = resolve_variables(prog);
+    resolve_variables(&prog);
 
     AstExp* cond = item(&prog, 2)->as.stmt->as.ret.exp;
     assert(cond->kind == EXP_CONDITIONAL);
@@ -377,7 +377,7 @@ static void expect_resolve_error(const char* description, AstBlock (*build)(void
     if (pid == 0) {
         freopen("/dev/null", "w", stderr);
         AstProgram prog = program_with_body(build());
-        prog = resolve_variables(prog);  // expected to exit(1) before returning
+        resolve_variables(&prog);  // expected to exit(1) before returning
         destroy_program(&prog);
         _exit(0);                        // reached only if it wrongly succeeded
     }

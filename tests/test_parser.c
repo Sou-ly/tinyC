@@ -72,7 +72,6 @@ void test_create_if_stmt_with_else() {
         heap_stmt(make_return_stmt(create_int_exp(3))));
 
     assert(s->kind == STMT_IF);
-    assert(s->as.if_cond.label == NULL);
     assert(s->as.if_cond.cond->kind == EXP_INT);
     assert(s->as.if_cond.cond->as.int_lit.value == 1);
     assert(s->as.if_cond.then_br->kind == STMT_RETURN);
@@ -636,6 +635,309 @@ void test_parse_conditional_right_assoc() {
                 create_int_exp(5))));
 }
 
+// --- Loop parsing tests ---
+//
+// Each test builds a token stream for `int main() { <loop>; }`, parses it,
+// and checks the resulting AST structure.
+
+static Token make_kw_token(TokenKeyword kw) {
+    return (Token){TOK_KEYWORD, {.kw = kw}, 1, 1};
+}
+
+// Parses: int main() { while (1) 2; }
+void test_parse_while_loop() {
+    TokenList tokens = token_list_create(16);
+    token_list_push(&tokens, make_kw_token(TOK_INT));
+    token_list_push(&tokens, make_ident_token("main"));
+    token_list_push(&tokens, make_sep_token(TOK_LPAR));
+    token_list_push(&tokens, make_sep_token(TOK_RPAR));
+    token_list_push(&tokens, make_sep_token(TOK_LBRACE));
+    // while (1) 2;
+    token_list_push(&tokens, make_kw_token(TOK_WHILE));
+    token_list_push(&tokens, make_sep_token(TOK_LPAR));
+    token_list_push(&tokens, make_int_token(1));
+    token_list_push(&tokens, make_sep_token(TOK_RPAR));
+    token_list_push(&tokens, make_int_token(2));
+    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    token_list_push(&tokens, make_sep_token(TOK_RBRACE));
+
+    Parser parser = parser_create(&tokens);
+    AstProgram prog = parse_program(&parser);
+
+    AstStatement* stmt = prog.functions[0].body.items[0].as.stmt;
+    assert(stmt->kind == STMT_WHILE);
+    assert(stmt->as.while_loop.label == NULL);
+    assert(stmt->as.while_loop.cond->as.int_lit.value == 1);
+    assert(stmt->as.while_loop.body->kind == STMT_EXP);
+    assert(stmt->as.while_loop.body->as.exp_stmt.exp->as.int_lit.value == 2);
+
+    destroy_program(&prog);
+    token_list_destroy(&tokens);
+    printf("  PASS: test_parse_while_loop\n");
+}
+
+// Parses: int main() { do 1; while (2); }
+void test_parse_do_while_loop() {
+    TokenList tokens = token_list_create(16);
+    token_list_push(&tokens, make_kw_token(TOK_INT));
+    token_list_push(&tokens, make_ident_token("main"));
+    token_list_push(&tokens, make_sep_token(TOK_LPAR));
+    token_list_push(&tokens, make_sep_token(TOK_RPAR));
+    token_list_push(&tokens, make_sep_token(TOK_LBRACE));
+    // do 1; while (2);
+    token_list_push(&tokens, make_kw_token(TOK_DO));
+    token_list_push(&tokens, make_int_token(1));
+    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    token_list_push(&tokens, make_kw_token(TOK_WHILE));
+    token_list_push(&tokens, make_sep_token(TOK_LPAR));
+    token_list_push(&tokens, make_int_token(2));
+    token_list_push(&tokens, make_sep_token(TOK_RPAR));
+    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    token_list_push(&tokens, make_sep_token(TOK_RBRACE));
+
+    Parser parser = parser_create(&tokens);
+    AstProgram prog = parse_program(&parser);
+
+    AstStatement* stmt = prog.functions[0].body.items[0].as.stmt;
+    assert(stmt->kind == STMT_DO_WHILE);
+    assert(stmt->as.do_while_loop.label == NULL);
+    assert(stmt->as.do_while_loop.cond->as.int_lit.value == 2);
+    assert(stmt->as.do_while_loop.body->kind == STMT_EXP);
+
+    destroy_program(&prog);
+    token_list_destroy(&tokens);
+    printf("  PASS: test_parse_do_while_loop\n");
+}
+
+// Parses: int main() { for (0; 1; 2) 3; }
+void test_parse_for_loop() {
+    TokenList tokens = token_list_create(16);
+    token_list_push(&tokens, make_kw_token(TOK_INT));
+    token_list_push(&tokens, make_ident_token("main"));
+    token_list_push(&tokens, make_sep_token(TOK_LPAR));
+    token_list_push(&tokens, make_sep_token(TOK_RPAR));
+    token_list_push(&tokens, make_sep_token(TOK_LBRACE));
+    // for (0; 1; 2) 3;
+    token_list_push(&tokens, make_kw_token(TOK_FOR));
+    token_list_push(&tokens, make_sep_token(TOK_LPAR));
+    token_list_push(&tokens, make_int_token(0));
+    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    token_list_push(&tokens, make_int_token(1));
+    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    token_list_push(&tokens, make_int_token(2));
+    token_list_push(&tokens, make_sep_token(TOK_RPAR));
+    token_list_push(&tokens, make_int_token(3));
+    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    token_list_push(&tokens, make_sep_token(TOK_RBRACE));
+
+    Parser parser = parser_create(&tokens);
+    AstProgram prog = parse_program(&parser);
+
+    AstStatement* stmt = prog.functions[0].body.items[0].as.stmt;
+    assert(stmt->kind == STMT_FOR);
+    assert(stmt->as.for_loop.label == NULL);
+    assert(stmt->as.for_loop.cond->as.int_lit.value == 1);
+    assert(stmt->as.for_loop.post->as.int_lit.value == 2);
+    assert(stmt->as.for_loop.body->kind == STMT_EXP);
+
+    destroy_program(&prog);
+    token_list_destroy(&tokens);
+    printf("  PASS: test_parse_for_loop\n");
+}
+
+// Parses: int main() { while (1) break; }
+void test_parse_break_in_loop() {
+    TokenList tokens = token_list_create(16);
+    token_list_push(&tokens, make_kw_token(TOK_INT));
+    token_list_push(&tokens, make_ident_token("main"));
+    token_list_push(&tokens, make_sep_token(TOK_LPAR));
+    token_list_push(&tokens, make_sep_token(TOK_RPAR));
+    token_list_push(&tokens, make_sep_token(TOK_LBRACE));
+    // while (1) break;
+    token_list_push(&tokens, make_kw_token(TOK_WHILE));
+    token_list_push(&tokens, make_sep_token(TOK_LPAR));
+    token_list_push(&tokens, make_int_token(1));
+    token_list_push(&tokens, make_sep_token(TOK_RPAR));
+    token_list_push(&tokens, make_kw_token(TOK_BREAK));
+    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    token_list_push(&tokens, make_sep_token(TOK_RBRACE));
+
+    Parser parser = parser_create(&tokens);
+    AstProgram prog = parse_program(&parser);
+
+    AstStatement* stmt = prog.functions[0].body.items[0].as.stmt;
+    assert(stmt->kind == STMT_WHILE);
+    assert(stmt->as.while_loop.body->kind == STMT_BREAK);
+    assert(stmt->as.while_loop.body->as.break_stmt.label == NULL);
+
+    destroy_program(&prog);
+    token_list_destroy(&tokens);
+    printf("  PASS: test_parse_break_in_loop\n");
+}
+
+// Parses: int main() { while (1) continue; }
+void test_parse_continue_in_loop() {
+    TokenList tokens = token_list_create(16);
+    token_list_push(&tokens, make_kw_token(TOK_INT));
+    token_list_push(&tokens, make_ident_token("main"));
+    token_list_push(&tokens, make_sep_token(TOK_LPAR));
+    token_list_push(&tokens, make_sep_token(TOK_RPAR));
+    token_list_push(&tokens, make_sep_token(TOK_LBRACE));
+    // while (1) continue;
+    token_list_push(&tokens, make_kw_token(TOK_WHILE));
+    token_list_push(&tokens, make_sep_token(TOK_LPAR));
+    token_list_push(&tokens, make_int_token(1));
+    token_list_push(&tokens, make_sep_token(TOK_RPAR));
+    token_list_push(&tokens, make_kw_token(TOK_CONTINUE));
+    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    token_list_push(&tokens, make_sep_token(TOK_RBRACE));
+
+    Parser parser = parser_create(&tokens);
+    AstProgram prog = parse_program(&parser);
+
+    AstStatement* stmt = prog.functions[0].body.items[0].as.stmt;
+    assert(stmt->kind == STMT_WHILE);
+    assert(stmt->as.while_loop.body->kind == STMT_CONTINUE);
+    assert(stmt->as.while_loop.body->as.continue_stmt.label == NULL);
+
+    destroy_program(&prog);
+    token_list_destroy(&tokens);
+    printf("  PASS: test_parse_continue_in_loop\n");
+}
+
+// --- Label resolution tests ---
+//
+// resolve_labels assigns unique labels to loops and propagates them to
+// break/continue statements within their bodies.
+
+// Helper: wraps a single statement in a program with one function.
+static AstProgram make_test_program(AstStatement* stmt) {
+    AstBlock body = ast_block_make(1);
+    ast_block_append(&body, (AstBlockItem){ .type = AST_STATEMENT, .as.stmt = stmt });
+    AstFunction* fn = malloc(sizeof(AstFunction));
+    *fn = ast_function_make("main", body);
+    return ast_program_create(fn, 1);
+}
+
+// resolve_labels assigns a label to a while loop and its nested break.
+void test_resolve_labels_while_break() {
+    AstProgram prog = make_test_program(
+        make_while_stmt(create_int_exp(1), make_break_stmt(NULL)));
+
+    resolve_labels(&prog);
+
+    AstStatement* resolved = prog.functions[0].body.items[0].as.stmt;
+    assert(resolved->kind == STMT_WHILE);
+    assert(resolved->as.while_loop.label != NULL);
+    char* loop_label = resolved->as.while_loop.label;
+    assert(resolved->as.while_loop.body->kind == STMT_BREAK);
+    assert(strcmp(resolved->as.while_loop.body->as.break_stmt.label, loop_label) == 0);
+
+    destroy_program(&prog);
+    printf("  PASS: test_resolve_labels_while_break\n");
+}
+
+// resolve_labels assigns a label to a while loop and its nested continue.
+void test_resolve_labels_while_continue() {
+    AstProgram prog = make_test_program(
+        make_while_stmt(create_int_exp(1), make_continue_stmt(NULL)));
+
+    resolve_labels(&prog);
+
+    AstStatement* resolved = prog.functions[0].body.items[0].as.stmt;
+    assert(resolved->as.while_loop.label != NULL);
+    assert(strcmp(resolved->as.while_loop.body->as.continue_stmt.label,
+                 resolved->as.while_loop.label) == 0);
+
+    destroy_program(&prog);
+    printf("  PASS: test_resolve_labels_while_continue\n");
+}
+
+// resolve_labels assigns different labels to nested loops; break/continue
+// in each body get the label of their enclosing loop.
+void test_resolve_labels_nested_loops() {
+    // inner: for (0; 1; 2) break;
+    AstForInit init = make_for_init_exp(NULL);
+    AstStatement* inner = make_for_stmt(init, NULL, NULL, make_break_stmt(NULL));
+
+    // outer body: { inner_loop; continue; }
+    AstBlock outer_body = ast_block_make(2);
+    ast_block_append(&outer_body, (AstBlockItem){ .type = AST_STATEMENT, .as.stmt = inner });
+    ast_block_append(&outer_body, (AstBlockItem){ .type = AST_STATEMENT, .as.stmt = make_continue_stmt(NULL) });
+
+    AstProgram prog = make_test_program(
+        make_while_stmt(create_int_exp(1), make_compound_stmt(outer_body)));
+
+    resolve_labels(&prog);
+
+    AstStatement* r_outer = prog.functions[0].body.items[0].as.stmt;
+    assert(r_outer->kind == STMT_WHILE);
+    char* outer_label = r_outer->as.while_loop.label;
+    assert(outer_label != NULL);
+
+    AstBlock* compound = &r_outer->as.while_loop.body->as.compound;
+    AstStatement* r_inner = compound->items[0].as.stmt;
+    assert(r_inner->kind == STMT_FOR);
+    char* inner_label = r_inner->as.for_loop.label;
+    assert(inner_label != NULL);
+
+    // Labels must be different
+    assert(strcmp(outer_label, inner_label) != 0);
+
+    // Inner break gets inner label
+    assert(strcmp(r_inner->as.for_loop.body->as.break_stmt.label, inner_label) == 0);
+
+    // Outer continue gets outer label
+    AstStatement* r_cont = compound->items[1].as.stmt;
+    assert(strcmp(r_cont->as.continue_stmt.label, outer_label) == 0);
+
+    destroy_program(&prog);
+    printf("  PASS: test_resolve_labels_nested_loops\n");
+}
+
+// resolve_labels propagates through if branches inside a loop.
+void test_resolve_labels_through_if() {
+    // while (1) if (2) break; else continue;
+    AstStatement* if_stmt = make_if_stmt(
+        create_int_exp(2),
+        make_break_stmt(NULL),
+        make_continue_stmt(NULL));
+
+    AstProgram prog = make_test_program(
+        make_while_stmt(create_int_exp(1), if_stmt));
+
+    resolve_labels(&prog);
+
+    AstStatement* resolved = prog.functions[0].body.items[0].as.stmt;
+    char* label = resolved->as.while_loop.label;
+    assert(label != NULL);
+
+    AstStatement* r_if = resolved->as.while_loop.body;
+    assert(r_if->kind == STMT_IF);
+    assert(strcmp(r_if->as.if_cond.then_br->as.break_stmt.label, label) == 0);
+    assert(strcmp(r_if->as.if_cond.else_br->as.continue_stmt.label, label) == 0);
+
+    destroy_program(&prog);
+    printf("  PASS: test_resolve_labels_through_if\n");
+}
+
+// resolve_labels assigns a label to a do-while loop.
+void test_resolve_labels_do_while() {
+    AstProgram prog = make_test_program(
+        make_do_while_stmt(create_int_exp(1), make_break_stmt(NULL)));
+
+    resolve_labels(&prog);
+
+    AstStatement* resolved = prog.functions[0].body.items[0].as.stmt;
+    assert(resolved->kind == STMT_DO_WHILE);
+    assert(resolved->as.do_while_loop.label != NULL);
+    assert(strcmp(resolved->as.do_while_loop.body->as.break_stmt.label,
+                 resolved->as.do_while_loop.label) == 0);
+
+    destroy_program(&prog);
+    printf("  PASS: test_resolve_labels_do_while\n");
+}
+
 int main(void) {
     printf("Running parser tests...\n");
     test_create_int_exp();
@@ -664,6 +966,18 @@ int main(void) {
     test_parse_conditional_below_arithmetic();
     test_parse_conditional_middle_is_full_exp();
     test_parse_conditional_right_assoc();
+    printf("Running loop parsing tests...\n");
+    test_parse_while_loop();
+    test_parse_do_while_loop();
+    test_parse_for_loop();
+    test_parse_break_in_loop();
+    test_parse_continue_in_loop();
+    printf("Running label resolution tests...\n");
+    test_resolve_labels_while_break();
+    test_resolve_labels_while_continue();
+    test_resolve_labels_nested_loops();
+    test_resolve_labels_through_if();
+    test_resolve_labels_do_while();
     printf("All parser tests passed!\n");
     return 0;
 }

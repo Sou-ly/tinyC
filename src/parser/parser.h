@@ -37,6 +37,6 @@ void varmap_destroy(VarMap* map);
 VarMapEntry* varmap_get(VarMap* map, const char* key);
 void varmap_put(VarMap* map, VarMapEntry entry);
 
-AstProgram resolve_variables(AstProgram program);
+void resolve_variables(AstProgram* program);
 
-AstProgram resolve_loops(AstProgram program);
+void resolve_labels(AstProgram* program);
