@@ -176,6 +176,16 @@ AstStatement* make_continue_stmt(char* label) {
 	return alloc_stmt((AstStatement){ .kind = STMT_CONTINUE, .as.continue_stmt = { .label = label } });
 }
 
+// identifier / target are heap-owned (the parser strdup's them), and freed by
+// destroy_stmt. A label names a point in the code; goto jumps to that name.
+AstStatement* make_label_stmt(char* identifier) {
+	return alloc_stmt((AstStatement){ .kind = STMT_LABEL, .as.label = { .identifier = identifier } });
+}
+
+AstStatement* make_goto_stmt(char* target) {
+	return alloc_stmt((AstStatement){ .kind = STMT_GOTO, .as.goto_stmt = { .target = target } });
+}
+
 // Frees the statement and everything it owns, including the node itself.
 // Nested statements are heap-owned pointers, so destroy_stmt recurses into
 // them directly (no separate free at the call site). NULL-safe.
@@ -226,6 +236,12 @@ void destroy_stmt(AstStatement* stmt) {
             break;
         case STMT_CONTINUE:
             free(stmt->as.continue_stmt.label);
+            break;
+        case STMT_LABEL:
+            free(stmt->as.label.identifier);
+            break;
+        case STMT_GOTO:
+            free(stmt->as.goto_stmt.target);
             break;
     }
     free(stmt);

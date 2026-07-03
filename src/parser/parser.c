@@ -146,6 +146,14 @@ static Token* current(Parser* p) {
     return &p->tokens->items[p->pos];
 }
 
+// Look ahead `offset` tokens without consuming; NULL past the end. Used to
+// distinguish a labeled statement (IDENT ':') from an expression statement.
+static Token* peek(Parser* p, int offset) {
+    size_t idx = (size_t)(p->pos + offset);
+    if (idx >= p->tokens->count) return NULL;
+    return &p->tokens->items[idx];
+}
+
 static Token* advance(Parser* p) {
     return &p->tokens->items[p->pos++];
 }
@@ -269,6 +277,17 @@ static AstExp* parse_expression(Parser* p, int min_prec) {
 }
 
 static AstStatement* parse_statement(Parser* p) {
+    // labeled statement: IDENT ':'. Two-token lookahead separates it from an
+    // expression statement that merely starts with an identifier (e.g. `x = 1;`).
+    Token* next = peek(p, 1);
+    if (current(p)->kind == TOK_IDENTIFIER &&
+            next != NULL && next->kind == TOK_SEPARATOR && next->sep == TOK_COLON) {
+        char* identifier = strdup(current(p)->ident);
+        advance(p); // identifier
+        advance(p); // ':'
+        return make_label_stmt(identifier);
+    }
+
     if (current(p)->kind != TOK_KEYWORD) {
 		AstExp* exp = parse_expression(p, 0);
     	expect_separator(p, TOK_SEMICOLON);
@@ -342,6 +361,18 @@ static AstStatement* parse_statement(Parser* p) {
 			advance(p);
 			expect_separator(p, TOK_SEMICOLON);
 			return make_break_stmt(NULL); // label assigned by loop-labelling pass
+		case TOK_GOTO: {
+			advance(p); // consume 'goto'
+			if (current(p)->kind != TOK_IDENTIFIER) {
+				fprintf(stderr, "parse error at %zu:%zu: expected label after 'goto'\n",
+						current(p)->line, current(p)->col);
+				exit(1);
+			}
+			char* target = strdup(current(p)->ident);
+			advance(p); // consume target
+			expect_separator(p, TOK_SEMICOLON);
+			return make_goto_stmt(target);
+		}
 		default:
 			break;
 	}
@@ -622,6 +653,9 @@ static void resolve_statement(AstStatement* stmt, VarMap* map) {
 		}
 		case STMT_BREAK:
 		case STMT_CONTINUE:
+		case STMT_LABEL:
+		case STMT_GOTO:
+			// label/goto names live in a separate namespace from variables
 			break;
 	}
 }
@@ -727,5 +761,148 @@ void resolve_labels(AstProgram* program) {
 	LABEL_COUNTER = 0;
 	for (int i = 0; i < program->num_functions; i++) {
 		label_block(&program->functions[i].body, NULL);
+	}
+}
+
+// --- goto / label resolution ---
+//
+// Source labels have function scope: a label is visible throughout the whole
+// function (a goto may jump forward to a label declared later), and each label
+// lives in a namespace separate from variables. This pass, per function:
+//   1. collects every label definition, assigning each a program-unique name;
+//   2. rewrites each label to its unique name and each goto to the unique name
+//      of its target -- erroring if a goto has no matching label.
+// It also rejects two labels sharing a name within one function (a C error).
+//
+// Uniqueness matters because the same source label may appear in several
+// functions (or files); emitting the raw name would collide in the assembler.
+// Generated names contain '.', which a source identifier never can, so they
+// also can't clash with user names; the ".L" infix keeps them distinct from
+// variable names ("name.N") and loop labels ("loop.N_start").
+
+static int GOTO_LABEL_COUNTER = 0;
+
+static char* generate_goto_label(const char* original) {
+	int len = snprintf(NULL, 0, "%s.L%d", original, GOTO_LABEL_COUNTER);
+	char* name = malloc(len + 1);
+	snprintf(name, len + 1, "%s.L%d", original, GOTO_LABEL_COUNTER++);
+	return name;
+}
+
+static void collect_labels_block(AstBlock* block, VarMap* labels);
+
+// Phase 1: register every label defined anywhere in the statement subtree.
+static void collect_labels_statement(AstStatement* stmt, VarMap* labels) {
+	switch (stmt->kind) {
+		case STMT_LABEL:
+			if (varmap_get(labels, stmt->as.label.identifier) != NULL) {
+				fprintf(stderr, "error: duplicate label '%s'\n", stmt->as.label.identifier);
+				exit(1);
+			}
+			varmap_put(labels, (VarMapEntry) {
+				.key = strdup(stmt->as.label.identifier),
+				.val = generate_goto_label(stmt->as.label.identifier),
+				.is_cur_scope = true,
+			});
+			break;
+		case STMT_IF:
+			collect_labels_statement(stmt->as.if_cond.then_br, labels);
+			if (stmt->as.if_cond.else_br != NULL)
+				collect_labels_statement(stmt->as.if_cond.else_br, labels);
+			break;
+		case STMT_COMPOUND:
+			collect_labels_block(&stmt->as.compound, labels);
+			break;
+		case STMT_FOR:
+			collect_labels_statement(stmt->as.for_loop.body, labels);
+			break;
+		case STMT_WHILE:
+			collect_labels_statement(stmt->as.while_loop.body, labels);
+			break;
+		case STMT_DO_WHILE:
+			collect_labels_statement(stmt->as.do_while_loop.body, labels);
+			break;
+		case STMT_RETURN:
+		case STMT_EXP:
+		case STMT_BREAK:
+		case STMT_CONTINUE:
+		case STMT_GOTO:
+			break;
+	}
+}
+
+static void collect_labels_block(AstBlock* block, VarMap* labels) {
+	for (size_t i = 0; i < block->size; i++) {
+		AstBlockItem* item = &block->items[i];
+		if (item->type == AST_STATEMENT)
+			collect_labels_statement(item->as.stmt, labels);
+	}
+}
+
+static void rewrite_gotos_block(AstBlock* block, VarMap* labels);
+
+// Phase 2: rename each label and point each goto at the matching label's
+// unique name. Every label is guaranteed present (collected in phase 1); a
+// goto whose target is absent has no matching label and is an error.
+static void rewrite_gotos_statement(AstStatement* stmt, VarMap* labels) {
+	switch (stmt->kind) {
+		case STMT_LABEL: {
+			VarMapEntry* entry = varmap_get(labels, stmt->as.label.identifier);
+			free(stmt->as.label.identifier);
+			stmt->as.label.identifier = strdup(entry->val);
+			break;
+		}
+		case STMT_GOTO: {
+			VarMapEntry* entry = varmap_get(labels, stmt->as.goto_stmt.target);
+			if (entry == NULL) {
+				fprintf(stderr, "error: goto to undefined label '%s'\n", stmt->as.goto_stmt.target);
+				exit(1);
+			}
+			free(stmt->as.goto_stmt.target);
+			stmt->as.goto_stmt.target = strdup(entry->val);
+			break;
+		}
+		case STMT_IF:
+			rewrite_gotos_statement(stmt->as.if_cond.then_br, labels);
+			if (stmt->as.if_cond.else_br != NULL)
+				rewrite_gotos_statement(stmt->as.if_cond.else_br, labels);
+			break;
+		case STMT_COMPOUND:
+			rewrite_gotos_block(&stmt->as.compound, labels);
+			break;
+		case STMT_FOR:
+			rewrite_gotos_statement(stmt->as.for_loop.body, labels);
+			break;
+		case STMT_WHILE:
+			rewrite_gotos_statement(stmt->as.while_loop.body, labels);
+			break;
+		case STMT_DO_WHILE:
+			rewrite_gotos_statement(stmt->as.do_while_loop.body, labels);
+			break;
+		case STMT_RETURN:
+		case STMT_EXP:
+		case STMT_BREAK:
+		case STMT_CONTINUE:
+			break;
+	}
+}
+
+static void rewrite_gotos_block(AstBlock* block, VarMap* labels) {
+	for (size_t i = 0; i < block->size; i++) {
+		AstBlockItem* item = &block->items[i];
+		if (item->type == AST_STATEMENT)
+			rewrite_gotos_statement(item->as.stmt, labels);
+	}
+}
+
+void resolve_goto_labels(AstProgram* program) {
+	GOTO_LABEL_COUNTER = 0;
+	for (int i = 0; i < program->num_functions; i++) {
+		// one map per function: labels do not cross function boundaries, but the
+		// counter keeps climbing so names stay unique across the whole program.
+		VarMap labels = varmap_create(8);
+		collect_labels_block(&program->functions[i].body, &labels);
+		rewrite_gotos_block(&program->functions[i].body, &labels);
+		varmap_destroy(&labels);
 	}
 }
