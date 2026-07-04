@@ -72,6 +72,8 @@ typedef enum {
 	TOK_INT,
 	TOK_RETURN,
 	TOK_VOID,
+    TOK_CASE,
+    TOK_SWITCH
 } TokenKeyword;
 
 typedef enum {
