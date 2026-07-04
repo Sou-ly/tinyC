@@ -75,7 +75,8 @@ void ast_block_destroy(AstBlock* block) {
 		switch (block_item->type) {
 			case AST_DECLARATION:
 				free(block_item->as.decl.identifier);
-				destroy_exp(block_item->as.decl.exp);
+				if (block_item->as.decl.init.present)
+					destroy_exp(block_item->as.decl.init.exp);
 				break;
 			case AST_STATEMENT:
 				destroy_stmt(block_item->as.stmt);
@@ -150,9 +151,8 @@ AstForInit make_for_init_exp(AstExp* exp) {
 	return (AstForInit){ .init_type = AST_INIT_EXP, .as.exp = exp };
 }
 
-// init.cond, init.post may be NULL; body is heap-owned. label is left NULL here
-// and filled in later by the loop-labelling pass.
-AstStatement* make_for_stmt(AstForInit init, AstExp* cond, AstExp* post, AstStatement* body) {
+// body is heap-owned. label is left NULL here and filled in by the loop-labelling pass.
+AstStatement* make_for_stmt(AstForInit init, OptionalExp cond, OptionalExp post, AstStatement* body) {
 	return alloc_stmt((AstStatement){ .kind = STMT_FOR, .as.for_loop = { .label = NULL, .init = init, .cond = cond, .post = post, .body = body } });
 }
 
@@ -211,14 +211,17 @@ void destroy_stmt(AstStatement* stmt) {
             switch (stmt->as.for_loop.init.init_type) {
                 case AST_INIT_DECL:
                     free(stmt->as.for_loop.init.as.decl.identifier);
-                    destroy_exp(stmt->as.for_loop.init.as.decl.exp);
+                    if (stmt->as.for_loop.init.as.decl.init.present)
+                        destroy_exp(stmt->as.for_loop.init.as.decl.init.exp);
                     break;
                 case AST_INIT_EXP:
                     destroy_exp(stmt->as.for_loop.init.as.exp);
                     break;
             }
-            destroy_exp(stmt->as.for_loop.cond);
-            destroy_exp(stmt->as.for_loop.post);
+            if (stmt->as.for_loop.cond.present)
+                destroy_exp(stmt->as.for_loop.cond.exp);
+            if (stmt->as.for_loop.post.present)
+                destroy_exp(stmt->as.for_loop.post.exp);
             destroy_stmt(stmt->as.for_loop.body);
             break;
         case STMT_WHILE:

@@ -94,24 +94,35 @@ AstExp* create_assign_exp(AstAssignOp op, AstExp* lhs, AstExp* rhs);
 AstExp* create_conditional_exp(AstExp* lhs, AstExp* mid, AstExp* rhs);
 void destroy_exp(AstExp* exp);
 
+// --- Optional expression ---
+
+typedef struct {
+	bool present;
+	AstExp* exp;
+} OptionalExp;
+
+#define some_exp(e) ((OptionalExp){ .present = true, .exp = (e) })
+#define no_exp()    ((OptionalExp){ .present = false, .exp = NULL })
+
 
 
 // --- Blocks ---
 
-typedef struct AstStatement AstStatement;
+typedef struct AstBlock AstBlock;
 typedef struct AstBlockItem AstBlockItem;
+typedef struct AstStatement AstStatement;
 
 struct AstDeclaration {
 	char* identifier;
-	AstExp* exp; // nullable
+	OptionalExp init;
 };
 typedef struct AstDeclaration AstDeclaration;
 
-typedef struct {
+struct AstBlock {
 	size_t capacity;
 	size_t size;
 	AstBlockItem* items;
-} AstBlock;
+};
 
 // --- Statements ---
 
@@ -170,10 +181,28 @@ typedef struct {
 typedef struct AstStmtFor {
 	char*			label;
 	AstForInit		init;
-	AstExp*			cond; // nullable
-	AstExp*			post; // nullable
+	OptionalExp		cond;
+	OptionalExp		post;
 	AstStatement*	body;
 } AstStmtFor;
+
+typedef struct AstStmtCase {
+    char* label;
+    int value;
+    AstBlock body;
+} AstStmtCase;
+
+typedef struct AstStmtDefault {
+    char* label;
+    AstBlock body;
+} AstStmtDefault;
+
+typedef struct AstStmtSwitch {
+    char* label;
+    AstExp cond;
+    AstStmtCase* cases; // nullable
+    AstStmtDefault* default_case; // nullable
+} AstStmtSwitch;
 
 struct AstStatement {
     AstStatementKind kind;
@@ -189,6 +218,9 @@ struct AstStatement {
 		AstStmtBreak	break_stmt;
 		AstStmtLabel	label;
 		AstStmtGoto		goto_stmt;
+        AstStmtSwitch   switch_stmt;
+        AstStmtCase     case_stmt;
+        AstStmtDefault   default_stmt;
     } as;
 };
 
@@ -196,13 +228,16 @@ AstStatement* make_return_stmt(AstExp* exp);
 AstStatement* make_exp_stmt(AstExp* exp);
 AstStatement* make_if_stmt(AstExp* cond, AstStatement* then_br, AstStatement* else_br);
 AstStatement* make_compound_stmt(AstBlock block);
-AstStatement* make_for_stmt(AstForInit init, AstExp* cond, AstExp* post, AstStatement* body);
+AstStatement* make_for_stmt(AstForInit init, OptionalExp cond, OptionalExp post, AstStatement* body);
 AstStatement* make_while_stmt(AstExp* cond, AstStatement* body);
 AstStatement* make_do_while_stmt(AstExp* cond, AstStatement* body);
 AstStatement* make_break_stmt(char* label);
 AstStatement* make_continue_stmt(char * label);
 AstStatement* make_label_stmt(char* identifier);
 AstStatement* make_goto_stmt(char* target);
+AstStatement* make_switch_stmt(char* label, AstExp cond, AstStmtCase* cases, AstStmtDefault default_case);
+AstStatement* make_case_stmt(char* label, int value, AstBlock block);
+AstStatement* make_default_stmt(char* target);
 AstForInit make_for_init_decl(AstDeclaration decl);
 AstForInit make_for_init_exp(AstExp* exp);
 void destroy_stmt(AstStatement* stmt);

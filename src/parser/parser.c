@@ -325,9 +325,13 @@ static AstStatement* parse_statement(Parser* p) {
 				expect_separator(p, TOK_SEMICOLON);
 				for_init = make_for_init_exp(exp);
 			}
-			AstExp* cond = parse_expression(p, 0);
+			OptionalExp cond = no_exp();
+			if (!(current(p)->kind == TOK_SEPARATOR && current(p)->sep == TOK_SEMICOLON))
+				cond = some_exp(parse_expression(p, 0));
 			expect_separator(p, TOK_SEMICOLON);
-			AstExp* post = parse_expression(p, 0);
+			OptionalExp post = no_exp();
+			if (!(current(p)->kind == TOK_SEPARATOR && current(p)->sep == TOK_RPAR))
+				post = some_exp(parse_expression(p, 0));
 			expect_separator(p, TOK_RPAR);
 			AstStatement* body = parse_statement(p);
 			return make_for_stmt(for_init, cond, post, body);
@@ -393,9 +397,9 @@ static AstDeclaration parse_declaration(Parser* p) {
 		advance(p);
 		if (current(p)->kind == TOK_OPERATOR && current(p)->op == TOK_ASSIGN) {
 			advance(p); // consume '='
-			declaration.exp = parse_expression(p, 0);
+			declaration.init = some_exp(parse_expression(p, 0));
 		} else {
-			declaration.exp = NULL;
+			declaration.init = no_exp();
 		}
 		expect_separator(p, TOK_SEMICOLON);
 		return declaration;
@@ -588,7 +592,8 @@ static void resolve_declaration(AstDeclaration* decl, VarMap* map) {
 	char* unique = make_unique_name(decl->identifier);
 	varmap_put(map, (VarMapEntry) { .key=strdup(decl->identifier), .val=strdup(unique), .is_cur_scope=true });
 
-	decl->exp = resolve_expression(decl->exp, map);
+	if (decl->init.present)
+		decl->init.exp = resolve_expression(decl->init.exp, map);
 
 	free(decl->identifier);
 	decl->identifier = unique;
@@ -631,8 +636,10 @@ static void resolve_statement(AstStatement* stmt, VarMap* map) {
 		case STMT_FOR: {
 			VarMap new_map = varmap_copy(*map);
 			resolve_for_init(&stmt->as.for_loop.init, &new_map);
-			stmt->as.for_loop.cond = resolve_expression(stmt->as.for_loop.cond, &new_map);
-			stmt->as.for_loop.post = resolve_expression(stmt->as.for_loop.post, &new_map);
+			if (stmt->as.for_loop.cond.present)
+				stmt->as.for_loop.cond.exp = resolve_expression(stmt->as.for_loop.cond.exp, &new_map);
+			if (stmt->as.for_loop.post.present)
+				stmt->as.for_loop.post.exp = resolve_expression(stmt->as.for_loop.post.exp, &new_map);
 			resolve_statement(stmt->as.for_loop.body, &new_map);
 			varmap_destroy(&new_map);
 			break;

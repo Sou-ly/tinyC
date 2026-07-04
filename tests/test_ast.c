@@ -65,18 +65,19 @@ void test_block_holds_declarations() {
     AstBlock block = ast_block_make(2);
     ast_block_append(&block, (AstBlockItem){
         .type = AST_DECLARATION,
-        .as.decl = { .identifier = strdup("x"), .exp = create_int_exp(7) },
+        .as.decl = { .identifier = strdup("x"), .init = some_exp(create_int_exp(7)) },
     });
     ast_block_append(&block, (AstBlockItem){
         .type = AST_DECLARATION,
-        .as.decl = { .identifier = strdup("y"), .exp = NULL },
+        .as.decl = { .identifier = strdup("y"), .init = no_exp() },
     });
 
     assert(block.size == 2);
     assert(block.items[0].type == AST_DECLARATION);
     assert(strcmp(block.items[0].as.decl.identifier, "x") == 0);
-    assert(block.items[0].as.decl.exp->as.int_lit.value == 7);
-    assert(block.items[1].as.decl.exp == NULL);
+    assert(block.items[0].as.decl.init.present);
+    assert(block.items[0].as.decl.init.exp->as.int_lit.value == 7);
+    assert(!block.items[1].as.decl.init.present);
     ast_block_destroy(&block);
     printf("  PASS: test_block_holds_declarations\n");
 }
@@ -169,26 +170,28 @@ void test_do_while_stmt_creation() {
 void test_for_stmt_creation() {
     AstForInit init = make_for_init_exp(NULL);
     AstStatement* s = make_for_stmt(
-        init, create_int_exp(1), create_int_exp(2),
+        init, some_exp(create_int_exp(1)), some_exp(create_int_exp(2)),
         make_exp_stmt(create_int_exp(3)));
     assert(s->kind == STMT_FOR);
     assert(s->as.for_loop.label == NULL);
-    assert(s->as.for_loop.cond->as.int_lit.value == 1);
-    assert(s->as.for_loop.post->as.int_lit.value == 2);
+    assert(s->as.for_loop.cond.present);
+    assert(s->as.for_loop.cond.exp->as.int_lit.value == 1);
+    assert(s->as.for_loop.post.present);
+    assert(s->as.for_loop.post.exp->as.int_lit.value == 2);
     assert(s->as.for_loop.body->kind == STMT_EXP);
     destroy_stmt(s);
     printf("  PASS: test_for_stmt_creation\n");
 }
 
-// make_for_stmt with NULL cond and post (infinite loop shape).
+// make_for_stmt with absent cond and post (infinite loop shape).
 void test_for_stmt_nullable_fields() {
     AstForInit init = make_for_init_exp(NULL);
     AstStatement* s = make_for_stmt(
-        init, NULL, NULL,
+        init, no_exp(), no_exp(),
         make_exp_stmt(create_int_exp(0)));
     assert(s->kind == STMT_FOR);
-    assert(s->as.for_loop.cond == NULL);
-    assert(s->as.for_loop.post == NULL);
+    assert(!s->as.for_loop.cond.present);
+    assert(!s->as.for_loop.post.present);
     destroy_stmt(s);
     printf("  PASS: test_for_stmt_nullable_fields\n");
 }
@@ -241,7 +244,7 @@ void test_loop_with_break_continue() {
 void test_nested_loops() {
     AstForInit init = make_for_init_exp(NULL);
     AstStatement* inner = make_for_stmt(
-        init, create_int_exp(1), NULL,
+        init, some_exp(create_int_exp(1)), no_exp(),
         make_exp_stmt(create_int_exp(0)));
 
     AstBlock outer_body = ast_block_make(1);
@@ -257,7 +260,7 @@ void test_nested_loops() {
     assert(outer->kind == STMT_WHILE);
     AstStatement* nested = outer->as.while_loop.body->as.compound.items[0].as.stmt;
     assert(nested->kind == STMT_FOR);
-    assert(nested->as.for_loop.cond->as.int_lit.value == 1);
+    assert(nested->as.for_loop.cond.exp->as.int_lit.value == 1);
     destroy_stmt(outer);
     printf("  PASS: test_nested_loops\n");
 }
