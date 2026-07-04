@@ -262,8 +262,8 @@ static char* loop_label(const char* base, const char* suffix) {
 // A declaration with an initializer lowers to a copy of the initializer into a
 // variable named after the declared identifier; a bare declaration emits nothing.
 static void emit_ir_declaration(IrFunction* ir_function, const AstDeclaration* decl) {
-	if (decl->exp == NULL) return;
-	IrVal result = emit_ir_expression(decl->exp, ir_function);
+	if (!decl->init.present) return;
+	IrVal result = emit_ir_expression(decl->init.exp, ir_function);
 	append_ir_instruction(ir_function, ir_copy(result, ir_variable(strdup(decl->identifier))));
 }
 
@@ -308,13 +308,13 @@ static void emit_ir_statement(IrFunction* ir_function, const AstStatement* stmt)
 				case AST_INIT_EXP:	if (loop->init.as.exp) emit_ir_expression(loop->init.as.exp, ir_function); break;
 			}
 			append_ir_instruction(ir_function, ir_label(start));
-			if (loop->cond != NULL) {
-				IrVal cond = emit_ir_expression(loop->cond, ir_function);
+			if (loop->cond.present) {
+				IrVal cond = emit_ir_expression(loop->cond.exp, ir_function);
 				append_ir_instruction(ir_function, ir_jump_zero(cond, brk));
 			}
 			emit_ir_statement(ir_function, loop->body);
 			append_ir_instruction(ir_function, ir_label(cont));
-			if (loop->post != NULL) emit_ir_expression(loop->post, ir_function);
+			if (loop->post.present) emit_ir_expression(loop->post.exp, ir_function);
 			append_ir_instruction(ir_function, ir_jump(start));
 			append_ir_instruction(ir_function, ir_label(brk));
 			return;

@@ -740,8 +740,10 @@ void test_parse_for_loop() {
     AstStatement* stmt = prog.functions[0].body.items[0].as.stmt;
     assert(stmt->kind == STMT_FOR);
     assert(stmt->as.for_loop.label == NULL);
-    assert(stmt->as.for_loop.cond->as.int_lit.value == 1);
-    assert(stmt->as.for_loop.post->as.int_lit.value == 2);
+    assert(stmt->as.for_loop.cond.present);
+    assert(stmt->as.for_loop.cond.exp->as.int_lit.value == 1);
+    assert(stmt->as.for_loop.post.present);
+    assert(stmt->as.for_loop.post.exp->as.int_lit.value == 2);
     assert(stmt->as.for_loop.body->kind == STMT_EXP);
 
     destroy_program(&prog);
@@ -862,7 +864,7 @@ void test_resolve_labels_while_continue() {
 void test_resolve_labels_nested_loops() {
     // inner: for (0; 1; 2) break;
     AstForInit init = make_for_init_exp(NULL);
-    AstStatement* inner = make_for_stmt(init, NULL, NULL, make_break_stmt(NULL));
+    AstStatement* inner = make_for_stmt(init, no_exp(), no_exp(), make_break_stmt(NULL));
 
     // outer body: { inner_loop; continue; }
     AstBlock outer_body = ast_block_make(2);

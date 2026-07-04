@@ -21,10 +21,11 @@
 // AST builders
 // ---------------------------------------------------------------------------
 
-static AstBlockItem decl_item(const char* name, AstExp* init) {
+static AstBlockItem decl_item(const char* name, AstExp* initializer) {
+    OptionalExp opt = initializer ? some_exp(initializer) : no_exp();
     return (AstBlockItem){
         .type = AST_DECLARATION,
-        .as.decl = { .identifier = strdup(name), .exp = init },
+        .as.decl = { .identifier = strdup(name), .init = opt },
     };
 }
 
@@ -206,7 +207,7 @@ void test_resolve_initializer_reference() {
 
     assert(strcmp(decl_name(&prog, 0), "a.0") == 0);
     assert(strcmp(decl_name(&prog, 1), "b.1") == 0);
-    AstExp* init = item(&prog, 1)->as.decl.exp;
+    AstExp* init = item(&prog, 1)->as.decl.init.exp;
     assert(init->kind == EXP_VAR);
     assert(strcmp(init->as.variable.identifier, "a.0") == 0);
 
