@@ -131,13 +131,21 @@ static void emit_instr(x86_Instr* instr, FILE* out) {
     }
 }
 
+// Mach-O prefixes C symbols with an underscore; ELF (Linux) does not. Emit the
+// prefix only on Apple so the linker finds `main` on either platform.
+#ifdef __APPLE__
+#define SYMBOL_PREFIX "_"
+#else
+#define SYMBOL_PREFIX ""
+#endif
+
 void emit_asm(x86_Program* prog, FILE* out) {
     for (int i = 0; i < prog->num_functions; i++) {
         x86_Function* fn = &prog->functions[i];
         if (strcmp(fn->name, "main") == 0) {
-            fprintf(out, ".global _%s\n", fn->name);
+            fprintf(out, ".global " SYMBOL_PREFIX "%s\n", fn->name);
         }
-        fprintf(out, "_%s:\n", fn->name);
+        fprintf(out, SYMBOL_PREFIX "%s:\n", fn->name);
         fprintf(out, "    pushq %%rbp\n");
         fprintf(out, "    movq %%rsp, %%rbp\n");
         for (x86_Instr* instr = fn->instrs.head; instr; instr = instr->next) {

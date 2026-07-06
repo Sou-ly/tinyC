@@ -186,6 +186,13 @@ AstStatement* make_goto_stmt(char* target) {
 	return alloc_stmt((AstStatement){ .kind = STMT_GOTO, .as.goto_stmt = { .target = target } });
 }
 
+// cond and the clauses array are heap-owned (the parser builds them). label is
+// left NULL for the labelling pass to fill in (base for break/clause labels).
+AstStatement* make_switch_stmt(AstExp* cond, AstSwitchClause* clauses, size_t num_clauses) {
+	return alloc_stmt((AstStatement){ .kind = STMT_SWITCH, .as.switch_stmt = {
+		.label = NULL, .cond = cond, .clauses = clauses, .num_clauses = num_clauses } });
+}
+
 // Frees the statement and everything it owns, including the node itself.
 // Nested statements are heap-owned pointers, so destroy_stmt recurses into
 // them directly (no separate free at the call site). NULL-safe.
@@ -245,6 +252,14 @@ void destroy_stmt(AstStatement* stmt) {
             break;
         case STMT_GOTO:
             free(stmt->as.goto_stmt.target);
+            break;
+        case STMT_SWITCH:
+            free(stmt->as.switch_stmt.label);
+            destroy_exp(stmt->as.switch_stmt.cond);
+            for (size_t i = 0; i < stmt->as.switch_stmt.num_clauses; i++) {
+                ast_block_destroy(&stmt->as.switch_stmt.clauses[i].body);
+            }
+            free(stmt->as.switch_stmt.clauses);
             break;
     }
     free(stmt);

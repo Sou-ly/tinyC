@@ -107,8 +107,12 @@ static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
                 case IR_GREATER:
                 case IR_LEQ:
                 case IR_GEQ:
-                    x86_instr_list_append(list, x86_cmp_instr(lhs, rhs));
-                    x86_instr_list_append(list, x86_mov(dst, x86_operand_imm(0))); 
+                    // emit renders x86_Cmp{a, b} as `cmpl a, b`, and AT&T cmp sets
+                    // flags for (second - first) = (b - a). We want flags for
+                    // (lhs - rhs) so the condition codes read naturally (setl ==
+                    // lhs < rhs), so build the operands as (rhs, lhs).
+                    x86_instr_list_append(list, x86_cmp_instr(rhs, lhs));
+                    x86_instr_list_append(list, x86_mov(dst, x86_operand_imm(0)));
                     x86_instr_list_append(list, x86_setcc_instr(codegen_cond(ir_instr->as.binop.op), dst));
                     return;
 				default:  {

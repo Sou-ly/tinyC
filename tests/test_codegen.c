@@ -8,6 +8,14 @@
 #include "../src/parser/ast.h"
 #include "../src/ir/ir.h"
 
+// emit_asm prefixes C symbols with '_' only on Mach-O (Apple); ELF has no
+// prefix. Mirror that here so the assertions match on either platform.
+#ifdef __APPLE__
+#define MAIN_SYMBOL "_main"
+#else
+#define MAIN_SYMBOL "main"
+#endif
+
 // --- asm_ast unit tests ---
 
 void test_create_x86_function() {
@@ -139,8 +147,8 @@ void test_emit_return_2() {
     emit_asm(&asm_prog, out);
     fclose(out);
 
-    assert(strstr(buf, ".global _main") != NULL);
-    assert(strstr(buf, "_main:") != NULL);
+    assert(strstr(buf, ".global " MAIN_SYMBOL) != NULL);
+    assert(strstr(buf, MAIN_SYMBOL ":") != NULL);
     assert(strstr(buf, "ret") != NULL);
 
     free(buf);
@@ -242,8 +250,8 @@ void test_emit_return_complement_neg2() {
     emit_asm(&asm_prog, out);
     fclose(out);
 
-    assert(strstr(buf, ".global _main") != NULL);
-    assert(strstr(buf, "_main:") != NULL);
+    assert(strstr(buf, ".global " MAIN_SYMBOL) != NULL);
+    assert(strstr(buf, MAIN_SYMBOL ":") != NULL);
     assert(strstr(buf, "negl") != NULL);
     assert(strstr(buf, "notl") != NULL);
     assert(strstr(buf, "movl") != NULL);
@@ -659,10 +667,11 @@ void test_x86_new_instr_constructors() {
 // --- relational operator codegen ---
 
 // Each relational binop lowers to:
-//   cmp  lhs, rhs
+//   cmp  rhs, lhs     (operands swapped so AT&T `cmpl rhs, lhs` sets flags for
+//                      lhs - rhs; see codegen.c)
 //   mov  dst, $0      (zero the result; movl does not touch flags)
 //   setCC dst         (set the low byte from the compare flags)
-// Only the condition code differs, so drive them from a table.
+// The condition code is the natural one for the source operator.
 void test_codegen_relational_ops() {
     struct { AstBinopType ast_op; x86_ConditionCode cond; } cases[] = {
         { BINOP_EQ,      x86_E  },
@@ -681,10 +690,10 @@ void test_codegen_relational_ops() {
 
         x86_Instr* i = asm_prog.functions[0].instrs.head;
 
-        // cmp $4, $5
+        // cmp $5, $4  (operands swapped: source lhs=4 becomes the cmp rhs)
         assert(i != NULL && i->kind == x86_CMP);
-        assert(i->as.cmp.lhs.kind == x86_IMM && i->as.cmp.lhs.as.imm == 4);
-        assert(i->as.cmp.rhs.kind == x86_IMM && i->as.cmp.rhs.as.imm == 5);
+        assert(i->as.cmp.lhs.kind == x86_IMM && i->as.cmp.lhs.as.imm == 5);
+        assert(i->as.cmp.rhs.kind == x86_IMM && i->as.cmp.rhs.as.imm == 4);
         i = i->next;
 
         // mov dst, $0
