@@ -259,6 +259,16 @@ static char* loop_label(const char* base, const char* suffix) {
 	return name;
 }
 
+// A switch's i-th clause gets label "<base>_clause_<i>". Each call allocates a
+// fresh string so the label instruction and the jumps targeting it own separate
+// copies (matching how loop_label is used).
+static char* switch_clause_label(const char* base, size_t index) {
+	int len = snprintf(NULL, 0, "%s_clause_%zu", base, index);
+	char* name = malloc(len + 1);
+	snprintf(name, len + 1, "%s_clause_%zu", base, index);
+	return name;
+}
+
 // A declaration with an initializer lowers to a copy of the initializer into a
 // variable named after the declared identifier; a bare declaration emits nothing.
 static void emit_ir_declaration(IrFunction* ir_function, const AstDeclaration* decl) {
@@ -352,6 +362,34 @@ static void emit_ir_statement(IrFunction* ir_function, const AstStatement* stmt)
 		case STMT_CONTINUE:
 			append_ir_instruction(ir_function, ir_jump(loop_label(stmt->as.continue_stmt.label, "continue")));
 			return;
+		case STMT_SWITCH: {
+			// Dispatch: for each `case N`, compare cond == N and jump to that
+			// clause's label; then jump to `default` (or past the switch if none).
+			// Clause bodies are emitted contiguously in source order with no jumps
+			// between them, so control falls through from one into the next -- a
+			// `break` inside a body jumps to <base>_break, matching STMT_BREAK.
+			const AstStmtSwitch* sw = &stmt->as.switch_stmt;
+			IrVal cond = emit_ir_expression(sw->cond, ir_function);
+			size_t default_index = sw->num_clauses; // sentinel: no default
+			for (size_t i = 0; i < sw->num_clauses; i++) {
+				if (sw->clauses[i].is_default) { default_index = i; continue; }
+				IrVal matched = new_temp();
+				append_ir_instruction(ir_function,
+					ir_binop(IR_EQ, cond, ir_constant(sw->clauses[i].value), matched));
+				append_ir_instruction(ir_function,
+					ir_jump_not_zero(matched, switch_clause_label(sw->label, i)));
+			}
+			if (default_index != sw->num_clauses)
+				append_ir_instruction(ir_function, ir_jump(switch_clause_label(sw->label, default_index)));
+			else
+				append_ir_instruction(ir_function, ir_jump(loop_label(sw->label, "break")));
+			for (size_t i = 0; i < sw->num_clauses; i++) {
+				append_ir_instruction(ir_function, ir_label(switch_clause_label(sw->label, i)));
+				emit_ir_block(ir_function, sw->clauses[i].body);
+			}
+			append_ir_instruction(ir_function, ir_label(loop_label(sw->label, "break")));
+			return;
+		}
 		case STMT_LABEL:
 			append_ir_instruction(ir_function, ir_label(strdup(stmt->as.label.identifier)));
 			return;

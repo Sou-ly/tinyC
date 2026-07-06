@@ -42,6 +42,12 @@ test: build_tests
 	@./tests/test_scoping
 	@echo "test_str skipped: str_split not yet implemented"
 
+# End-to-end: compile each tests/e2e/cases/*.c with tinyc, link, run, and check
+# the exit code against its .expect file (cross-checked against cc).
+test-e2e: $(TARGET)
+	@echo "Running e2e tests..."
+	@bash tests/e2e/run_e2e.sh $(abspath $(TARGET))
+
 build_tests: tests/test_list tests/test_token tests/test_parser tests/test_codegen tests/test_ir tests/test_ast tests/test_scoping
 
 tests/test_list: tests/test_list.c $(BUILD_DIR)/common/string_list.o $(BUILD_DIR)/lexer/token_list.o $(BUILD_DIR)/lexer/token.o
@@ -75,5 +81,7 @@ clean:
 	find . -name "*.o" -delete
 	rm -f $(TARGET) $(TEST_TARGETS)
 	find . -name "*.dSYM" -type d -exec rm -rf {} +
+	@# stray e2e artifacts (the runner cleans up, but guard against interrupted runs)
+	find tests/e2e/cases -type f ! -name '*.c' ! -name '*.expect' -delete 2>/dev/null || true
 
-.PHONY: all test clean
+.PHONY: all test test-e2e clean

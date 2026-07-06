@@ -184,6 +184,28 @@ static void expect_separator(Parser* p, TokenSeparator sep) {
 
 static AstExp* parse_expression(Parser* p, int min_prec);
 static AstDeclaration parse_declaration(Parser* p);
+static AstBlockItem parse_block_item(Parser* p);
+static AstBlock parse_block(Parser* p);
+
+// True when the cursor sits on a token that ends a switch clause body: the next
+// `case`/`default` label, or the closing `}` of the switch.
+static bool at_switch_clause_end(Parser* p) {
+	if (at_end(p)) return true;
+	Token* tok = current(p);
+	if (tok->kind == TOK_SEPARATOR && tok->sep == TOK_RBRACE) return true;
+	if (tok->kind == TOK_KEYWORD && (tok->kw == TOK_CASE || tok->kw == TOK_DEFAULT)) return true;
+	return false;
+}
+
+// Parses the block items that make up one case/default clause body: everything
+// up to the next label or the switch's closing brace. No braces of its own.
+static AstBlock parse_switch_clause_body(Parser* p) {
+	AstBlock block = ast_block_make(8);
+	while (!at_switch_clause_end(p)) {
+		ast_block_append(&block, parse_block_item(p));
+	}
+	return block;
+}
 
 // factor ::= int | ("!" | "-") factor | "(" exp ")"  | ++id | --id | id++ | id--
 static AstExp* parse_factor(Parser* p) {
@@ -288,6 +310,12 @@ static AstStatement* parse_statement(Parser* p) {
         return make_label_stmt(identifier);
     }
 
+    // compound statement: a `{ ... }` block used where a statement is expected
+    // (e.g. a loop/if body with several statements). parse_block owns the braces.
+    if (current(p)->kind == TOK_SEPARATOR && current(p)->sep == TOK_LBRACE) {
+        return make_compound_stmt(parse_block(p));
+    }
+
     if (current(p)->kind != TOK_KEYWORD) {
 		AstExp* exp = parse_expression(p, 0);
     	expect_separator(p, TOK_SEMICOLON);
@@ -376,6 +404,56 @@ static AstStatement* parse_statement(Parser* p) {
 			advance(p); // consume target
 			expect_separator(p, TOK_SEMICOLON);
 			return make_goto_stmt(target);
+		}
+		case TOK_SWITCH: {
+			advance(p); // consume 'switch'
+			expect_separator(p, TOK_LPAR);
+			AstExp* cond = parse_expression(p, 0);
+			expect_separator(p, TOK_RPAR);
+			expect_separator(p, TOK_LBRACE);
+
+			// Clauses are kept in source order so codegen can lay their bodies
+			// out contiguously (C fallthrough) and place `default` wherever it
+			// appears. A second `default` is a parse error.
+			AstSwitchClause* clauses = NULL;
+			size_t num_clauses = 0, cap_clauses = 0;
+			bool have_default = false;
+
+			while (!at_end(p) && !(current(p)->kind == TOK_SEPARATOR && current(p)->sep == TOK_RBRACE)) {
+				AstSwitchClause clause = { .is_default = false, .value = 0 };
+				if (current(p)->kind == TOK_KEYWORD && current(p)->kw == TOK_CASE) {
+					advance(p); // consume 'case'
+					if (current(p)->kind != TOK_INT_LITERAL) {
+						fprintf(stderr, "parse error at %zu:%zu: expected integer literal after 'case'\n",
+								current(p)->line, current(p)->col);
+						exit(1);
+					}
+					clause.value = current(p)->int_val;
+					advance(p); // consume the literal
+				} else if (current(p)->kind == TOK_KEYWORD && current(p)->kw == TOK_DEFAULT) {
+					advance(p); // consume 'default'
+					if (have_default) {
+						fprintf(stderr, "parse error at %zu:%zu: multiple 'default' labels in one switch\n",
+								current(p)->line, current(p)->col);
+						exit(1);
+					}
+					clause.is_default = true;
+					have_default = true;
+				} else {
+					fprintf(stderr, "parse error at %zu:%zu: expected 'case', 'default', or '}' in switch body\n",
+							current(p)->line, current(p)->col);
+					exit(1);
+				}
+				expect_separator(p, TOK_COLON);
+				clause.body = parse_switch_clause_body(p);
+				if (num_clauses == cap_clauses) {
+					cap_clauses = cap_clauses ? cap_clauses * 2 : 4;
+					clauses = realloc(clauses, cap_clauses * sizeof(AstSwitchClause));
+				}
+				clauses[num_clauses++] = clause;
+			}
+			expect_separator(p, TOK_RBRACE);
+			return make_switch_stmt(cond, clauses, num_clauses);
 		}
 		default:
 			break;
@@ -658,6 +736,17 @@ static void resolve_statement(AstStatement* stmt, VarMap* map) {
 			varmap_destroy(&new_map);
 			break;
 		}
+		case STMT_SWITCH: {
+			stmt->as.switch_stmt.cond = resolve_expression(stmt->as.switch_stmt.cond, map);
+			// The whole switch body is one block scope in C, so a declaration in
+			// one clause is visible in later clauses -- resolve every clause body
+			// against a single shared copy of the enclosing scope.
+			VarMap new_map = varmap_copy(*map);
+			for (size_t i = 0; i < stmt->as.switch_stmt.num_clauses; i++)
+				resolve_block(&stmt->as.switch_stmt.clauses[i].body, &new_map);
+			varmap_destroy(&new_map);
+			break;
+		}
 		case STMT_BREAK:
 		case STMT_CONTINUE:
 		case STMT_LABEL:
@@ -706,60 +795,73 @@ static char* generate_label(void) {
 	return name;
 }
 
-static void label_block(AstBlock* block, char* current_label);
+static void label_block(AstBlock* block, char* break_label, char* continue_label);
 
-static void label_statement(AstStatement* statement, char* current_label) {
+// break and continue have distinct targets: a loop is the target of both, but a
+// switch is a target for break only -- `continue` inside a switch still refers
+// to the enclosing loop. So the two labels are threaded separately, and a switch
+// overrides break_label while leaving continue_label untouched. NULL means "no
+// enclosing target", which makes a stray break/continue an error.
+static void label_statement(AstStatement* statement, char* break_label, char* continue_label) {
 	switch (statement->kind) {
 		case STMT_FOR: {
 			char* label = generate_label();
 			statement->as.for_loop.label = label;
-			label_statement(statement->as.for_loop.body, label);
+			label_statement(statement->as.for_loop.body, label, label);
 			break;
 		}
 		case STMT_WHILE: {
 			char* label = generate_label();
 			statement->as.while_loop.label = label;
-			label_statement(statement->as.while_loop.body, label);
+			label_statement(statement->as.while_loop.body, label, label);
 			break;
 		}
 		case STMT_DO_WHILE: {
 			char* label = generate_label();
 			statement->as.do_while_loop.label = label;
-			label_statement(statement->as.do_while_loop.body, label);
+			label_statement(statement->as.do_while_loop.body, label, label);
+			break;
+		}
+		case STMT_SWITCH: {
+			char* label = generate_label();
+			statement->as.switch_stmt.label = label;
+			// break exits the switch; continue passes through to the enclosing loop.
+			for (size_t i = 0; i < statement->as.switch_stmt.num_clauses; i++)
+				label_block(&statement->as.switch_stmt.clauses[i].body, label, continue_label);
 			break;
 		}
 		case STMT_BREAK:
-			if (current_label == NULL) {
-				fprintf(stderr, "break statement outside of loop\n");
+			if (break_label == NULL) {
+				fprintf(stderr, "break statement outside of loop or switch\n");
 				exit(1);
 			}
-			statement->as.break_stmt.label = strdup(current_label);
+			statement->as.break_stmt.label = strdup(break_label);
 			break;
 		case STMT_CONTINUE:
-			if (current_label == NULL) {
+			if (continue_label == NULL) {
 				fprintf(stderr, "continue statement outside of loop\n");
 				exit(1);
 			}
-			statement->as.continue_stmt.label = strdup(current_label);
+			statement->as.continue_stmt.label = strdup(continue_label);
 			break;
 		case STMT_IF:
-			label_statement(statement->as.if_cond.then_br, current_label);
+			label_statement(statement->as.if_cond.then_br, break_label, continue_label);
 			if (statement->as.if_cond.else_br != NULL)
-				label_statement(statement->as.if_cond.else_br, current_label);
+				label_statement(statement->as.if_cond.else_br, break_label, continue_label);
 			break;
 		case STMT_COMPOUND:
-			label_block(&statement->as.compound, current_label);
+			label_block(&statement->as.compound, break_label, continue_label);
 			break;
 		default:
 			break;
 	}
 }
 
-static void label_block(AstBlock* block, char* current_label) {
+static void label_block(AstBlock* block, char* break_label, char* continue_label) {
 	for (size_t i = 0; i < block->size; i++) {
 		AstBlockItem* item = &block->items[i];
 		if (item->type == AST_STATEMENT) {
-			label_statement(item->as.stmt, current_label);
+			label_statement(item->as.stmt, break_label, continue_label);
 		}
 	}
 }
@@ -767,7 +869,7 @@ static void label_block(AstBlock* block, char* current_label) {
 void resolve_labels(AstProgram* program) {
 	LABEL_COUNTER = 0;
 	for (int i = 0; i < program->num_functions; i++) {
-		label_block(&program->functions[i].body, NULL);
+		label_block(&program->functions[i].body, NULL, NULL);
 	}
 }
 
@@ -829,6 +931,10 @@ static void collect_labels_statement(AstStatement* stmt, VarMap* labels) {
 		case STMT_DO_WHILE:
 			collect_labels_statement(stmt->as.do_while_loop.body, labels);
 			break;
+		case STMT_SWITCH:
+			for (size_t i = 0; i < stmt->as.switch_stmt.num_clauses; i++)
+				collect_labels_block(&stmt->as.switch_stmt.clauses[i].body, labels);
+			break;
 		case STMT_RETURN:
 		case STMT_EXP:
 		case STMT_BREAK:
@@ -885,6 +991,10 @@ static void rewrite_gotos_statement(AstStatement* stmt, VarMap* labels) {
 			break;
 		case STMT_DO_WHILE:
 			rewrite_gotos_statement(stmt->as.do_while_loop.body, labels);
+			break;
+		case STMT_SWITCH:
+			for (size_t i = 0; i < stmt->as.switch_stmt.num_clauses; i++)
+				rewrite_gotos_block(&stmt->as.switch_stmt.clauses[i].body, labels);
 			break;
 		case STMT_RETURN:
 		case STMT_EXP:

@@ -1014,6 +1014,116 @@ void test_parse_label_and_goto() {
     printf("  PASS: test_parse_label_and_goto\n");
 }
 
+// Runs parse_src in a forked child (stderr silenced) and asserts it exits
+// non-zero -- i.e. the parser rejected the program. Parse errors call exit(1),
+// so this must fork like the goto-error checks do.
+static void expect_parse_error(const char* description, const char* src) {
+    fflush(stdout);
+    pid_t pid = fork();
+    assert(pid >= 0);
+    if (pid == 0) {
+        freopen("/dev/null", "w", stderr);
+        AstProgram prog = parse_src(src);  // expected to exit(1) before returning
+        destroy_program(&prog);
+        _exit(0);                          // reached only if it wrongly succeeded
+    }
+    int status = 0;
+    assert(waitpid(pid, &status, 0) == pid);
+    if (!(WIFEXITED(status) && WEXITSTATUS(status) != 0)) {
+        printf("  FAIL: %s (expected parse error, none occurred)\n", description);
+        exit(1);
+    }
+    printf("  PASS: %s\n", description);
+}
+
+// --- switch parsing tests ---
+//
+// A switch parses to an ordered list of clauses (case/default) each owning the
+// block-items after its colon. Order is preserved and default may sit anywhere.
+
+// Two cases and a default, in source order: three clauses, values recorded, the
+// third flagged default, and each body holds the statements up to the next label.
+void test_parse_switch_basic() {
+    AstProgram prog = parse_src(
+        "int main() { switch (x) { case 1: y = 1; case 2: y = 2; y = 3; default: y = 9; } }");
+    AstStatement* s = nth_stmt(&prog, 0);
+    assert(s->kind == STMT_SWITCH);
+    assert(s->as.switch_stmt.cond->kind == EXP_VAR);
+    assert(s->as.switch_stmt.num_clauses == 3);
+
+    AstSwitchClause* c = s->as.switch_stmt.clauses;
+    assert(!c[0].is_default && c[0].value == 1 && c[0].body.size == 1);
+    assert(!c[1].is_default && c[1].value == 2 && c[1].body.size == 2); // two stmts
+    assert(c[2].is_default && c[2].body.size == 1);
+
+    destroy_program(&prog);
+    printf("  PASS: test_parse_switch_basic\n");
+}
+
+// An empty switch body: zero clauses, NULL clause array.
+void test_parse_switch_empty() {
+    AstProgram prog = parse_src("int main() { switch (x) { } }");
+    AstStatement* s = nth_stmt(&prog, 0);
+    assert(s->kind == STMT_SWITCH);
+    assert(s->as.switch_stmt.num_clauses == 0);
+    assert(s->as.switch_stmt.clauses == NULL);
+    destroy_program(&prog);
+    printf("  PASS: test_parse_switch_empty\n");
+}
+
+// default need not be last; its source position is preserved among the clauses.
+void test_parse_switch_default_in_middle() {
+    AstProgram prog = parse_src(
+        "int main() { switch (x) { case 1: y = 1; default: y = 9; case 2: y = 2; } }");
+    AstStatement* s = nth_stmt(&prog, 0);
+    assert(s->as.switch_stmt.num_clauses == 3);
+    AstSwitchClause* c = s->as.switch_stmt.clauses;
+    assert(!c[0].is_default && c[0].value == 1);
+    assert(c[1].is_default);                       // default sits in the middle
+    assert(!c[2].is_default && c[2].value == 2);
+    destroy_program(&prog);
+    printf("  PASS: test_parse_switch_default_in_middle\n");
+}
+
+// The labelling pass gives the switch a label and points a nested break at it
+// (its "_break" target), while a nested continue still refers to the enclosing
+// loop -- so a switch inside a while gets two different labels.
+void test_resolve_labels_switch_break() {
+    AstProgram prog = parse_src(
+        "int main() { while (1) { switch (x) { case 1: break; default: continue; } } }");
+    resolve_labels(&prog);
+
+    AstStatement* loop = nth_stmt(&prog, 0);
+    assert(loop->kind == STMT_WHILE);
+    char* loop_label = loop->as.while_loop.label;
+
+    // while body is a compound { switch ... }
+    AstStatement* sw = loop->as.while_loop.body->as.compound.items[0].as.stmt;
+    assert(sw->kind == STMT_SWITCH);
+    char* switch_label = sw->as.switch_stmt.label;
+    assert(switch_label != NULL);
+    assert(strcmp(switch_label, loop_label) != 0);   // distinct labels
+
+    // break -> switch label; continue -> enclosing loop label
+    AstSwitchClause* c = sw->as.switch_stmt.clauses;
+    AstStatement* brk = c[0].body.items[0].as.stmt;
+    AstStatement* cont = c[1].body.items[0].as.stmt;
+    assert(brk->kind == STMT_BREAK && strcmp(brk->as.break_stmt.label, switch_label) == 0);
+    assert(cont->kind == STMT_CONTINUE && strcmp(cont->as.continue_stmt.label, loop_label) == 0);
+
+    destroy_program(&prog);
+    printf("  PASS: test_resolve_labels_switch_break\n");
+}
+
+// Malformed switches are rejected by the parser (checked in a forked child, as
+// parse errors call exit(1)).
+void test_parse_switch_errors() {
+    expect_parse_error("case without colon",   "int main() { switch (x) { case 1 y = 1; } }");
+    expect_parse_error("non-integer case",      "int main() { switch (x) { case y: y = 1; } }");
+    expect_parse_error("two defaults",          "int main() { switch (x) { default: ; default: ; } }");
+    expect_parse_error("stray token in body",   "int main() { switch (x) { y = 1; } }");
+}
+
 // --- goto / label resolution tests ---
 //
 // resolve_goto_labels renames each source label to a program-unique name and
@@ -1149,6 +1259,12 @@ int main(void) {
     test_parse_goto();
     test_parse_assignment_not_label();
     test_parse_label_and_goto();
+    printf("Running switch parsing tests...\n");
+    test_parse_switch_basic();
+    test_parse_switch_empty();
+    test_parse_switch_default_in_middle();
+    test_resolve_labels_switch_break();
+    test_parse_switch_errors();
     printf("Running goto/label resolution tests...\n");
     test_resolve_goto_label_basic();
     test_resolve_goto_forward_reference();
