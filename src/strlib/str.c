@@ -1,5 +1,4 @@
 #include "str.h"
-#include "../common/string_list.h"
 
 static size_t cstr_len(const char *s) {
 	size_t len = 0;
@@ -129,7 +128,7 @@ size_t str_split(str s, const char *delimiters, StringList *out) {
 
 		// copy token
 		str token = str_from_len(s.data + start, i - start);
-		string_list_push(out, token.data);
+		list_push(out, token.data);
 		count++;
 	}
 

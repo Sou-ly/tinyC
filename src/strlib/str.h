@@ -2,11 +2,15 @@
 
 #include <stdlib.h>
 #include <stdbool.h>
+#include "../common/list.h"
 
 typedef struct {
 	char *data;
 	size_t len;
 } str;
+
+// Does not own its strings — free with list_free (callers own the elements).
+typedef LIST_OF(char *) StringList;
 
 // create / destroy
 str str_from(const char *cstr);

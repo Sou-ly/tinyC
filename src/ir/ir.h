@@ -13,7 +13,7 @@ typedef enum IrValKind {
 typedef struct IrVal {
     IrValKind kind;
     union {
-        char* name;
+        char* identifier;
         int int_val;
     } as;
 } IrVal;
@@ -45,7 +45,7 @@ typedef enum IrBinopType {
 	IR_GEQ
 } IrBinopType;
 
-typedef enum IrInstructionType {
+typedef enum IrInstructionKind {
     IR_RETURN,
     IR_UNOP,
 	IR_BINOP,
@@ -54,7 +54,7 @@ typedef enum IrInstructionType {
 	IR_JUMP_ZERO,
 	IR_JUMP_NOT_ZERO,
 	IR_LABEL
-} IrInstructionType;
+} IrInstructionKind;
 
 typedef struct { IrVal val; }								IrRet;
 typedef struct { IrUnopType op; IrVal src; IrVal dst; }		IrUnary;
@@ -67,7 +67,7 @@ typedef struct { IrVal cond; char* target; }				IrJumpNotZero;
 typedef struct { char* identifier; }						IrLabel;
 
 typedef struct {
-    IrInstructionType type;
+    IrInstructionKind kind;
     union {
         IrRet			ret;
         IrUnary			unary;
@@ -81,19 +81,15 @@ typedef struct {
 } IrInstruction;
 
 typedef struct {
-    char* name;
-    IrInstruction* instructions;
-	int size;
+    char* identifier;
+    LIST_OF(IrInstruction) instructions;
 } IrFunction;
 
-typedef struct {
-    IrFunction* functions;
-    int size;
-} IrProgram;
+typedef LIST_OF(IrFunction) IrProgram;
 
 // --- IR constructors ---
 //
-// Mirror the create_*/make_* helpers in the AST: build a value or instruction
+// Mirror the ast_exp_*/ast_stmt_* helpers in the AST: build a value or instruction
 // from its parts so call sites stay readable instead of hand-writing designated
 // initializers. String fields (variable names, labels, jump targets) are stored
 // by pointer, NOT copied — the caller transfers ownership of an already
@@ -101,17 +97,17 @@ typedef struct {
 // Storing the pointer as-is keeps a name's identity stable when it is shared
 // across several instructions (e.g. a label reused by the jumps targeting it).
 
-IrVal ir_constant(int value);
-IrVal ir_variable(char* name);
+IrVal ir_val_constant(int value);
+IrVal ir_val_variable(char* identifier);
 
-IrInstruction ir_return(IrVal val);
-IrInstruction ir_unary(IrUnopType op, IrVal src, IrVal dst);
-IrInstruction ir_binop(IrBinopType op, IrVal lhs, IrVal rhs, IrVal dst);
-IrInstruction ir_copy(IrVal src, IrVal dst);
-IrInstruction ir_jump(char* target);
-IrInstruction ir_jump_zero(IrVal cond, char* target);
-IrInstruction ir_jump_not_zero(IrVal cond, char* target);
-IrInstruction ir_label(char* identifier);
+IrInstruction ir_instr_return(IrVal val);
+IrInstruction ir_instr_unary(IrUnopType op, IrVal src, IrVal dst);
+IrInstruction ir_instr_binop(IrBinopType op, IrVal lhs, IrVal rhs, IrVal dst);
+IrInstruction ir_instr_copy(IrVal src, IrVal dst);
+IrInstruction ir_instr_jump(char* target);
+IrInstruction ir_instr_jump_zero(IrVal cond, char* target);
+IrInstruction ir_instr_jump_not_zero(IrVal cond, char* target);
+IrInstruction ir_instr_label(char* identifier);
 
 IrProgram emit_ir(const AstProgram* ast_program);
-void destroy_ir(IrProgram* program);
+void ir_program_destroy(IrProgram* program);

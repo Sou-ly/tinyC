@@ -3,14 +3,14 @@
 
 // --- Expressions ---
 
-AstExp* create_int_exp(int value) {
+AstExp* ast_exp_int(int value) {
     AstExp* e = malloc(sizeof(AstExp));
     e->kind = EXP_INT;
     e->as.int_lit.value = value;
     return e;
 }
 
-AstExp* create_unary_exp(AstUnopType op_type, AstExp* operand) {
+AstExp* ast_exp_unary(AstUnopType op_type, AstExp* operand) {
     AstExp* e = malloc(sizeof(AstExp));
     e->kind = EXP_UNOP;
     e->as.unary.op_type = op_type;
@@ -18,14 +18,14 @@ AstExp* create_unary_exp(AstUnopType op_type, AstExp* operand) {
     return e;
 }
 
-AstExp* create_variable_exp(const char* identifier) {
+AstExp* ast_exp_var(const char* identifier) {
     AstExp* e = malloc(sizeof(AstExp));
     e->kind = EXP_VAR;
     e->as.variable.identifier = strdup(identifier);
     return e;
 }
 
-AstExp* create_assign_exp(AstAssignOp op, AstExp* lhs, AstExp* rhs) {
+AstExp* ast_exp_assign(AstAssignOp op, AstExp* lhs, AstExp* rhs) {
     AstExp* e = malloc(sizeof(AstExp));
     e->kind = EXP_ASSIGN;
 	e->as.assign.op  = op;
@@ -34,7 +34,7 @@ AstExp* create_assign_exp(AstAssignOp op, AstExp* lhs, AstExp* rhs) {
     return e;
 }
 
-AstExp* create_binop_exp(AstBinopType op_type, AstExp* lhs, AstExp* rhs) {
+AstExp* ast_exp_binop(AstBinopType op_type, AstExp* lhs, AstExp* rhs) {
     AstExp* e = malloc(sizeof(AstExp));
     e->kind = EXP_BINOP;
     e->as.binop.op_type = op_type;
@@ -43,7 +43,7 @@ AstExp* create_binop_exp(AstBinopType op_type, AstExp* lhs, AstExp* rhs) {
     return e;
 }
 
-AstExp* create_conditional_exp(AstExp* lhs, AstExp* mid, AstExp* rhs) {
+AstExp* ast_exp_conditional(AstExp* lhs, AstExp* mid, AstExp* rhs) {
     AstExp* e = malloc(sizeof(AstExp));
     e->kind = EXP_CONDITIONAL;
     e->as.conditional.lhs = lhs;
@@ -52,34 +52,21 @@ AstExp* create_conditional_exp(AstExp* lhs, AstExp* mid, AstExp* rhs) {
     return e;
 }
 
-AstBlock ast_block_make(size_t capacity) {
-	AstBlock block;
-	block.size = 0;
-	block.capacity = capacity;
-	block.items = malloc(capacity * sizeof(AstBlockItem));
-	return block;
-}
-
 void ast_block_append(AstBlock* block, AstBlockItem block_item) {
-	if (block->size >= block->capacity) {
-		block->capacity *= 2;
-		block->items = realloc(block->items, block->capacity * sizeof(AstBlockItem));
-	}
-	block->items[block->size++] = block_item;
-	return;
+	list_push(block, block_item);
 }
 
 void ast_block_destroy(AstBlock* block) {
-	for (size_t i = 0; i < block->size; i++) {
+	for (size_t i = 0; i < block->count; i++) {
 		AstBlockItem* block_item = block->items+i;
-		switch (block_item->type) {
+		switch (block_item->kind) {
 			case AST_DECLARATION:
 				free(block_item->as.decl.identifier);
 				if (block_item->as.decl.init.present)
-					destroy_exp(block_item->as.decl.init.exp);
+					ast_exp_destroy(block_item->as.decl.init.value);
 				break;
 			case AST_STATEMENT:
-				destroy_stmt(block_item->as.stmt);
+				ast_stmt_destroy(block_item->as.stmt);
 				break;
 		}
 	}
@@ -87,159 +74,160 @@ void ast_block_destroy(AstBlock* block) {
 	return;
 }
 
-void destroy_exp(AstExp* exp) {
+void ast_exp_destroy(AstExp* exp) {
     if (!exp) return;
     switch (exp->kind) {
         case EXP_INT:
             break;
         case EXP_UNOP:
-            destroy_exp(exp->as.unary.operand);
+            ast_exp_destroy(exp->as.unary.operand);
             break;
         case EXP_BINOP:
-            destroy_exp(exp->as.binop.lhs);
-            destroy_exp(exp->as.binop.rhs);
+            ast_exp_destroy(exp->as.binop.lhs);
+            ast_exp_destroy(exp->as.binop.rhs);
             break;
 		case EXP_VAR:
 			free(exp->as.variable.identifier);
 			break;
 		case EXP_ASSIGN:
-			destroy_exp(exp->as.assign.lhs);
-			destroy_exp(exp->as.assign.rhs);
+			ast_exp_destroy(exp->as.assign.lhs);
+			ast_exp_destroy(exp->as.assign.rhs);
 			break;
 		case EXP_CONDITIONAL:
-			destroy_exp(exp->as.conditional.lhs);
-			destroy_exp(exp->as.conditional.mid);
-			destroy_exp(exp->as.conditional.rhs);
+			ast_exp_destroy(exp->as.conditional.lhs);
+			ast_exp_destroy(exp->as.conditional.mid);
+			ast_exp_destroy(exp->as.conditional.rhs);
     }
     free(exp);
 }
 
 // --- Statements ---
 
-// All make_*_stmt constructors heap-allocate the node and return an owning
-// pointer, mirroring create_*_exp. Nested statements (if branches, loop
+// All ast_stmt_* constructors heap-allocate the node and return an owning
+// pointer, mirroring ast_exp_*. Nested statements (if branches, loop
 // bodies) are likewise pointers, so the whole statement tree is uniform;
-// destroy_stmt frees a node and everything it owns, including itself.
+// ast_stmt_destroy frees a node and everything it owns, including itself.
 static AstStatement* alloc_stmt(AstStatement value) {
     AstStatement* stmt = malloc(sizeof(AstStatement));
     *stmt = value;
     return stmt;
 }
 
-AstStatement* make_return_stmt(AstExp* exp) {
+AstStatement* ast_stmt_return(AstExp* exp) {
     return alloc_stmt((AstStatement){ .kind = STMT_RETURN, .as.ret = { exp } });
 }
 
-AstStatement* make_exp_stmt(AstExp* exp) {
+AstStatement* ast_stmt_exp(AstExp* exp) {
     return alloc_stmt((AstStatement){ .kind = STMT_EXP, .as.exp_stmt = { exp } });
 }
 
 // then_br and else_br are heap-owned; else_br may be NULL (a plain `if`).
-AstStatement* make_if_stmt(AstExp* cond, AstStatement* then_br, AstStatement* else_br) {
+AstStatement* ast_stmt_if(AstExp* cond, AstStatement* then_br, AstStatement* else_br) {
     return alloc_stmt((AstStatement){ .kind = STMT_IF, .as.if_cond = { .cond = cond, .then_br = then_br, .else_br = else_br } });
 }
 
-AstStatement* make_compound_stmt(AstBlock block) {
+AstStatement* ast_stmt_compound(AstBlock block) {
 	return alloc_stmt((AstStatement) {.kind=STMT_COMPOUND, .as.compound=block});
 }
 
-AstForInit make_for_init_decl(AstDeclaration decl) {
-	return (AstForInit){ .init_type = AST_INIT_DECL, .as.decl = decl };
+AstForInit ast_for_init_decl(AstVarDecl decl) {
+	return (AstForInit){ .kind = AST_INIT_DECL, .as.decl = decl };
 }
 
-AstForInit make_for_init_exp(AstExp* exp) {
-	return (AstForInit){ .init_type = AST_INIT_EXP, .as.exp = exp };
+AstForInit ast_for_init_exp(AstExp* exp) {
+	return (AstForInit){ .kind = AST_INIT_EXP, .as.exp = exp };
 }
 
 // body is heap-owned. label is left NULL here and filled in by the loop-labelling pass.
-AstStatement* make_for_stmt(AstForInit init, OptionalExp cond, OptionalExp post, AstStatement* body) {
+AstStatement* ast_stmt_for(AstForInit init, OptionalExp cond, OptionalExp post, AstStatement* body) {
 	return alloc_stmt((AstStatement){ .kind = STMT_FOR, .as.for_loop = { .label = NULL, .init = init, .cond = cond, .post = post, .body = body } });
 }
 
 // body is heap-owned; label filled in later by the loop-labelling pass.
-AstStatement* make_while_stmt(AstExp* cond, AstStatement* body) {
+AstStatement* ast_stmt_while(AstExp* cond, AstStatement* body) {
 	return alloc_stmt((AstStatement){ .kind = STMT_WHILE, .as.while_loop = { .label = NULL, .cond = cond, .body = body } });
 }
 
 // body is heap-owned; label filled in later by the loop-labelling pass.
-AstStatement* make_do_while_stmt(AstExp* cond, AstStatement* body) {
+AstStatement* ast_stmt_do_while(AstExp* cond, AstStatement* body) {
 	return alloc_stmt((AstStatement){ .kind = STMT_DO_WHILE, .as.do_while_loop = { .label = NULL, .cond = cond, .body = body } });
 }
 
 // label is NULL until the loop-labelling pass fills it in; stored directly
-// (destroy_stmt frees it, and free(NULL) is a no-op).
-AstStatement* make_break_stmt(char* label) {
+// (ast_stmt_destroy frees it, and free(NULL) is a no-op).
+AstStatement* ast_stmt_break(char* label) {
 	return alloc_stmt((AstStatement){ .kind = STMT_BREAK, .as.break_stmt = { .label = label } });
 }
 
-AstStatement* make_continue_stmt(char* label) {
+AstStatement* ast_stmt_continue(char* label) {
 	return alloc_stmt((AstStatement){ .kind = STMT_CONTINUE, .as.continue_stmt = { .label = label } });
 }
 
 // identifier / target are heap-owned (the parser strdup's them), and freed by
-// destroy_stmt. A label names a point in the code; goto jumps to that name.
-AstStatement* make_label_stmt(char* identifier) {
+// ast_stmt_destroy. A label names a point in the code; goto jumps to that name.
+AstStatement* ast_stmt_label(char* identifier) {
 	return alloc_stmt((AstStatement){ .kind = STMT_LABEL, .as.label = { .identifier = identifier } });
 }
 
-AstStatement* make_goto_stmt(char* target) {
+AstStatement* ast_stmt_goto(char* target) {
 	return alloc_stmt((AstStatement){ .kind = STMT_GOTO, .as.goto_stmt = { .target = target } });
 }
 
-// cond and the clauses array are heap-owned (the parser builds them). label is
-// left NULL for the labelling pass to fill in (base for break/clause labels).
-AstStatement* make_switch_stmt(AstExp* cond, AstSwitchClause* clauses, size_t num_clauses) {
+// cond is heap-owned and the clauses list's storage is adopted (the parser
+// builds it). label is left NULL for the labelling pass to fill in (base for
+// break/clause labels).
+AstStatement* ast_stmt_switch(AstExp* cond, AstClauseList clauses) {
 	return alloc_stmt((AstStatement){ .kind = STMT_SWITCH, .as.switch_stmt = {
-		.label = NULL, .cond = cond, .clauses = clauses, .num_clauses = num_clauses } });
+		.label = NULL, .cond = cond, .clauses = clauses } });
 }
 
 // Frees the statement and everything it owns, including the node itself.
-// Nested statements are heap-owned pointers, so destroy_stmt recurses into
+// Nested statements are heap-owned pointers, so ast_stmt_destroy recurses into
 // them directly (no separate free at the call site). NULL-safe.
-void destroy_stmt(AstStatement* stmt) {
+void ast_stmt_destroy(AstStatement* stmt) {
     if (!stmt) return;
     switch (stmt->kind) {
         case STMT_RETURN:
-            destroy_exp(stmt->as.ret.exp);
+            ast_exp_destroy(stmt->as.ret.exp);
             break;
         case STMT_EXP:
-            destroy_exp(stmt->as.exp_stmt.exp);
+            ast_exp_destroy(stmt->as.exp_stmt.exp);
             break;
         case STMT_IF:
-            destroy_exp(stmt->as.if_cond.cond);
-            destroy_stmt(stmt->as.if_cond.then_br);
-            destroy_stmt(stmt->as.if_cond.else_br);
+            ast_exp_destroy(stmt->as.if_cond.cond);
+            ast_stmt_destroy(stmt->as.if_cond.then_br);
+            ast_stmt_destroy(stmt->as.if_cond.else_br);
             break;
         case STMT_COMPOUND:
             ast_block_destroy(&stmt->as.compound);
             break;
         case STMT_FOR:
             free(stmt->as.for_loop.label);
-            switch (stmt->as.for_loop.init.init_type) {
+            switch (stmt->as.for_loop.init.kind) {
                 case AST_INIT_DECL:
                     free(stmt->as.for_loop.init.as.decl.identifier);
                     if (stmt->as.for_loop.init.as.decl.init.present)
-                        destroy_exp(stmt->as.for_loop.init.as.decl.init.exp);
+                        ast_exp_destroy(stmt->as.for_loop.init.as.decl.init.value);
                     break;
                 case AST_INIT_EXP:
-                    destroy_exp(stmt->as.for_loop.init.as.exp);
+                    ast_exp_destroy(stmt->as.for_loop.init.as.exp);
                     break;
             }
             if (stmt->as.for_loop.cond.present)
-                destroy_exp(stmt->as.for_loop.cond.exp);
+                ast_exp_destroy(stmt->as.for_loop.cond.value);
             if (stmt->as.for_loop.post.present)
-                destroy_exp(stmt->as.for_loop.post.exp);
-            destroy_stmt(stmt->as.for_loop.body);
+                ast_exp_destroy(stmt->as.for_loop.post.value);
+            ast_stmt_destroy(stmt->as.for_loop.body);
             break;
         case STMT_WHILE:
             free(stmt->as.while_loop.label);
-            destroy_exp(stmt->as.while_loop.cond);
-            destroy_stmt(stmt->as.while_loop.body);
+            ast_exp_destroy(stmt->as.while_loop.cond);
+            ast_stmt_destroy(stmt->as.while_loop.body);
             break;
         case STMT_DO_WHILE:
             free(stmt->as.do_while_loop.label);
-            destroy_exp(stmt->as.do_while_loop.cond);
-            destroy_stmt(stmt->as.do_while_loop.body);
+            ast_exp_destroy(stmt->as.do_while_loop.cond);
+            ast_stmt_destroy(stmt->as.do_while_loop.body);
             break;
         case STMT_BREAK:
             free(stmt->as.break_stmt.label);
@@ -255,25 +243,25 @@ void destroy_stmt(AstStatement* stmt) {
             break;
         case STMT_SWITCH:
             free(stmt->as.switch_stmt.label);
-            destroy_exp(stmt->as.switch_stmt.cond);
-            for (size_t i = 0; i < stmt->as.switch_stmt.num_clauses; i++) {
-                ast_block_destroy(&stmt->as.switch_stmt.clauses[i].body);
+            ast_exp_destroy(stmt->as.switch_stmt.cond);
+            for (size_t i = 0; i < stmt->as.switch_stmt.clauses.count; i++) {
+                ast_block_destroy(&stmt->as.switch_stmt.clauses.items[i].body);
             }
-            free(stmt->as.switch_stmt.clauses);
+            list_free(&stmt->as.switch_stmt.clauses);
             break;
     }
     free(stmt);
 }
 
-AstFunction ast_function_make(const char* name, AstBlock block) {
+AstFunction ast_function_create(const char* identifier, AstBlock block) {
 	AstFunction function;
-	function.identifier = strdup(name);
+	function.identifier = strdup(identifier);
 	function.body = block;
 	return function;
 }
 
 void ast_function_append(AstFunction* function, AstBlockItem block_item) {
-	ast_block_append(&function->body, block_item);
+	list_push(&function->body, block_item);
 }
 
 void ast_function_destroy(AstFunction* function) {
@@ -285,12 +273,12 @@ void ast_function_destroy(AstFunction* function) {
 // --- Program ---
 
 AstProgram ast_program_create(AstFunction* functions, int num_functions) {
-	return (AstProgram) {.functions = functions, .num_functions = num_functions};	
+	return (AstProgram){ .items = functions, .count = num_functions, .capacity = num_functions };
 }
 
-void destroy_program(AstProgram* program) {
-    for (int i = 0; i < program->num_functions; i++) {
-        ast_function_destroy(&program->functions[i]);
+void ast_program_destroy(AstProgram* program) {
+    for (size_t i = 0; i < program->count; i++) {
+        ast_function_destroy(&program->items[i]);
     }
-    free(program->functions);
+    list_free(program);
 }

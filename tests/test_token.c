@@ -3,7 +3,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include "../src/lexer/token.h"
-#include "../src/lexer/token_list.h"
 
 // Assert that `src` lexes to exactly one token of the given kind/value. Kept as
 // a helper (rather than a loop over a table) so each call site below names one
@@ -20,39 +19,39 @@ static void fail_lex(const char *src, const char *kind_wanted, const Token *got)
 }
 
 static void check_lexes_keyword(const char *src, TokenKeyword expected) {
-	TokenList tl = token_list_create(4);
+	TokenList tl = (TokenList){0};
 	if (tokenize(src, &tl) != ERR_OK || tl.count != 1) fail_lex(src, "keyword", NULL);
 	if (tl.items[0].kind != TOK_KEYWORD) fail_lex(src, "keyword", &tl.items[0]);
-	if (tl.items[0].kw != expected) {
+	if (tl.items[0].as.keyword != expected) {
 		printf("  FAIL: \"%s\" lexed as keyword %s, expected %s\n",
-		       src, keyword_name(tl.items[0].kw), keyword_name(expected));
+		       src, keyword_name(tl.items[0].as.keyword), keyword_name(expected));
 		exit(1);
 	}
-	token_list_destroy(&tl);
+	free_tokens(&tl);
 }
 
 static void check_lexes_separator(const char *src, TokenSeparator expected) {
-	TokenList tl = token_list_create(4);
+	TokenList tl = (TokenList){0};
 	if (tokenize(src, &tl) != ERR_OK || tl.count != 1) fail_lex(src, "separator", NULL);
 	if (tl.items[0].kind != TOK_SEPARATOR) fail_lex(src, "separator", &tl.items[0]);
-	if (tl.items[0].sep != expected) {
+	if (tl.items[0].as.separator != expected) {
 		printf("  FAIL: \"%s\" lexed as separator %s, expected %s\n",
-		       src, separator_name(tl.items[0].sep), separator_name(expected));
+		       src, separator_name(tl.items[0].as.separator), separator_name(expected));
 		exit(1);
 	}
-	token_list_destroy(&tl);
+	free_tokens(&tl);
 }
 
 static void check_lexes_operator(const char *src, TokenOperator expected) {
-	TokenList tl = token_list_create(4);
+	TokenList tl = (TokenList){0};
 	if (tokenize(src, &tl) != ERR_OK || tl.count != 1) fail_lex(src, "operator", NULL);
 	if (tl.items[0].kind != TOK_OPERATOR) fail_lex(src, "operator", &tl.items[0]);
-	if (tl.items[0].op != expected) {
+	if (tl.items[0].as.operator != expected) {
 		printf("  FAIL: \"%s\" lexed as operator %s, expected %s\n",
-		       src, operator_name(tl.items[0].op), operator_name(expected));
+		       src, operator_name(tl.items[0].as.operator), operator_name(expected));
 		exit(1);
 	}
-	token_list_destroy(&tl);
+	free_tokens(&tl);
 }
 
 // ---- token_kind_name ----
@@ -159,28 +158,28 @@ void test_keyword_name_unknown() {
 // ---- tokenize tests ----
 
 void test_tokenize_empty() {
-	TokenList tl = token_list_create(4);
+	TokenList tl = (TokenList){0};
 	assert(tokenize("", &tl) == ERR_OK);
 	assert(tl.count == 0);
-	token_list_destroy(&tl);
+	free_tokens(&tl);
 	printf("  PASS: tokenize_empty\n");
 }
 
 void test_tokenize_whitespace_only() {
-	TokenList tl = token_list_create(4);
+	TokenList tl = (TokenList){0};
 	assert(tokenize("   \n\t\n  ", &tl) == ERR_OK);
 	assert(tl.count == 0);
-	token_list_destroy(&tl);
+	free_tokens(&tl);
 	printf("  PASS: tokenize_whitespace_only\n");
 }
 
 void test_tokenize_single_keyword() {
-	TokenList tl = token_list_create(4);
+	TokenList tl = (TokenList){0};
 	assert(tokenize("return", &tl) == ERR_OK);
 	assert(tl.count == 1);
 	assert(tl.items[0].kind == TOK_KEYWORD);
-	assert(tl.items[0].kw == TOK_RETURN);
-	token_list_destroy(&tl);
+	assert(tl.items[0].as.keyword == TOK_RETURN);
+	free_tokens(&tl);
 	printf("  PASS: tokenize_single_keyword\n");
 }
 
@@ -258,117 +257,117 @@ void test_tokenize_all_operators() {
 }
 
 void test_tokenize_identifier() {
-	TokenList tl = token_list_create(4);
+	TokenList tl = (TokenList){0};
 	assert(tokenize("foo", &tl) == ERR_OK);
 	assert(tl.count == 1);
 	assert(tl.items[0].kind == TOK_IDENTIFIER);
-	assert(strcmp(tl.items[0].ident, "foo") == 0);
-	token_list_destroy(&tl);
+	assert(strcmp(tl.items[0].as.identifier, "foo") == 0);
+	free_tokens(&tl);
 	printf("  PASS: tokenize_identifier\n");
 }
 
 void test_tokenize_identifier_with_underscores() {
-	TokenList tl = token_list_create(4);
+	TokenList tl = (TokenList){0};
 	assert(tokenize("_foo_bar2", &tl) == ERR_OK);
 	assert(tl.count == 1);
 	assert(tl.items[0].kind == TOK_IDENTIFIER);
-	assert(strcmp(tl.items[0].ident, "_foo_bar2") == 0);
-	token_list_destroy(&tl);
+	assert(strcmp(tl.items[0].as.identifier, "_foo_bar2") == 0);
+	free_tokens(&tl);
 	printf("  PASS: tokenize_identifier_with_underscores\n");
 }
 
 void test_tokenize_int_literal() {
-	TokenList tl = token_list_create(4);
+	TokenList tl = (TokenList){0};
 	assert(tokenize("42", &tl) == ERR_OK);
 	assert(tl.count == 1);
 	assert(tl.items[0].kind == TOK_INT_LITERAL);
-	assert(tl.items[0].int_val == 42);
-	token_list_destroy(&tl);
+	assert(tl.items[0].as.int_value == 42);
+	free_tokens(&tl);
 	printf("  PASS: tokenize_int_literal\n");
 }
 
 void test_tokenize_separators() {
-	TokenList tl = token_list_create(8);
+	TokenList tl = (TokenList){0};
 	assert(tokenize("(){},;", &tl) == ERR_OK);
 	assert(tl.count == 6);
-	assert(tl.items[0].sep == TOK_LPAR);
-	assert(tl.items[1].sep == TOK_RPAR);
-	assert(tl.items[2].sep == TOK_LBRACE);
-	assert(tl.items[3].sep == TOK_RBRACE);
-	assert(tl.items[4].sep == TOK_COMMA);
-	assert(tl.items[5].sep == TOK_SEMICOLON);
-	token_list_destroy(&tl);
+	assert(tl.items[0].as.separator == TOK_LPAR);
+	assert(tl.items[1].as.separator == TOK_RPAR);
+	assert(tl.items[2].as.separator == TOK_LBRACE);
+	assert(tl.items[3].as.separator == TOK_RBRACE);
+	assert(tl.items[4].as.separator == TOK_COMMA);
+	assert(tl.items[5].as.separator == TOK_SEMICOLON);
+	free_tokens(&tl);
 	printf("  PASS: tokenize_separators\n");
 }
 
 void test_tokenize_operators() {
-	TokenList tl = token_list_create(8);
+	TokenList tl = (TokenList){0};
 	assert(tokenize("+ - == != & |", &tl) == ERR_OK);
 	assert(tl.count == 6);
-	assert(tl.items[0].op == TOK_PLUS);
-	assert(tl.items[1].op == TOK_MINUS);
-	assert(tl.items[2].op == TOK_EQ);
-	assert(tl.items[3].op == TOK_NEQ);
-	assert(tl.items[4].op == TOK_AND);
-	assert(tl.items[5].op == TOK_OR);
-	token_list_destroy(&tl);
+	assert(tl.items[0].as.operator == TOK_PLUS);
+	assert(tl.items[1].as.operator == TOK_MINUS);
+	assert(tl.items[2].as.operator == TOK_EQ);
+	assert(tl.items[3].as.operator == TOK_NEQ);
+	assert(tl.items[4].as.operator == TOK_AND);
+	assert(tl.items[5].as.operator == TOK_OR);
+	free_tokens(&tl);
 	printf("  PASS: tokenize_operators\n");
 }
 
 void test_tokenize_full_function() {
-	TokenList tl = token_list_create(4);
+	TokenList tl = (TokenList){0};
 	assert(tokenize("int main(void) { return 2; }", &tl) == ERR_OK);
 	assert(tl.count == 10);
-	assert(tl.items[0].kind == TOK_KEYWORD     && tl.items[0].kw  == TOK_INT);
-	assert(tl.items[1].kind == TOK_IDENTIFIER  && strcmp(tl.items[1].ident, "main") == 0);
-	assert(tl.items[2].kind == TOK_SEPARATOR   && tl.items[2].sep == TOK_LPAR);
-	assert(tl.items[3].kind == TOK_KEYWORD     && tl.items[3].kw  == TOK_VOID);
-	assert(tl.items[4].kind == TOK_SEPARATOR   && tl.items[4].sep == TOK_RPAR);
-	assert(tl.items[5].kind == TOK_SEPARATOR   && tl.items[5].sep == TOK_LBRACE);
-	assert(tl.items[6].kind == TOK_KEYWORD     && tl.items[6].kw  == TOK_RETURN);
-	assert(tl.items[7].kind == TOK_INT_LITERAL && tl.items[7].int_val == 2);
-	assert(tl.items[8].kind == TOK_SEPARATOR   && tl.items[8].sep == TOK_SEMICOLON);
-	assert(tl.items[9].kind == TOK_SEPARATOR   && tl.items[9].sep == TOK_RBRACE);
-	token_list_destroy(&tl);
+	assert(tl.items[0].kind == TOK_KEYWORD     && tl.items[0].as.keyword  == TOK_INT);
+	assert(tl.items[1].kind == TOK_IDENTIFIER  && strcmp(tl.items[1].as.identifier, "main") == 0);
+	assert(tl.items[2].kind == TOK_SEPARATOR   && tl.items[2].as.separator == TOK_LPAR);
+	assert(tl.items[3].kind == TOK_KEYWORD     && tl.items[3].as.keyword  == TOK_VOID);
+	assert(tl.items[4].kind == TOK_SEPARATOR   && tl.items[4].as.separator == TOK_RPAR);
+	assert(tl.items[5].kind == TOK_SEPARATOR   && tl.items[5].as.separator == TOK_LBRACE);
+	assert(tl.items[6].kind == TOK_KEYWORD     && tl.items[6].as.keyword  == TOK_RETURN);
+	assert(tl.items[7].kind == TOK_INT_LITERAL && tl.items[7].as.int_value == 2);
+	assert(tl.items[8].kind == TOK_SEPARATOR   && tl.items[8].as.separator == TOK_SEMICOLON);
+	assert(tl.items[9].kind == TOK_SEPARATOR   && tl.items[9].as.separator == TOK_RBRACE);
+	free_tokens(&tl);
 	printf("  PASS: tokenize_full_function\n");
 }
 
 void test_tokenize_unexpected_char() {
-	TokenList tl = token_list_create(4);
+	TokenList tl = (TokenList){0};
 	assert(tokenize("int @", &tl) == ERR_UNEXPECTED_CHAR);
-	token_list_destroy(&tl);
+	free_tokens(&tl);
 	printf("  PASS: tokenize_unexpected_char\n");
 }
 
 void test_tokenize_two_char_ops_no_spaces() {
-	TokenList tl = token_list_create(4);
+	TokenList tl = (TokenList){0};
 	assert(tokenize("a==b", &tl) == ERR_OK);
 	assert(tl.count == 3);
 	assert(tl.items[0].kind == TOK_IDENTIFIER);
-	assert(tl.items[1].kind == TOK_OPERATOR && tl.items[1].op == TOK_EQ);
+	assert(tl.items[1].kind == TOK_OPERATOR && tl.items[1].as.operator == TOK_EQ);
 	assert(tl.items[2].kind == TOK_IDENTIFIER);
-	token_list_destroy(&tl);
+	free_tokens(&tl);
 	printf("  PASS: tokenize_two_char_ops_no_spaces\n");
 }
 
 void test_tokenize_assign_int_simple() {
-	TokenList tl = token_list_create(4);
+	TokenList tl = (TokenList){0};
 	assert(tokenize("int a = 42;", &tl) == ERR_OK);
 	assert(tl.count == 5);
 	assert(tl.items[0].kind == TOK_KEYWORD);
-	assert(tl.items[0].kw	== TOK_INT);
+	assert(tl.items[0].as.keyword	== TOK_INT);
 	assert(tl.items[1].kind == TOK_IDENTIFIER);
 	assert(tl.items[2].kind == TOK_OPERATOR);
-	assert(tl.items[2].op	== TOK_ASSIGN);
-	assert(tl.items[3].kind == TOK_INT_LITERAL && tl.items[3].int_val == 42);
-	assert(tl.items[4].kind == TOK_SEPARATOR && tl.items[4].sep == TOK_SEMICOLON);
-	token_list_destroy(&tl);
+	assert(tl.items[2].as.operator	== TOK_ASSIGN);
+	assert(tl.items[3].kind == TOK_INT_LITERAL && tl.items[3].as.int_value == 42);
+	assert(tl.items[4].kind == TOK_SEPARATOR && tl.items[4].as.separator == TOK_SEMICOLON);
+	free_tokens(&tl);
 	printf(" PASS: test_tokenize_assign_int_simple\n");
 }
 
 // All ten compound-assignment operators tokenize to their own operator token.
 void test_tokenize_compound_assign_ops() {
-	TokenList tl = token_list_create(16);
+	TokenList tl = (TokenList){0};
 	assert(tokenize("+= -= *= /= %= &= |= ^= >>= <<=", &tl) == ERR_OK);
 	assert(tl.count == 10);
 	TokenOperator expected[] = {
@@ -377,9 +376,9 @@ void test_tokenize_compound_assign_ops() {
 	};
 	for (size_t i = 0; i < sizeof(expected) / sizeof(expected[0]); i++) {
 		assert(tl.items[i].kind == TOK_OPERATOR);
-		assert(tl.items[i].op == expected[i]);
+		assert(tl.items[i].as.operator == expected[i]);
 	}
-	token_list_destroy(&tl);
+	free_tokens(&tl);
 	printf("  PASS: tokenize_compound_assign_ops\n");
 }
 
@@ -387,28 +386,28 @@ void test_tokenize_compound_assign_ops() {
 // and the lexer must not greedily merge a plain operator with a following '='.
 void test_tokenize_compound_assign_maximal_munch() {
 	// ">>=" is one token, distinct from ">>" then "=".
-	TokenList tl = token_list_create(8);
+	TokenList tl = (TokenList){0};
 	assert(tokenize("a>>=b", &tl) == ERR_OK);
 	assert(tl.count == 3);
 	assert(tl.items[0].kind == TOK_IDENTIFIER);
-	assert(tl.items[1].kind == TOK_OPERATOR && tl.items[1].op == TOK_RSHIFT_EQ);
+	assert(tl.items[1].kind == TOK_OPERATOR && tl.items[1].as.operator == TOK_RSHIFT_EQ);
 	assert(tl.items[2].kind == TOK_IDENTIFIER);
-	token_list_destroy(&tl);
+	free_tokens(&tl);
 
 	// "+=" with no surrounding spaces is still a single compound token.
-	tl = token_list_create(8);
+	tl = (TokenList){0};
 	assert(tokenize("a+=1", &tl) == ERR_OK);
 	assert(tl.count == 3);
-	assert(tl.items[1].kind == TOK_OPERATOR && tl.items[1].op == TOK_PLUS_EQ);
-	token_list_destroy(&tl);
+	assert(tl.items[1].kind == TOK_OPERATOR && tl.items[1].as.operator == TOK_PLUS_EQ);
+	free_tokens(&tl);
 
 	// ">> =" with a space stays a shift followed by an assign, not ">>=".
-	tl = token_list_create(8);
+	tl = (TokenList){0};
 	assert(tokenize("a >> = b", &tl) == ERR_OK);
 	assert(tl.count == 4);
-	assert(tl.items[1].kind == TOK_OPERATOR && tl.items[1].op == TOK_RSHIFT);
-	assert(tl.items[2].kind == TOK_OPERATOR && tl.items[2].op == TOK_ASSIGN);
-	token_list_destroy(&tl);
+	assert(tl.items[1].kind == TOK_OPERATOR && tl.items[1].as.operator == TOK_RSHIFT);
+	assert(tl.items[2].kind == TOK_OPERATOR && tl.items[2].as.operator == TOK_ASSIGN);
+	free_tokens(&tl);
 
 	printf("  PASS: tokenize_compound_assign_maximal_munch\n");
 }

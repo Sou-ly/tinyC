@@ -7,9 +7,7 @@ LDFLAGS =
 BUILD_DIR = build
 
 SRCS = src/main.c \
-       src/common/string_list.c \
        src/lexer/token.c \
-       src/lexer/token_list.c \
        src/parser/ast.c \
        src/parser/parser.c \
        src/ir/ir.c \
@@ -50,13 +48,13 @@ test-e2e: $(TARGET)
 
 build_tests: tests/test_list tests/test_token tests/test_parser tests/test_codegen tests/test_ir tests/test_ast tests/test_scoping
 
-tests/test_list: tests/test_list.c $(BUILD_DIR)/common/string_list.o $(BUILD_DIR)/lexer/token_list.o $(BUILD_DIR)/lexer/token.o
+tests/test_list: tests/test_list.c $(BUILD_DIR)/lexer/token.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-tests/test_token: tests/test_token.c $(BUILD_DIR)/lexer/token_list.o $(BUILD_DIR)/lexer/token.o
+tests/test_token: tests/test_token.c $(BUILD_DIR)/lexer/token.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-tests/test_parser: tests/test_parser.c $(BUILD_DIR)/parser/ast.o $(BUILD_DIR)/parser/parser.o $(BUILD_DIR)/common/string_list.o $(BUILD_DIR)/lexer/token_list.o $(BUILD_DIR)/lexer/token.o $(BUILD_DIR)/strlib/str.o
+tests/test_parser: tests/test_parser.c $(BUILD_DIR)/parser/ast.o $(BUILD_DIR)/parser/parser.o $(BUILD_DIR)/lexer/token.o $(BUILD_DIR)/strlib/str.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 tests/test_codegen: tests/test_codegen.c $(BUILD_DIR)/codegen/x86/x86_ast.o $(BUILD_DIR)/codegen/codegen.o $(BUILD_DIR)/codegen/emit.o $(BUILD_DIR)/ir/ir.o $(BUILD_DIR)/parser/ast.o
@@ -68,7 +66,7 @@ tests/test_ir: tests/test_ir.c $(BUILD_DIR)/ir/ir.o $(BUILD_DIR)/parser/ast.o
 tests/test_ast: tests/test_ast.c $(BUILD_DIR)/parser/ast.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-tests/test_scoping: tests/test_scoping.c $(BUILD_DIR)/parser/ast.o $(BUILD_DIR)/parser/parser.o $(BUILD_DIR)/common/string_list.o $(BUILD_DIR)/lexer/token_list.o $(BUILD_DIR)/lexer/token.o $(BUILD_DIR)/strlib/str.o
+tests/test_scoping: tests/test_scoping.c $(BUILD_DIR)/parser/ast.o $(BUILD_DIR)/parser/parser.o $(BUILD_DIR)/lexer/token.o $(BUILD_DIR)/strlib/str.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 tests/test_str:

@@ -8,7 +8,7 @@ static x86_Operand codegen_val(IrVal val) {
         case IR_CONSTANT:
             return x86_operand_imm(val.as.int_val);
         case IR_VARIABLE:
-            return x86_operand_id(strdup(val.as.name));
+            return x86_operand_id(strdup(val.as.identifier));
     }
     ICE("codegen: unsupported IR value kind");
 }
@@ -51,11 +51,11 @@ static x86_ConditionCode codegen_cond(IrBinopType op) {
 }
 
 static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
-    switch (ir_instr->type) {
+    switch (ir_instr->kind) {
         case IR_RETURN: {
             x86_Operand src = codegen_val(ir_instr->as.ret.val);
-            x86_instr_list_append(list, x86_mov(x86_operand_reg(x86_AX), src));
-            x86_instr_list_append(list, x86_ret());
+            x86_instr_list_append(list, x86_instr_mov(x86_operand_reg(x86_AX), src));
+            x86_instr_list_append(list, x86_instr_ret());
             return;
         }
         case IR_UNOP: {
@@ -64,13 +64,13 @@ static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
             if (ir_instr->as.unary.op == IR_NOT) {
                 // !src == 1 iff src == 0: compare src to 0, zero the result,
                 // then set its low byte when the compare was equal.
-                x86_instr_list_append(list, x86_cmp_instr(src, x86_operand_imm(0)));
-                x86_instr_list_append(list, x86_mov(dst, x86_operand_imm(0)));
-                x86_instr_list_append(list, x86_setcc_instr(x86_E, dst));
+                x86_instr_list_append(list, x86_instr_cmp(src, x86_operand_imm(0)));
+                x86_instr_list_append(list, x86_instr_mov(dst, x86_operand_imm(0)));
+                x86_instr_list_append(list, x86_instr_setcc(x86_E, dst));
             } else {
-                x86_instr_list_append(list, x86_mov(dst, src));
+                x86_instr_list_append(list, x86_instr_mov(dst, src));
                 x86_Operand dst2 = codegen_val(ir_instr->as.unary.dst);
-                x86_instr_list_append(list, x86_unary(codegen_unop(ir_instr->as.unary.op), dst2));
+                x86_instr_list_append(list, x86_instr_unary(codegen_unop(ir_instr->as.unary.op), dst2));
             }
             return;
 		}
@@ -84,10 +84,10 @@ static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
 					// into edx:eax with cdq, then divide by the divisor (rhs).
 					// The quotient ends up in eax.
 					x86_Operand eax = x86_operand_reg(x86_AX);
-					x86_instr_list_append(list, x86_mov(eax, lhs));
-					x86_instr_list_append(list, x86_cdq_instr());
-					x86_instr_list_append(list, x86_idiv_instr(rhs));
-					x86_instr_list_append(list, x86_mov(dst, eax));
+					x86_instr_list_append(list, x86_instr_mov(eax, lhs));
+					x86_instr_list_append(list, x86_instr_cdq());
+					x86_instr_list_append(list, x86_instr_idiv(rhs));
+					x86_instr_list_append(list, x86_instr_mov(dst, eax));
 					return;
                 }
 				case IR_MOD: {
@@ -95,10 +95,10 @@ static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
 					// left in edx.
 					x86_Operand eax = x86_operand_reg(x86_AX);
 					x86_Operand edx = x86_operand_reg(x86_DX);
-					x86_instr_list_append(list, x86_mov(eax, lhs));
-					x86_instr_list_append(list, x86_cdq_instr());
-					x86_instr_list_append(list, x86_idiv_instr(rhs));
-					x86_instr_list_append(list, x86_mov(dst, edx));
+					x86_instr_list_append(list, x86_instr_mov(eax, lhs));
+					x86_instr_list_append(list, x86_instr_cdq());
+					x86_instr_list_append(list, x86_instr_idiv(rhs));
+					x86_instr_list_append(list, x86_instr_mov(dst, edx));
 					return;
                 }
                 case IR_EQ:
@@ -111,40 +111,40 @@ static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
                     // flags for (second - first) = (b - a). We want flags for
                     // (lhs - rhs) so the condition codes read naturally (setl ==
                     // lhs < rhs), so build the operands as (rhs, lhs).
-                    x86_instr_list_append(list, x86_cmp_instr(rhs, lhs));
-                    x86_instr_list_append(list, x86_mov(dst, x86_operand_imm(0)));
-                    x86_instr_list_append(list, x86_setcc_instr(codegen_cond(ir_instr->as.binop.op), dst));
+                    x86_instr_list_append(list, x86_instr_cmp(rhs, lhs));
+                    x86_instr_list_append(list, x86_instr_mov(dst, x86_operand_imm(0)));
+                    x86_instr_list_append(list, x86_instr_setcc(codegen_cond(ir_instr->as.binop.op), dst));
                     return;
 				default:  {
-					x86_instr_list_append(list, x86_mov(dst, lhs));
-					x86_instr_list_append(list, x86_binary(codegen_binop(ir_instr->as.binop.op), rhs, dst));
+					x86_instr_list_append(list, x86_instr_mov(dst, lhs));
+					x86_instr_list_append(list, x86_instr_binary(codegen_binop(ir_instr->as.binop.op), rhs, dst));
 					return;
                 }
 			}
             ICE("codegen: unsupported IR binary operation");
 		}
         case IR_JUMP:
-            x86_instr_list_append(list, x86_jmp_instr(ir_instr->as.jump.target));
+            x86_instr_list_append(list, x86_instr_jmp(ir_instr->as.jump.target));
             return;
         case IR_JUMP_ZERO:
-            x86_instr_list_append(list, x86_cmp_instr(
+            x86_instr_list_append(list, x86_instr_cmp(
                 x86_operand_imm(0),
                 codegen_val(ir_instr->as.jump_zero.cond)));
-            x86_instr_list_append(list, x86_jmpcc_instr(x86_E, ir_instr->as.jump_zero.target));
+            x86_instr_list_append(list, x86_instr_jmpcc(x86_E, ir_instr->as.jump_zero.target));
             return;
         case IR_JUMP_NOT_ZERO:
-            x86_instr_list_append(list, x86_cmp_instr(
+            x86_instr_list_append(list, x86_instr_cmp(
                 x86_operand_imm(0),
                 codegen_val(ir_instr->as.jump_not_zero.cond)));
-            x86_instr_list_append(list, x86_jmpcc_instr(x86_NE, ir_instr->as.jump_not_zero.target));
+            x86_instr_list_append(list, x86_instr_jmpcc(x86_NE, ir_instr->as.jump_not_zero.target));
             return;
         case IR_COPY:
-            x86_instr_list_append(list, x86_mov(
+            x86_instr_list_append(list, x86_instr_mov(
                 codegen_val(ir_instr->as.copy.dst),
                 codegen_val(ir_instr->as.copy.src)));
             return;
         case IR_LABEL:
-            x86_instr_list_append(list, x86_label_instr(ir_instr->as.label.identifier));
+            x86_instr_list_append(list, x86_instr_label(ir_instr->as.label.identifier));
             return;
 		default:
 			break;
@@ -153,19 +153,19 @@ static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
 }
 
 static x86_Function codegen_function(IrFunction* ir_fn) {
-    x86_InstrList instrs = x86_instr_list_new();
-    for (int i = 0; i < ir_fn->size; i++) {
-        codegen_instr(&ir_fn->instructions[i], &instrs);
+    x86_InstrList instrs = x86_instr_list_create();
+    for (size_t i = 0; i < ir_fn->instructions.count; i++) {
+        codegen_instr(&ir_fn->instructions.items[i], &instrs);
     }
-    return make_x86_function(ir_fn->name, instrs);
+    return x86_function_create(ir_fn->identifier, instrs);
 }
 
 x86_Program codegen(IrProgram* program) {
-    x86_Function* functions = malloc(sizeof(x86_Function) * program->size);
-    for (int i = 0; i < program->size; i++) {
-        functions[i] = codegen_function(&program->functions[i]);
+    x86_Function* functions = malloc(sizeof(x86_Function) * program->count);
+    for (size_t i = 0; i < program->count; i++) {
+        functions[i] = codegen_function(&program->items[i]);
     }
-    return make_x86_program(functions, program->size);
+    return x86_program_create(functions, program->count);
 }
 
 typedef struct {
@@ -319,6 +319,6 @@ int allocate_stack(x86_Function* function, int stack_offset) {
 		}
 		instr = instr->next;
     }
-    x86_instr_list_prepend(&function->instrs, x86_alloc(-stack_offset));
+    x86_instr_list_prepend(&function->instrs, x86_instr_alloc(-stack_offset));
     return 0;
 }
