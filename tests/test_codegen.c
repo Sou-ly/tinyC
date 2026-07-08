@@ -19,43 +19,43 @@
 // --- asm_ast unit tests ---
 
 void test_create_x86_function() {
-    x86_InstrList instrs = x86_instr_list_new();
+    x86_InstrList instrs = x86_instr_list_create();
     x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_MOV, .as.mov = {
         .dst = (x86_Operand){.kind = x86_REG, .as.reg = x86_AX},
         .src = (x86_Operand){.kind = x86_IMM, .as.imm = 5}
     }});
     x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_RET});
 
-    x86_Function fn = make_x86_function("main", instrs);
-    assert(strcmp(fn.name, "main") == 0);
+    x86_Function fn = x86_function_create("main", instrs);
+    assert(strcmp(fn.identifier, "main") == 0);
     assert(fn.instrs.head->kind == x86_MOV);
     assert(fn.instrs.head->next->kind == x86_RET);
     assert(fn.instrs.head->next->next == NULL);
-    destroy_x86_function(&fn);
+    x86_function_destroy(&fn);
     printf("  PASS: test_create_x86_function\n");
 }
 
 void test_create_x86_program() {
-    x86_InstrList instrs = x86_instr_list_new();
+    x86_InstrList instrs = x86_instr_list_create();
     x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_RET});
 
     x86_Function* functions = malloc(sizeof(x86_Function));
-    functions[0] = make_x86_function("foo", instrs);
+    functions[0] = x86_function_create("foo", instrs);
 
-    x86_Program prog = make_x86_program(functions, 1);
+    x86_Program prog = x86_program_create(functions, 1);
     assert(prog.num_functions == 1);
-    assert(strcmp(prog.functions[0].name, "foo") == 0);
-    destroy_x86_program(&prog);
+    assert(strcmp(prog.functions[0].identifier, "foo") == 0);
+    x86_program_destroy(&prog);
     printf("  PASS: test_create_x86_program\n");
 }
 
 // --- helpers ---
 
 static AstProgram make_test_program(AstExp* expr) {
-    AstFunction fn = ast_function_make("main", ast_block_make(8));
+    AstFunction fn = ast_function_create("main", (AstBlock){0});
     ast_function_append(&fn, (AstBlockItem){
-        .type = AST_STATEMENT,
-        .as.stmt = make_return_stmt(expr),
+        .kind = AST_STATEMENT,
+        .as.stmt = ast_stmt_return(expr),
     });
     AstFunction* functions = malloc(sizeof(AstFunction));
     functions[0] = fn;
@@ -65,9 +65,9 @@ static AstProgram make_test_program(AstExp* expr) {
 // Wrap a single statement (rather than a bare return expression) into a "main"
 // program — used for if-statement codegen.
 static AstProgram make_stmt_program(AstStatement* stmt) {
-    AstFunction fn = ast_function_make("main", ast_block_make(8));
+    AstFunction fn = ast_function_create("main", (AstBlock){0});
     ast_function_append(&fn, (AstBlockItem){
-        .type = AST_STATEMENT,
+        .kind = AST_STATEMENT,
         .as.stmt = stmt,
     });
     AstFunction* functions = malloc(sizeof(AstFunction));
@@ -95,48 +95,48 @@ static char* emit_program_text(AstProgram* program) {
     emit_asm(&asm_prog, out);
     fclose(out);
 
-    destroy_x86_program(&asm_prog);
+    x86_program_destroy(&asm_prog);
     return buf;
 }
 
 // --- codegen integration test ---
 
 void test_codegen_return_2() {
-    AstProgram program = make_test_program(create_int_exp(2));
+    AstProgram program = make_test_program(ast_exp_int(2));
 
     IrProgram ir = emit_ir(&program);
     x86_Program asm_prog = codegen(&ir);
 
     assert(asm_prog.num_functions == 1);
-    assert(strcmp(asm_prog.functions[0].name, "main") == 0);
+    assert(strcmp(asm_prog.functions[0].identifier, "main") == 0);
     x86_Instr* first = asm_prog.functions[0].instrs.head;
     assert(first->kind == x86_MOV);
     assert(first->as.mov.src.kind == x86_IMM);
     assert(first->as.mov.src.as.imm == 2);
     assert(first->next->kind == x86_RET);
 
-    destroy_x86_program(&asm_prog);
-    destroy_program(&program);
+    x86_program_destroy(&asm_prog);
+    ast_program_destroy(&program);
     printf("  PASS: test_codegen_return_2\n");
 }
 
 void test_codegen_return_0() {
-    AstProgram program = make_test_program(create_int_exp(0));
+    AstProgram program = make_test_program(ast_exp_int(0));
 
     IrProgram ir = emit_ir(&program);
     x86_Program asm_prog = codegen(&ir);
 
     assert(asm_prog.functions[0].instrs.head->as.mov.src.as.imm == 0);
 
-    destroy_x86_program(&asm_prog);
-    destroy_program(&program);
+    x86_program_destroy(&asm_prog);
+    ast_program_destroy(&program);
     printf("  PASS: test_codegen_return_0\n");
 }
 
 // --- emit integration test ---
 
 void test_emit_return_2() {
-    AstProgram program = make_test_program(create_int_exp(2));
+    AstProgram program = make_test_program(ast_exp_int(2));
 
     IrProgram ir = emit_ir(&program);
     x86_Program asm_prog = codegen(&ir);
@@ -152,8 +152,8 @@ void test_emit_return_2() {
     assert(strstr(buf, "ret") != NULL);
 
     free(buf);
-    destroy_x86_program(&asm_prog);
-    destroy_program(&program);
+    x86_program_destroy(&asm_prog);
+    ast_program_destroy(&program);
     printf("  PASS: test_emit_return_2\n");
 }
 
@@ -173,9 +173,9 @@ void test_emit_return_2() {
 
 void test_codegen_return_complement_neg2() {
     // Build AST: return ~(-2)
-    AstExp* lit = create_int_exp(2);
-    AstExp* neg = create_unary_exp(UNOP_MINUS, lit);
-    AstExp* comp = create_unary_exp(UNOP_COMP, neg);
+    AstExp* lit = ast_exp_int(2);
+    AstExp* neg = ast_exp_unary(UNOP_MINUS, lit);
+    AstExp* comp = ast_exp_unary(UNOP_COMP, neg);
     AstProgram program = make_test_program(comp);
 
     IrProgram ir = emit_ir(&program);
@@ -226,15 +226,15 @@ void test_codegen_return_complement_neg2() {
     assert(i->kind == x86_RET);
     assert(i->next == NULL);
 
-    destroy_x86_program(&asm_prog);
-    destroy_program(&program);
+    x86_program_destroy(&asm_prog);
+    ast_program_destroy(&program);
     printf("  PASS: test_codegen_return_complement_neg2\n");
 }
 
 void test_emit_return_complement_neg2() {
-    AstExp* lit = create_int_exp(2);
-    AstExp* neg = create_unary_exp(UNOP_MINUS, lit);
-    AstExp* comp = create_unary_exp(UNOP_COMP, neg);
+    AstExp* lit = ast_exp_int(2);
+    AstExp* neg = ast_exp_unary(UNOP_MINUS, lit);
+    AstExp* comp = ast_exp_unary(UNOP_COMP, neg);
     AstProgram program = make_test_program(comp);
 
     IrProgram ir = emit_ir(&program);
@@ -261,8 +261,8 @@ void test_emit_return_complement_neg2() {
     assert(strstr(buf, "<pseudo:") == NULL);
 
     free(buf);
-    destroy_x86_program(&asm_prog);
-    destroy_program(&program);
+    x86_program_destroy(&asm_prog);
+    ast_program_destroy(&program);
     printf("  PASS: test_emit_return_complement_neg2\n");
 }
 
@@ -280,8 +280,8 @@ void test_codegen_binop_arithmetic() {
     };
     for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
         AstProgram program = make_test_program(
-            create_binop_exp(cases[c].ast_op,
-                             create_int_exp(4), create_int_exp(5)));
+            ast_exp_binop(cases[c].ast_op,
+                             ast_exp_int(4), ast_exp_int(5)));
         IrProgram ir = emit_ir(&program);
         x86_Program asm_prog = codegen(&ir);
 
@@ -308,8 +308,8 @@ void test_codegen_binop_arithmetic() {
         assert(i != NULL && i->kind == x86_RET);
         assert(i->next == NULL);
 
-        destroy_x86_program(&asm_prog);
-        destroy_program(&program);
+        x86_program_destroy(&asm_prog);
+        ast_program_destroy(&program);
     }
     printf("  PASS: test_codegen_binop_arithmetic\n");
 }
@@ -328,8 +328,8 @@ void test_codegen_binop_bitwise() {
     };
     for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
         AstProgram program = make_test_program(
-            create_binop_exp(cases[c].ast_op,
-                             create_int_exp(12), create_int_exp(2)));
+            ast_exp_binop(cases[c].ast_op,
+                             ast_exp_int(12), ast_exp_int(2)));
         IrProgram ir = emit_ir(&program);
         x86_Program asm_prog = codegen(&ir);
 
@@ -356,8 +356,8 @@ void test_codegen_binop_bitwise() {
         assert(i != NULL && i->kind == x86_RET);
         assert(i->next == NULL);
 
-        destroy_x86_program(&asm_prog);
-        destroy_program(&program);
+        x86_program_destroy(&asm_prog);
+        ast_program_destroy(&program);
     }
     printf("  PASS: test_codegen_binop_bitwise\n");
 }
@@ -369,7 +369,7 @@ void test_codegen_binop_bitwise() {
 //   mov  dst, %eax        (quotient is in eax)
 void test_codegen_binop_div() {
     AstProgram program = make_test_program(
-        create_binop_exp(BINOP_DIV, create_int_exp(6), create_int_exp(3)));
+        ast_exp_binop(BINOP_DIV, ast_exp_int(6), ast_exp_int(3)));
     IrProgram ir = emit_ir(&program);
     x86_Program asm_prog = codegen(&ir);
 
@@ -401,8 +401,8 @@ void test_codegen_binop_div() {
     i = i->next;
     assert(i != NULL && i->kind == x86_RET);
 
-    destroy_x86_program(&asm_prog);
-    destroy_program(&program);
+    x86_program_destroy(&asm_prog);
+    ast_program_destroy(&program);
     printf("  PASS: test_codegen_binop_div\n");
 }
 
@@ -410,7 +410,7 @@ void test_codegen_binop_div() {
 // taken from edx (the remainder register) instead of eax.
 void test_codegen_binop_mod() {
     AstProgram program = make_test_program(
-        create_binop_exp(BINOP_MOD, create_int_exp(7), create_int_exp(2)));
+        ast_exp_binop(BINOP_MOD, ast_exp_int(7), ast_exp_int(2)));
     IrProgram ir = emit_ir(&program);
     x86_Program asm_prog = codegen(&ir);
 
@@ -436,8 +436,8 @@ void test_codegen_binop_mod() {
     assert(i->as.mov.dst.kind == x86_ID);
     assert(i->as.mov.src.kind == x86_REG && i->as.mov.src.as.reg == x86_DX);
 
-    destroy_x86_program(&asm_prog);
-    destroy_program(&program);
+    x86_program_destroy(&asm_prog);
+    ast_program_destroy(&program);
     printf("  PASS: test_codegen_binop_mod\n");
 }
 
@@ -447,7 +447,7 @@ void test_codegen_binop_mod() {
 // idivl, cdq) and every register name (eax, edx, r10d, r11d), then check the
 // rendered assembly text.
 void test_emit_binop_and_div_instructions() {
-    x86_InstrList instrs = x86_instr_list_new();
+    x86_InstrList instrs = x86_instr_list_create();
     // addl $1, %eax
     x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_BINOP, .as.binop = {
         .optype = x86_ADD,
@@ -471,8 +471,8 @@ void test_emit_binop_and_div_instructions() {
     x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_RET});
 
     x86_Function* functions = malloc(sizeof(x86_Function));
-    functions[0] = make_x86_function("main", instrs);
-    x86_Program prog = make_x86_program(functions, 1);
+    functions[0] = x86_function_create("main", instrs);
+    x86_Program prog = x86_program_create(functions, 1);
 
     char* buf = NULL;
     size_t buf_size = 0;
@@ -489,7 +489,7 @@ void test_emit_binop_and_div_instructions() {
     assert(strstr(buf, "???") == NULL);
 
     free(buf);
-    destroy_x86_program(&prog);
+    x86_program_destroy(&prog);
     printf("  PASS: test_emit_binop_and_div_instructions\n");
 }
 
@@ -504,7 +504,7 @@ void test_emit_bitwise_instructions() {
         { x86_RSHIFT, "shrl $5, %eax" },
     };
 
-    x86_InstrList instrs = x86_instr_list_new();
+    x86_InstrList instrs = x86_instr_list_create();
     for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
         x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_BINOP, .as.binop = {
             .optype = cases[c].op,
@@ -519,8 +519,8 @@ void test_emit_bitwise_instructions() {
     x86_instr_list_append(&instrs, (x86_Instr){.kind = x86_RET});
 
     x86_Function* functions = malloc(sizeof(x86_Function));
-    functions[0] = make_x86_function("main", instrs);
-    x86_Program prog = make_x86_program(functions, 1);
+    functions[0] = x86_function_create("main", instrs);
+    x86_Program prog = x86_program_create(functions, 1);
 
     char* buf = NULL;
     size_t buf_size = 0;
@@ -535,7 +535,7 @@ void test_emit_bitwise_instructions() {
     assert(strstr(buf, "???") == NULL);
 
     free(buf);
-    destroy_x86_program(&prog);
+    x86_program_destroy(&prog);
     printf("  PASS: test_emit_bitwise_instructions\n");
 }
 
@@ -543,7 +543,7 @@ void test_emit_bitwise_instructions() {
 // (rename_registers must visit x86_BINOP and x86_IDIV operands.)
 void test_rename_binop_clears_pseudos() {
     AstProgram program = make_test_program(
-        create_binop_exp(BINOP_ADD, create_int_exp(1), create_int_exp(2)));
+        ast_exp_binop(BINOP_ADD, ast_exp_int(1), ast_exp_int(2)));
     IrProgram ir = emit_ir(&program);
     x86_Program asm_prog = codegen(&ir);
 
@@ -563,8 +563,8 @@ void test_rename_binop_clears_pseudos() {
         }
     }
 
-    destroy_x86_program(&asm_prog);
-    destroy_program(&program);
+    x86_program_destroy(&asm_prog);
+    ast_program_destroy(&program);
     printf("  PASS: test_rename_binop_clears_pseudos\n");
 }
 
@@ -572,7 +572,7 @@ void test_rename_binop_clears_pseudos() {
 // and leaves no pseudo-registers behind.
 void test_emit_div_program() {
     AstProgram program = make_test_program(
-        create_binop_exp(BINOP_DIV, create_int_exp(8), create_int_exp(4)));
+        ast_exp_binop(BINOP_DIV, ast_exp_int(8), ast_exp_int(4)));
     IrProgram ir = emit_ir(&program);
     x86_Program asm_prog = codegen(&ir);
 
@@ -590,8 +590,8 @@ void test_emit_div_program() {
     assert(strstr(buf, "<pseudo:") == NULL);
 
     free(buf);
-    destroy_x86_program(&asm_prog);
-    destroy_program(&program);
+    x86_program_destroy(&asm_prog);
+    ast_program_destroy(&program);
     printf("  PASS: test_emit_div_program\n");
 }
 
@@ -599,14 +599,14 @@ void test_emit_div_program() {
 // exercises every bitwise opcode through the full pipeline (codegen, register
 // rename, stack allocation, emission) and leaves no pseudo-registers behind.
 void test_emit_bitwise_program() {
-    AstExp* and_exp = create_binop_exp(BINOP_AND,
-                                       create_int_exp(5), create_int_exp(3));
-    AstExp* shl_exp = create_binop_exp(BINOP_LSHIFT,
-                                       create_int_exp(1), create_int_exp(2));
-    AstExp* or_exp = create_binop_exp(BINOP_OR, and_exp, shl_exp);
-    AstExp* shr_exp = create_binop_exp(BINOP_RSHIFT,
-                                       create_int_exp(16), create_int_exp(1));
-    AstExp* xor_exp = create_binop_exp(BINOP_XOR, or_exp, shr_exp);
+    AstExp* and_exp = ast_exp_binop(BINOP_AND,
+                                       ast_exp_int(5), ast_exp_int(3));
+    AstExp* shl_exp = ast_exp_binop(BINOP_LSHIFT,
+                                       ast_exp_int(1), ast_exp_int(2));
+    AstExp* or_exp = ast_exp_binop(BINOP_OR, and_exp, shl_exp);
+    AstExp* shr_exp = ast_exp_binop(BINOP_RSHIFT,
+                                       ast_exp_int(16), ast_exp_int(1));
+    AstExp* xor_exp = ast_exp_binop(BINOP_XOR, or_exp, shr_exp);
     AstProgram program = make_test_program(xor_exp);
 
     IrProgram ir = emit_ir(&program);
@@ -630,34 +630,34 @@ void test_emit_bitwise_program() {
     assert(strstr(buf, "???") == NULL);
 
     free(buf);
-    destroy_x86_program(&asm_prog);
-    destroy_program(&program);
+    x86_program_destroy(&asm_prog);
+    ast_program_destroy(&program);
     printf("  PASS: test_emit_bitwise_program\n");
 }
 
 // --- constructors for the relational / control-flow instruction kinds ---
 
 void test_x86_new_instr_constructors() {
-    x86_Instr cmp = x86_cmp_instr(x86_operand_reg(x86_AX), x86_operand_imm(7));
+    x86_Instr cmp = x86_instr_cmp(x86_operand_reg(x86_AX), x86_operand_imm(7));
     assert(cmp.kind == x86_CMP);
     assert(cmp.as.cmp.lhs.kind == x86_REG && cmp.as.cmp.lhs.as.reg == x86_AX);
     assert(cmp.as.cmp.rhs.kind == x86_IMM && cmp.as.cmp.rhs.as.imm == 7);
 
-    x86_Instr jmp = x86_jmp_instr("end");
+    x86_Instr jmp = x86_instr_jmp("end");
     assert(jmp.kind == x86_JMP);
     assert(strcmp(jmp.as.jmp.identifier, "end") == 0);
 
-    x86_Instr jmpcc = x86_jmpcc_instr(x86_NE, "loop");
+    x86_Instr jmpcc = x86_instr_jmpcc(x86_NE, "loop");
     assert(jmpcc.kind == x86_JMPCC);
     assert(jmpcc.as.jmpcc.cond == x86_NE);
     assert(strcmp(jmpcc.as.jmpcc.identifier, "loop") == 0);
 
-    x86_Instr setcc = x86_setcc_instr(x86_GE, x86_operand_reg(x86_AX));
+    x86_Instr setcc = x86_instr_setcc(x86_GE, x86_operand_reg(x86_AX));
     assert(setcc.kind == x86_SETCC);
     assert(setcc.as.setcc.cond == x86_GE);
     assert(setcc.as.setcc.op.kind == x86_REG && setcc.as.setcc.op.as.reg == x86_AX);
 
-    x86_Instr label = x86_label_instr("L0");
+    x86_Instr label = x86_instr_label("L0");
     assert(label.kind == x86_LABEL);
     assert(strcmp(label.as.label.identifier, "L0") == 0);
 
@@ -683,8 +683,8 @@ void test_codegen_relational_ops() {
     };
     for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
         AstProgram program = make_test_program(
-            create_binop_exp(cases[c].ast_op,
-                             create_int_exp(4), create_int_exp(5)));
+            ast_exp_binop(cases[c].ast_op,
+                             ast_exp_int(4), ast_exp_int(5)));
         IrProgram ir = emit_ir(&program);
         x86_Program asm_prog = codegen(&ir);
 
@@ -715,8 +715,8 @@ void test_codegen_relational_ops() {
         assert(i != NULL && i->kind == x86_RET);
         assert(i->next == NULL);
 
-        destroy_x86_program(&asm_prog);
-        destroy_program(&program);
+        x86_program_destroy(&asm_prog);
+        ast_program_destroy(&program);
     }
     printf("  PASS: test_codegen_relational_ops\n");
 }
@@ -727,7 +727,7 @@ void test_codegen_relational_ops() {
 //   sete dst           (result is 1 exactly when src was 0)
 void test_codegen_logical_not() {
     AstProgram program = make_test_program(
-        create_unary_exp(UNOP_NOT, create_int_exp(5)));
+        ast_exp_unary(UNOP_NOT, ast_exp_int(5)));
     IrProgram ir = emit_ir(&program);
     x86_Program asm_prog = codegen(&ir);
 
@@ -752,8 +752,8 @@ void test_codegen_logical_not() {
     assert(i->as.setcc.op.kind == x86_ID);
     assert(strcmp(i->as.setcc.op.as.identifier, dst_name) == 0);
 
-    destroy_x86_program(&asm_prog);
-    destroy_program(&program);
+    x86_program_destroy(&asm_prog);
+    ast_program_destroy(&program);
     printf("  PASS: test_codegen_logical_not\n");
 }
 
@@ -763,7 +763,7 @@ void test_codegen_logical_not() {
 // uses an unconditional jump and two labels.
 void test_codegen_short_circuit_and() {
     AstProgram program = make_test_program(
-        create_binop_exp(BINOP_LAND, create_int_exp(1), create_int_exp(2)));
+        ast_exp_binop(BINOP_LAND, ast_exp_int(1), ast_exp_int(2)));
     IrProgram ir = emit_ir(&program);
     x86_Program asm_prog = codegen(&ir);
 
@@ -790,8 +790,8 @@ void test_codegen_short_circuit_and() {
     // short-circuit label + end label
     assert(label == 2);
 
-    destroy_x86_program(&asm_prog);
-    destroy_program(&program);
+    x86_program_destroy(&asm_prog);
+    ast_program_destroy(&program);
     printf("  PASS: test_codegen_short_circuit_and\n");
 }
 
@@ -800,9 +800,9 @@ void test_codegen_short_circuit_and() {
 void test_rename_clears_cmp_setcc_pseudos() {
     // (1 + 1) < (2 + 2): operands of the compare are temps, so they become
     // stack slots and force rename to touch the cmp operands.
-    AstExp* lhs = create_binop_exp(BINOP_ADD, create_int_exp(1), create_int_exp(1));
-    AstExp* rhs = create_binop_exp(BINOP_ADD, create_int_exp(2), create_int_exp(2));
-    AstProgram program = make_test_program(create_binop_exp(BINOP_LESS, lhs, rhs));
+    AstExp* lhs = ast_exp_binop(BINOP_ADD, ast_exp_int(1), ast_exp_int(1));
+    AstExp* rhs = ast_exp_binop(BINOP_ADD, ast_exp_int(2), ast_exp_int(2));
+    AstProgram program = make_test_program(ast_exp_binop(BINOP_LESS, lhs, rhs));
     IrProgram ir = emit_ir(&program);
     x86_Program asm_prog = codegen(&ir);
 
@@ -818,26 +818,26 @@ void test_rename_clears_cmp_setcc_pseudos() {
         }
     }
 
-    destroy_x86_program(&asm_prog);
-    destroy_program(&program);
+    x86_program_destroy(&asm_prog);
+    ast_program_destroy(&program);
     printf("  PASS: test_rename_clears_cmp_setcc_pseudos\n");
 }
 
 // --- allocate_stack second-pass register fixing ---
 
 static x86_Program one_instr_program(x86_Instr instr) {
-    x86_InstrList instrs = x86_instr_list_new();
+    x86_InstrList instrs = x86_instr_list_create();
     x86_instr_list_append(&instrs, instr);
-    x86_instr_list_append(&instrs, x86_ret());
+    x86_instr_list_append(&instrs, x86_instr_ret());
     x86_Function* fns = malloc(sizeof(x86_Function));
-    fns[0] = make_x86_function("main", instrs);
-    return make_x86_program(fns, 1);
+    fns[0] = x86_function_create("main", instrs);
+    return x86_program_create(fns, 1);
 }
 
 // cmp mem, mem is illegal: the lhs must be loaded into %r10d first.
 void test_allocate_stack_cmp_two_memory() {
     x86_Program prog = one_instr_program(
-        x86_cmp_instr(x86_operand_stack(-4), x86_operand_stack(-8)));
+        x86_instr_cmp(x86_operand_stack(-4), x86_operand_stack(-8)));
     allocate_stack(&prog.functions[0], 0);
 
     x86_Instr* i = prog.functions[0].instrs.head;
@@ -854,7 +854,7 @@ void test_allocate_stack_cmp_two_memory() {
     assert(i->as.cmp.lhs.kind == x86_REG && i->as.cmp.lhs.as.reg == x86_R10);
     assert(i->as.cmp.rhs.kind == x86_STACK && i->as.cmp.rhs.as.stack == -8);
 
-    destroy_x86_program(&prog);
+    x86_program_destroy(&prog);
     printf("  PASS: test_allocate_stack_cmp_two_memory\n");
 }
 
@@ -862,7 +862,7 @@ void test_allocate_stack_cmp_two_memory() {
 // an immediate rhs is loaded into %r11d first.
 void test_allocate_stack_cmp_imm_rhs() {
     x86_Program prog = one_instr_program(
-        x86_cmp_instr(x86_operand_stack(-4), x86_operand_imm(0)));
+        x86_instr_cmp(x86_operand_stack(-4), x86_operand_imm(0)));
     allocate_stack(&prog.functions[0], 0);
 
     x86_Instr* i = prog.functions[0].instrs.head;
@@ -879,7 +879,7 @@ void test_allocate_stack_cmp_imm_rhs() {
     assert(i->as.cmp.lhs.kind == x86_STACK && i->as.cmp.lhs.as.stack == -4);
     assert(i->as.cmp.rhs.kind == x86_REG && i->as.cmp.rhs.as.reg == x86_R11);
 
-    destroy_x86_program(&prog);
+    x86_program_destroy(&prog);
     printf("  PASS: test_allocate_stack_cmp_imm_rhs\n");
 }
 
@@ -887,7 +887,7 @@ void test_allocate_stack_cmp_imm_rhs() {
 // with %r10d as the source so the result is written back into the dst memory.
 void test_allocate_stack_binop_two_memory() {
     x86_Program prog = one_instr_program(
-        x86_binary(x86_ADD, x86_operand_stack(-8), x86_operand_stack(-4)));
+        x86_instr_binary(x86_ADD, x86_operand_stack(-8), x86_operand_stack(-4)));
     allocate_stack(&prog.functions[0], 0);
 
     x86_Instr* i = prog.functions[0].instrs.head;
@@ -905,7 +905,7 @@ void test_allocate_stack_binop_two_memory() {
     assert(i->as.binop.rhs.kind == x86_REG && i->as.binop.rhs.as.reg == x86_R10);
     assert(i->as.binop.dst.kind == x86_STACK && i->as.binop.dst.as.stack == -4);
 
-    destroy_x86_program(&prog);
+    x86_program_destroy(&prog);
     printf("  PASS: test_allocate_stack_binop_two_memory\n");
 }
 
@@ -914,20 +914,20 @@ void test_allocate_stack_binop_two_memory() {
 // Each new instruction kind must render its own line and not fall through into
 // the following case (a missing break would splice unrelated operands together).
 void test_emit_cmp_setcc_jmp_label() {
-    x86_InstrList instrs = x86_instr_list_new();
+    x86_InstrList instrs = x86_instr_list_create();
     x86_instr_list_append(&instrs,
-        x86_cmp_instr(x86_operand_imm(0), x86_operand_reg(x86_AX)));
+        x86_instr_cmp(x86_operand_imm(0), x86_operand_reg(x86_AX)));
     x86_instr_list_append(&instrs,
-        x86_setcc_instr(x86_E, x86_operand_reg(x86_AX)));
-    x86_instr_list_append(&instrs, x86_jmpcc_instr(x86_NE, "skip"));
-    x86_instr_list_append(&instrs, x86_jmp_instr("done"));
-    x86_instr_list_append(&instrs, x86_label_instr("skip"));
-    x86_instr_list_append(&instrs, x86_setcc_instr(x86_GE, x86_operand_stack(-4)));
-    x86_instr_list_append(&instrs, x86_label_instr("done"));
+        x86_instr_setcc(x86_E, x86_operand_reg(x86_AX)));
+    x86_instr_list_append(&instrs, x86_instr_jmpcc(x86_NE, "skip"));
+    x86_instr_list_append(&instrs, x86_instr_jmp("done"));
+    x86_instr_list_append(&instrs, x86_instr_label("skip"));
+    x86_instr_list_append(&instrs, x86_instr_setcc(x86_GE, x86_operand_stack(-4)));
+    x86_instr_list_append(&instrs, x86_instr_label("done"));
 
     x86_Function* fns = malloc(sizeof(x86_Function));
-    fns[0] = make_x86_function("main", instrs);
-    x86_Program prog = make_x86_program(fns, 1);
+    fns[0] = x86_function_create("main", instrs);
+    x86_Program prog = x86_program_create(fns, 1);
 
     char* buf = NULL;
     size_t buf_size = 0;
@@ -946,7 +946,7 @@ void test_emit_cmp_setcc_jmp_label() {
     assert(strstr(buf, "???") == NULL);
 
     free(buf);
-    destroy_x86_program(&prog);
+    x86_program_destroy(&prog);
     printf("  PASS: test_emit_cmp_setcc_jmp_label\n");
 }
 
@@ -954,7 +954,7 @@ void test_emit_cmp_setcc_jmp_label() {
 // pipeline and leaves no pseudo-registers behind.
 void test_emit_relational_program() {
     AstProgram program = make_test_program(
-        create_binop_exp(BINOP_LESS, create_int_exp(1), create_int_exp(2)));
+        ast_exp_binop(BINOP_LESS, ast_exp_int(1), ast_exp_int(2)));
     IrProgram ir = emit_ir(&program);
     x86_Program asm_prog = codegen(&ir);
 
@@ -973,8 +973,8 @@ void test_emit_relational_program() {
     assert(strstr(buf, "???") == NULL);
 
     free(buf);
-    destroy_x86_program(&asm_prog);
-    destroy_program(&program);
+    x86_program_destroy(&asm_prog);
+    ast_program_destroy(&program);
     printf("  PASS: test_emit_relational_program\n");
 }
 
@@ -983,7 +983,7 @@ void test_emit_relational_program() {
 // pseudo-registers behind.
 void test_emit_short_circuit_program() {
     AstProgram program = make_test_program(
-        create_binop_exp(BINOP_LAND, create_int_exp(1), create_int_exp(2)));
+        ast_exp_binop(BINOP_LAND, ast_exp_int(1), ast_exp_int(2)));
     IrProgram ir = emit_ir(&program);
     x86_Program asm_prog = codegen(&ir);
 
@@ -1004,8 +1004,8 @@ void test_emit_short_circuit_program() {
     assert(strstr(buf, "???") == NULL);
 
     free(buf);
-    destroy_x86_program(&asm_prog);
-    destroy_program(&program);
+    x86_program_destroy(&asm_prog);
+    ast_program_destroy(&program);
     printf("  PASS: test_emit_short_circuit_program\n");
 }
 
@@ -1030,7 +1030,7 @@ static const struct {
 void test_codegen_incdec_binop() {
     for (size_t c = 0; c < sizeof(incdec_cases) / sizeof(incdec_cases[0]); c++) {
         AstProgram program = make_test_program(
-            create_unary_exp(incdec_cases[c].op, create_variable_exp("x")));
+            ast_exp_unary(incdec_cases[c].op, ast_exp_var("x")));
         IrProgram ir = emit_ir(&program);
         x86_Program asm_prog = codegen(&ir);
 
@@ -1043,8 +1043,8 @@ void test_codegen_incdec_binop() {
         }
         assert(found);
 
-        destroy_x86_program(&asm_prog);
-        destroy_program(&program);
+        x86_program_destroy(&asm_prog);
+        ast_program_destroy(&program);
     }
     printf("  PASS: test_codegen_incdec_binop\n");
 }
@@ -1054,7 +1054,7 @@ void test_codegen_incdec_binop() {
 void test_emit_incdec_program() {
     for (size_t c = 0; c < sizeof(incdec_cases) / sizeof(incdec_cases[0]); c++) {
         AstProgram program = make_test_program(
-            create_unary_exp(incdec_cases[c].op, create_variable_exp("x")));
+            ast_exp_unary(incdec_cases[c].op, ast_exp_var("x")));
         IrProgram ir = emit_ir(&program);
         x86_Program asm_prog = codegen(&ir);
 
@@ -1072,8 +1072,8 @@ void test_emit_incdec_program() {
         assert(strstr(buf, "???") == NULL);
 
         free(buf);
-        destroy_x86_program(&asm_prog);
-        destroy_program(&program);
+        x86_program_destroy(&asm_prog);
+        ast_program_destroy(&program);
     }
     printf("  PASS: test_emit_incdec_program\n");
 }
@@ -1088,7 +1088,7 @@ void test_emit_incdec_program() {
 // unconditional skip, and both labels.
 void test_codegen_conditional_expression() {
     AstProgram program = make_test_program(
-        create_conditional_exp(create_int_exp(1), create_int_exp(2), create_int_exp(3)));
+        ast_exp_conditional(ast_exp_int(1), ast_exp_int(2), ast_exp_int(3)));
     char* buf = emit_program_text(&program);
 
     assert(strstr(buf, "cmpl") != NULL);     // test the condition against zero
@@ -1099,16 +1099,16 @@ void test_codegen_conditional_expression() {
     assert(strstr(buf, "???") == NULL);
 
     free(buf);
-    destroy_program(&program);
+    ast_program_destroy(&program);
     printf("  PASS: test_codegen_conditional_expression\n");
 }
 
 // int main() { if (1) return 2; }  renders a single forward conditional branch
 // to the end label — no unconditional jump, since there is no else arm.
 void test_codegen_if_no_else() {
-    AstProgram program = make_stmt_program(make_if_stmt(
-        create_int_exp(1),
-        heap_stmt(make_return_stmt(create_int_exp(2))),
+    AstProgram program = make_stmt_program(ast_stmt_if(
+        ast_exp_int(1),
+        heap_stmt(ast_stmt_return(ast_exp_int(2))),
         NULL));
     char* buf = emit_program_text(&program);
 
@@ -1119,17 +1119,17 @@ void test_codegen_if_no_else() {
     assert(strstr(buf, "???") == NULL);
 
     free(buf);
-    destroy_program(&program);
+    ast_program_destroy(&program);
     printf("  PASS: test_codegen_if_no_else\n");
 }
 
 // int main() { if (1) return 2; else return 3; }  renders the conditional branch
 // to the else arm plus the unconditional jump the then arm uses to skip it.
 void test_codegen_if_with_else() {
-    AstProgram program = make_stmt_program(make_if_stmt(
-        create_int_exp(1),
-        heap_stmt(make_return_stmt(create_int_exp(2))),
-        heap_stmt(make_return_stmt(create_int_exp(3)))));
+    AstProgram program = make_stmt_program(ast_stmt_if(
+        ast_exp_int(1),
+        heap_stmt(ast_stmt_return(ast_exp_int(2))),
+        heap_stmt(ast_stmt_return(ast_exp_int(3)))));
     char* buf = emit_program_text(&program);
 
     assert(strstr(buf, "cmpl") != NULL);
@@ -1143,7 +1143,7 @@ void test_codegen_if_with_else() {
     assert(strstr(buf, "???") == NULL);
 
     free(buf);
-    destroy_program(&program);
+    ast_program_destroy(&program);
     printf("  PASS: test_codegen_if_with_else\n");
 }
 

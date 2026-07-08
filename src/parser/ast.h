@@ -2,6 +2,8 @@
 
 #include <stdlib.h>
 #include <stdbool.h>
+#include "../common/list.h"
+#include "../common/optional.h"
 
 // --- Expressions ---
 
@@ -73,6 +75,7 @@ typedef struct { AstBinopType op_type; AstExp* lhs; AstExp* rhs; }	AstExpBinop;
 typedef struct { char* identifier; }								AstExpVar;
 typedef struct { AstAssignOp op; AstExp* lhs; AstExp* rhs; }		AstExpAssign;
 typedef struct { AstExp* lhs; AstExp* mid; AstExp* rhs; }			AstExpConditional;
+typedef struct { char* identifier; AstExp* args; }					AstExpFunctionCall;
 
 struct AstExp {
     AstExpKind kind;
@@ -86,43 +89,48 @@ struct AstExp {
     } as;
 };
 
-AstExp* create_int_exp(int value);
-AstExp* create_unary_exp(AstUnopType op_type, AstExp* operand);
-AstExp* create_binop_exp(AstBinopType op_type, AstExp* lhs, AstExp* rhs);
-AstExp* create_variable_exp(const char* identifier);
-AstExp* create_assign_exp(AstAssignOp op, AstExp* lhs, AstExp* rhs);
-AstExp* create_conditional_exp(AstExp* lhs, AstExp* mid, AstExp* rhs);
-void destroy_exp(AstExp* exp);
+AstExp* ast_exp_int(int value);
+AstExp* ast_exp_unary(AstUnopType op_type, AstExp* operand);
+AstExp* ast_exp_binop(AstBinopType op_type, AstExp* lhs, AstExp* rhs);
+AstExp* ast_exp_var(const char* identifier);
+AstExp* ast_exp_assign(AstAssignOp op, AstExp* lhs, AstExp* rhs);
+AstExp* ast_exp_conditional(AstExp* lhs, AstExp* mid, AstExp* rhs);
+void ast_exp_destroy(AstExp* exp);
 
 // --- Optional expression ---
 
-typedef struct {
-	bool present;
-	AstExp* exp;
-} OptionalExp;
+typedef OPTIONAL_OF(AstExp*) OptionalExp;
 
-#define some_exp(e) ((OptionalExp){ .present = true, .exp = (e) })
-#define no_exp()    ((OptionalExp){ .present = false, .exp = NULL })
+#define some_exp(e) ((OptionalExp)SOME(e))
+#define no_exp()    ((OptionalExp)NONE)
 
 
 
 // --- Blocks ---
 
-typedef struct AstBlock AstBlock;
 typedef struct AstBlockItem AstBlockItem;
 typedef struct AstStatement AstStatement;
 
-struct AstDeclaration {
+typedef LIST_OF(AstBlockItem) AstBlock;
+
+typedef struct AstVarDecl {
 	char* identifier;
 	OptionalExp init;
-};
-typedef struct AstDeclaration AstDeclaration;
+} AstVarDecl;
 
-struct AstBlock {
-	size_t capacity;
-	size_t size;
-	AstBlockItem* items;
-};
+typedef struct AstFuncDecl {
+	char* identifier;
+	LIST_OF(char*) params;
+	AstBlock* body;
+} AstFuncDecl;
+
+typedef struct AstDeclaration {
+	enum DeclarationKind { DECL_FUNC, DECL_VAR } kind;
+	union {
+		AstFuncDecl	func;
+		AstVarDecl	var;
+	} as;
+} AstDeclaration;
 
 // --- Statements ---
 
@@ -141,10 +149,10 @@ typedef enum {
 	STMT_SWITCH,
 } AstStatementKind;
 
-typedef struct { AstExp* exp; }	AstStmtReturn;
-typedef struct { AstExp* exp; }	AstStmtExp;
-typedef struct { char* label; }	AstStmtContinue;
-typedef struct { char* label; }	AstStmtBreak;
+typedef struct { AstExp* exp; }			AstStmtReturn;
+typedef struct { AstExp* exp; }			AstStmtExp;
+typedef struct { char* label; }			AstStmtContinue;
+typedef struct { char* label; }			AstStmtBreak;
 typedef struct { char* identifier; }	AstStmtLabel;
 typedef struct { char* target; }		AstStmtGoto;
 
@@ -166,16 +174,13 @@ typedef struct AstStmtDoWhile {
 	AstStatement* body;
 } AstStmtDoWhile;
 
-typedef enum {
-	AST_INIT_DECL,
-	AST_INIT_EXP,
-} AstForInitType;
+typedef enum { AST_INIT_DECL, AST_INIT_EXP } AstForInitKind;
 
 typedef struct {
-	AstForInitType init_type;
+	AstForInitKind kind;
 	union {
-		AstDeclaration	decl;
-		AstExp*			exp;
+		AstVarDecl	decl;
+		AstExp*		exp;
 	} as;
 } AstForInit;
 
@@ -187,22 +192,18 @@ typedef struct AstStmtFor {
 	AstStatement*	body;
 } AstStmtFor;
 
-// One clause of a switch, in source order. A `case N:` clause has is_default
-// false and carries its constant value; a `default:` clause has is_default true
-// and ignores value. `body` holds the statements after the label up to the next
-// clause (or the closing brace) -- kept per-clause but laid out contiguously by
-// codegen so C fallthrough works: control runs off one body into the next.
 typedef struct AstSwitchClause {
     bool is_default;
     int value;        // valid only when !is_default
     AstBlock body;
 } AstSwitchClause;
 
+typedef LIST_OF(AstSwitchClause) AstClauseList;
+
 typedef struct AstStmtSwitch {
     char* label;                 // assigned by the labelling pass; base for clause/break labels
     AstExp* cond;
-    AstSwitchClause* clauses;    // source order; NULL when num_clauses == 0
-    size_t num_clauses;
+    AstClauseList clauses;       // source order; empty when count == 0
 } AstStmtSwitch;
 
 struct AstStatement {
@@ -223,40 +224,36 @@ struct AstStatement {
     } as;
 };
 
-AstStatement* make_return_stmt(AstExp* exp);
-AstStatement* make_exp_stmt(AstExp* exp);
-AstStatement* make_if_stmt(AstExp* cond, AstStatement* then_br, AstStatement* else_br);
-AstStatement* make_compound_stmt(AstBlock block);
-AstStatement* make_for_stmt(AstForInit init, OptionalExp cond, OptionalExp post, AstStatement* body);
-AstStatement* make_while_stmt(AstExp* cond, AstStatement* body);
-AstStatement* make_do_while_stmt(AstExp* cond, AstStatement* body);
-AstStatement* make_break_stmt(char* label);
-AstStatement* make_continue_stmt(char * label);
-AstStatement* make_label_stmt(char* identifier);
-AstStatement* make_goto_stmt(char* target);
-// cond and the clauses array are heap-owned; clauses has num_clauses entries
-// (may be NULL/0). label is left NULL for the labelling pass to fill in.
-AstStatement* make_switch_stmt(AstExp* cond, AstSwitchClause* clauses, size_t num_clauses);
-AstForInit make_for_init_decl(AstDeclaration decl);
-AstForInit make_for_init_exp(AstExp* exp);
-void destroy_stmt(AstStatement* stmt);
+AstStatement* ast_stmt_return(AstExp* exp);
+AstStatement* ast_stmt_exp(AstExp* exp);
+AstStatement* ast_stmt_if(AstExp* cond, AstStatement* then_br, AstStatement* else_br);
+AstStatement* ast_stmt_compound(AstBlock block);
+AstStatement* ast_stmt_for(AstForInit init, OptionalExp cond, OptionalExp post, AstStatement* body);
+AstStatement* ast_stmt_while(AstExp* cond, AstStatement* body);
+AstStatement* ast_stmt_do_while(AstExp* cond, AstStatement* body);
+AstStatement* ast_stmt_break(char* label);
+AstStatement* ast_stmt_continue(char * label);
+AstStatement* ast_stmt_label(char* identifier);
+AstStatement* ast_stmt_goto(char* target);
+AstStatement* ast_stmt_switch(AstExp* cond, AstClauseList clauses);
+AstForInit ast_for_init_decl(AstVarDecl decl);
+AstForInit ast_for_init_exp(AstExp* exp);
+void ast_stmt_destroy(AstStatement* stmt);
 
 // --- Declarations & block items ---
 
-typedef enum {
-    AST_DECLARATION,
-    AST_STATEMENT
-} AstBlockItemType;
-
 struct AstBlockItem {
-	AstBlockItemType type;
+	enum AstBlockItemKind { AST_DECLARATION, AST_STATEMENT } kind;
 	union {
-		AstDeclaration	decl;
+		AstVarDecl		decl;
 		AstStatement*	stmt;
 	} as;
 };
 
-AstBlock ast_block_make(size_t capacity);
+// Blocks are LIST_OF(AstBlockItem): build with (AstBlock){0} and list_push,
+// or ast_block_append for a compound-literal item (list_push can't take one
+// directly — its braces' commas would be read as extra macro arguments).
+// ast_block_destroy frees each item's owned contents, then the storage.
 void ast_block_append(AstBlock* block, AstBlockItem block_item);
 void ast_block_destroy(AstBlock* block);
 
@@ -267,17 +264,16 @@ typedef struct {
 	AstBlock body;
 } AstFunction;
 
-AstFunction ast_function_make(const char* name, AstBlock block);
+AstFunction ast_function_create(const char* identifier, AstBlock block);
 void ast_function_append(AstFunction* function, AstBlockItem block_item);
 void ast_function_destroy(AstFunction* function);
 
 // --- Program ---
 
-typedef struct {
-    AstFunction* functions;
-    int num_functions;
-} AstProgram;
+typedef LIST_OF(AstFunction) AstProgram;
 
+// Adopts `functions` (a heap array of `num_functions`) as the list's backing
+// storage — no copy; the program owns and later frees it.
 AstProgram ast_program_create(AstFunction* functions, int num_functions);
-char* to_string(AstProgram);
-void destroy_program(AstProgram* program);
+char* ast_program_to_string(AstProgram);
+void ast_program_destroy(AstProgram* program);

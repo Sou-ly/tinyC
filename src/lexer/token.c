@@ -3,7 +3,6 @@
 #include <string.h>
 #include <stdio.h>
 #include "token.h"
-#include "token_list.h"
 
 const char *token_kind_name(TokenKind kind) {
 	switch (kind) {
@@ -159,7 +158,7 @@ static const PunctEntry *punct_lookup(const char *source) {
 	return NULL;
 }
 
-LexerErr tokenize_file(FILE *src, struct TokenList *tokens) {
+LexerErr tokenize_file(FILE *src, TokenList *tokens) {
 	fseek(src, 0, SEEK_END);
 	long len = ftell(src);
 	if (len < 0) return ERR_FILE_READ;
@@ -180,7 +179,15 @@ LexerErr tokenize_file(FILE *src, struct TokenList *tokens) {
 	return err;
 }
 
-LexerErr tokenize(const char *source, struct TokenList *tokens) {
+void free_tokens(TokenList *tokens) {
+	for (size_t i = 0; i < tokens->count; i++) {
+		if (tokens->items[i].kind == TOK_IDENTIFIER)
+			free(tokens->items[i].as.identifier);
+	}
+	list_free(tokens);
+}
+
+LexerErr tokenize(const char *source, TokenList *tokens) {
 	size_t i = 0;
 	while (source[i] != '\0') {
 		if (isalpha((unsigned char)source[i]) || source[i] == '_') {
@@ -190,15 +197,15 @@ LexerErr tokenize(const char *source, struct TokenList *tokens) {
 
 			int kw = keyword_lookup(source + start, len);
 			if (kw >= 0) {
-				Token t = { .kind = TOK_KEYWORD, .kw = kw };
-				token_list_push(tokens, t);
+				Token t = { .kind = TOK_KEYWORD, .as.keyword = kw };
+				list_push(tokens, t);
 			} else {
 				char *word = malloc(len + 1);
 				if (!word) return ERR_NO_MEMORY;
 				memcpy(word, source + start, len);
 				word[len] = '\0';
-				Token t = { .kind = TOK_IDENTIFIER, .ident = word };
-				token_list_push(tokens, t);
+				Token t = { .kind = TOK_IDENTIFIER, .as.identifier = word };
+				list_push(tokens, t);
 			}
 		} else if (isdigit((unsigned char)source[i])) {
 			int val = 0;
@@ -206,8 +213,8 @@ LexerErr tokenize(const char *source, struct TokenList *tokens) {
 				val = val * 10 + (source[i] - '0');
 				i++;
 			}
-			Token t = { .kind = TOK_INT_LITERAL, .int_val = val };
-			token_list_push(tokens, t);
+			Token t = { .kind = TOK_INT_LITERAL, .as.int_value = val };
+			list_push(tokens, t);
 		} else if (isspace((unsigned char)source[i])) {
 			i++;
 		} else {
@@ -215,10 +222,10 @@ LexerErr tokenize(const char *source, struct TokenList *tokens) {
 			if (!p) return ERR_UNEXPECTED_CHAR;
 			Token t = { .kind = p->kind };
 			if (p->kind == TOK_OPERATOR)
-				t.op = p->value;
+				t.as.operator = p->value;
 			else
-				t.sep = p->value;
-			token_list_push(tokens, t);
+				t.as.separator = p->value;
+			list_push(tokens, t);
 			i += p->len;
 		}
 	}

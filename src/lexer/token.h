@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include "../strlib/str.h"
+#include "../common/list.h"
 
 typedef enum {
 	ERR_OK = 0,
@@ -88,12 +89,12 @@ typedef enum {
 typedef struct {
 	TokenKind kind;
 	union {
-		TokenSeparator sep;
-		TokenOperator  op;
-		TokenKeyword   kw;
-		char          *ident;
-		int            int_val;
-	};
+		TokenSeparator separator;
+		TokenOperator  operator;
+		TokenKeyword   keyword;
+		char          *identifier;
+		int            int_value;
+	} as;
 	size_t line;
 	size_t col;
 } Token;
@@ -105,10 +106,14 @@ const char *separator_name(TokenSeparator s);
 const char *operator_name(TokenOperator o);
 const char *keyword_name(TokenKeyword k);
 
-struct TokenList;
+typedef LIST_OF(Token) TokenList;
+
+// Frees each identifier token's owned spelling, then the backing storage.
+// Pushing a token transfers spelling ownership to the list.
+void free_tokens(TokenList *tokens);
 
 // Lex a NUL-terminated source buffer.
-LexerErr tokenize(const char *source, struct TokenList *tokens);
+LexerErr tokenize(const char *source, TokenList *tokens);
 
 // Convenience wrapper: read the file into memory, then tokenize.
-LexerErr tokenize_file(FILE *src, struct TokenList *tokens);
+LexerErr tokenize_file(FILE *src, TokenList *tokens);

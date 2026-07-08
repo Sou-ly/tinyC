@@ -24,30 +24,30 @@
 static AstBlockItem decl_item(const char* name, AstExp* initializer) {
     OptionalExp opt = initializer ? some_exp(initializer) : no_exp();
     return (AstBlockItem){
-        .type = AST_DECLARATION,
+        .kind = AST_DECLARATION,
         .as.decl = { .identifier = strdup(name), .init = opt },
     };
 }
 
 static AstBlockItem stmt_item(AstStatement* stmt) {
-    return (AstBlockItem){ .type = AST_STATEMENT, .as.stmt = stmt };
+    return (AstBlockItem){ .kind = AST_STATEMENT, .as.stmt = stmt };
 }
 
 static AstBlockItem return_var(const char* name) {
-    return stmt_item(make_return_stmt(create_variable_exp(name)));
+    return stmt_item(ast_stmt_return(ast_exp_var(name)));
 }
 
-// Wrap a finished body block into a single-function program. destroy_program
+// Wrap a finished body block into a single-function program. ast_program_destroy
 // frees the functions array, so it must be heap-allocated.
 static AstProgram program_with_body(AstBlock body) {
     AstFunction* functions = malloc(sizeof(AstFunction));
-    functions[0] = ast_function_make("main", body);
+    functions[0] = ast_function_create("main", body);
     return ast_program_create(functions, 1);
 }
 
 // Convenience accessors into `main`'s top-level body.
 static AstBlockItem* item(AstProgram* prog, size_t index) {
-    return &prog->functions[0].body.items[index];
+    return &prog->items[0].body.items[index];
 }
 
 static const char* decl_name(AstProgram* prog, size_t index) {
@@ -164,7 +164,7 @@ void test_varmap_copy_empty() {
 
 // A lone declaration is renamed and its reference rewritten to match.
 void test_resolve_single_declaration() {
-    AstBlock body = ast_block_make(4);
+    AstBlock body = (AstBlock){0};
     ast_block_append(&body, decl_item("a", NULL));
     ast_block_append(&body, return_var("a"));
     AstProgram prog = program_with_body(body);
@@ -176,13 +176,13 @@ void test_resolve_single_declaration() {
     assert(ret->kind == EXP_VAR);
     assert(strcmp(ret->as.variable.identifier, "a.0") == 0);
 
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_resolve_single_declaration\n");
 }
 
 // Distinct declarations get distinct unique names, numbered in source order.
 void test_resolve_distinct_names() {
-    AstBlock body = ast_block_make(4);
+    AstBlock body = (AstBlock){0};
     ast_block_append(&body, decl_item("a", NULL));
     ast_block_append(&body, decl_item("b", NULL));
     AstProgram prog = program_with_body(body);
@@ -192,39 +192,39 @@ void test_resolve_distinct_names() {
     assert(strcmp(decl_name(&prog, 0), "a.0") == 0);
     assert(strcmp(decl_name(&prog, 1), "b.1") == 0);
 
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_resolve_distinct_names\n");
 }
 
 // A reference inside an initializer resolves against earlier declarations.
 void test_resolve_initializer_reference() {
-    AstBlock body = ast_block_make(4);
-    ast_block_append(&body, decl_item("a", create_int_exp(5)));
-    ast_block_append(&body, decl_item("b", create_variable_exp("a")));
+    AstBlock body = (AstBlock){0};
+    ast_block_append(&body, decl_item("a", ast_exp_int(5)));
+    ast_block_append(&body, decl_item("b", ast_exp_var("a")));
     AstProgram prog = program_with_body(body);
 
     resolve_variables(&prog);
 
     assert(strcmp(decl_name(&prog, 0), "a.0") == 0);
     assert(strcmp(decl_name(&prog, 1), "b.1") == 0);
-    AstExp* init = item(&prog, 1)->as.decl.init.exp;
+    AstExp* init = item(&prog, 1)->as.decl.init.value;
     assert(init->kind == EXP_VAR);
     assert(strcmp(init->as.variable.identifier, "a.0") == 0);
 
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_resolve_initializer_reference\n");
 }
 
 // A nested block may redeclare an outer name; the two get different unique
 // names and a reference inside the block binds to the inner declaration.
 void test_resolve_inner_shadows_outer() {
-    AstBlock inner = ast_block_make(4);
+    AstBlock inner = (AstBlock){0};
     ast_block_append(&inner, decl_item("a", NULL));
     ast_block_append(&inner, return_var("a"));
 
-    AstBlock body = ast_block_make(4);
+    AstBlock body = (AstBlock){0};
     ast_block_append(&body, decl_item("a", NULL));
-    ast_block_append(&body, stmt_item(make_compound_stmt(inner)));
+    ast_block_append(&body, stmt_item(ast_stmt_compound(inner)));
     AstProgram prog = program_with_body(body);
 
     resolve_variables(&prog);
@@ -235,18 +235,18 @@ void test_resolve_inner_shadows_outer() {
     AstExp* ret = blk->items[1].as.stmt->as.ret.exp;
     assert(strcmp(ret->as.variable.identifier, "a.1") == 0);  // binds to inner
 
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_resolve_inner_shadows_outer\n");
 }
 
 // A nested block with no local declaration sees the enclosing scope's binding.
 void test_resolve_inner_reads_outer() {
-    AstBlock inner = ast_block_make(4);
+    AstBlock inner = (AstBlock){0};
     ast_block_append(&inner, return_var("a"));
 
-    AstBlock body = ast_block_make(4);
+    AstBlock body = (AstBlock){0};
     ast_block_append(&body, decl_item("a", NULL));
-    ast_block_append(&body, stmt_item(make_compound_stmt(inner)));
+    ast_block_append(&body, stmt_item(ast_stmt_compound(inner)));
     AstProgram prog = program_with_body(body);
 
     resolve_variables(&prog);
@@ -256,21 +256,21 @@ void test_resolve_inner_reads_outer() {
     AstExp* ret = blk->items[0].as.stmt->as.ret.exp;
     assert(strcmp(ret->as.variable.identifier, "a.0") == 0);  // outer binding
 
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_resolve_inner_reads_outer\n");
 }
 
 // Sibling blocks are independent scopes: each may declare the same name, and
 // the two declarations get distinct unique names.
 void test_resolve_sibling_scopes() {
-    AstBlock first = ast_block_make(4);
+    AstBlock first = (AstBlock){0};
     ast_block_append(&first, decl_item("a", NULL));
-    AstBlock second = ast_block_make(4);
+    AstBlock second = (AstBlock){0};
     ast_block_append(&second, decl_item("a", NULL));
 
-    AstBlock body = ast_block_make(4);
-    ast_block_append(&body, stmt_item(make_compound_stmt(first)));
-    ast_block_append(&body, stmt_item(make_compound_stmt(second)));
+    AstBlock body = (AstBlock){0};
+    ast_block_append(&body, stmt_item(ast_stmt_compound(first)));
+    ast_block_append(&body, stmt_item(ast_stmt_compound(second)));
     AstProgram prog = program_with_body(body);
 
     resolve_variables(&prog);
@@ -280,19 +280,19 @@ void test_resolve_sibling_scopes() {
     assert(strcmp(a0, "a.0") == 0);
     assert(strcmp(a1, "a.1") == 0);
 
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_resolve_sibling_scopes\n");
 }
 
 // Declarations inside a block do not leak out: a reference after the block
 // resolves to the outer declaration, not the inner shadow.
 void test_resolve_inner_decl_does_not_leak() {
-    AstBlock inner = ast_block_make(4);
+    AstBlock inner = (AstBlock){0};
     ast_block_append(&inner, decl_item("a", NULL));
 
-    AstBlock body = ast_block_make(4);
+    AstBlock body = (AstBlock){0};
     ast_block_append(&body, decl_item("a", NULL));                       // a.0 (outer)
-    ast_block_append(&body, stmt_item(make_compound_stmt(inner)));       // a.1 (inner)
+    ast_block_append(&body, stmt_item(ast_stmt_compound(inner)));       // a.1 (inner)
     ast_block_append(&body, return_var("a"));                            // -> a.0
     AstProgram prog = program_with_body(body);
 
@@ -301,12 +301,12 @@ void test_resolve_inner_decl_does_not_leak() {
     AstExp* ret = item(&prog, 2)->as.stmt->as.ret.exp;
     assert(strcmp(ret->as.variable.identifier, "a.0") == 0);
 
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_resolve_inner_decl_does_not_leak\n");
 }
 
 // make_*_stmt already heap-allocates, so an if-statement's branch pointers can
-// own the result directly (resolve rewrites the branches in place; destroy_stmt
+// own the result directly (resolve rewrites the branches in place; ast_stmt_destroy
 // frees them). This pass-through is kept for readability at the call sites.
 static AstStatement* heap_stmt(AstStatement* stmt) {
     return stmt;
@@ -316,14 +316,14 @@ static AstStatement* heap_stmt(AstStatement* stmt) {
 // scope (an unbraced if introduces no scope of its own), rewriting every
 // reference to the matching unique name.
 void test_resolve_if_statement() {
-    AstBlock body = ast_block_make(4);
+    AstBlock body = (AstBlock){0};
     ast_block_append(&body, decl_item("a", NULL));   // a.0
     ast_block_append(&body, decl_item("b", NULL));   // b.1
     // if (a) return b; else return a;
-    ast_block_append(&body, stmt_item(make_if_stmt(
-        create_variable_exp("a"),
-        heap_stmt(make_return_stmt(create_variable_exp("b"))),
-        heap_stmt(make_return_stmt(create_variable_exp("a"))))));
+    ast_block_append(&body, stmt_item(ast_stmt_if(
+        ast_exp_var("a"),
+        heap_stmt(ast_stmt_return(ast_exp_var("b"))),
+        heap_stmt(ast_stmt_return(ast_exp_var("a"))))));
     AstProgram prog = program_with_body(body);
 
     resolve_variables(&prog);
@@ -336,21 +336,21 @@ void test_resolve_if_statement() {
     assert(strcmp(if_stmt->then_br->as.ret.exp->as.variable.identifier, "b.1") == 0);
     assert(strcmp(if_stmt->else_br->as.ret.exp->as.variable.identifier, "a.0") == 0);
 
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_resolve_if_statement\n");
 }
 
 // A conditional (ternary) expression resolves all three sub-expressions, so
 // each variable reference inside it is rewritten to its unique name.
 void test_resolve_conditional_expression() {
-    AstBlock body = ast_block_make(4);
+    AstBlock body = (AstBlock){0};
     ast_block_append(&body, decl_item("a", NULL));   // a.0
     ast_block_append(&body, decl_item("b", NULL));   // b.1
     // return a ? a : b;
-    ast_block_append(&body, stmt_item(make_return_stmt(create_conditional_exp(
-        create_variable_exp("a"),
-        create_variable_exp("a"),
-        create_variable_exp("b")))));
+    ast_block_append(&body, stmt_item(ast_stmt_return(ast_exp_conditional(
+        ast_exp_var("a"),
+        ast_exp_var("a"),
+        ast_exp_var("b")))));
     AstProgram prog = program_with_body(body);
 
     resolve_variables(&prog);
@@ -361,7 +361,7 @@ void test_resolve_conditional_expression() {
     assert(strcmp(cond->as.conditional.mid->as.variable.identifier, "a.0") == 0);
     assert(strcmp(cond->as.conditional.rhs->as.variable.identifier, "b.1") == 0);
 
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_resolve_conditional_expression\n");
 }
 
@@ -379,7 +379,7 @@ static void expect_resolve_error(const char* description, AstBlock (*build)(void
         freopen("/dev/null", "w", stderr);
         AstProgram prog = program_with_body(build());
         resolve_variables(&prog);  // expected to exit(1) before returning
-        destroy_program(&prog);
+        ast_program_destroy(&prog);
         _exit(0);                        // reached only if it wrongly succeeded
     }
     int status = 0;
@@ -392,23 +392,23 @@ static void expect_resolve_error(const char* description, AstBlock (*build)(void
 }
 
 static AstBlock build_duplicate_same_scope(void) {
-    AstBlock body = ast_block_make(4);
+    AstBlock body = (AstBlock){0};
     ast_block_append(&body, decl_item("a", NULL));
     ast_block_append(&body, decl_item("a", NULL));
     return body;
 }
 
 static AstBlock build_undeclared_use(void) {
-    AstBlock body = ast_block_make(4);
+    AstBlock body = (AstBlock){0};
     ast_block_append(&body, return_var("a"));
     return body;
 }
 
 static AstBlock build_inner_decl_used_outside(void) {
-    AstBlock inner = ast_block_make(4);
+    AstBlock inner = (AstBlock){0};
     ast_block_append(&inner, decl_item("a", NULL));
-    AstBlock body = ast_block_make(4);
-    ast_block_append(&body, stmt_item(make_compound_stmt(inner)));
+    AstBlock body = (AstBlock){0};
+    ast_block_append(&body, stmt_item(ast_stmt_compound(inner)));
     ast_block_append(&body, return_var("a"));  // a not visible out here
     return body;
 }
@@ -417,12 +417,12 @@ static AstBlock build_duplicate_in_inner_scope(void) {
     // Outer `a` is fine to shadow once, but two `a` in the inner scope is a
     // duplicate — confirms is_cur_scope flags the inner redeclaration even
     // though an outer binding with the same name exists.
-    AstBlock inner = ast_block_make(4);
+    AstBlock inner = (AstBlock){0};
     ast_block_append(&inner, decl_item("a", NULL));
     ast_block_append(&inner, decl_item("a", NULL));
-    AstBlock body = ast_block_make(4);
+    AstBlock body = (AstBlock){0};
     ast_block_append(&body, decl_item("a", NULL));
-    ast_block_append(&body, stmt_item(make_compound_stmt(inner)));
+    ast_block_append(&body, stmt_item(ast_stmt_compound(inner)));
     return body;
 }
 

@@ -4,7 +4,6 @@
 #include <stdbool.h>
 
 #include "lexer/token.h"
-#include "lexer/token_list.h"
 #include "parser/parser.h"
 #include "ir/ir.h"
 #include "codegen/codegen.h"
@@ -74,17 +73,17 @@ int main(int argc, char* argv[]) {
         return 2;
     }
 
-    TokenList tokens = token_list_create(32);
+    TokenList tokens = (TokenList){0};
     if (tokenize_file(src, &tokens) != ERR_OK) {
         fprintf(stderr, "Error: failed to tokenize %s\n", source_path);
         fclose(src);
-        token_list_destroy(&tokens);
+        free_tokens(&tokens);
         return 1;
     }
     fclose(src);
 
     if (stage == STAGE_LEX) {
-        token_list_destroy(&tokens);
+        free_tokens(&tokens);
         return 0;
     }
 
@@ -97,8 +96,8 @@ int main(int argc, char* argv[]) {
     resolve_goto_labels(&program);
 
     if (stage == STAGE_PARSE) {
-        destroy_program(&program);
-        token_list_destroy(&tokens);
+        ast_program_destroy(&program);
+        free_tokens(&tokens);
         return 0;
     }
 
@@ -107,9 +106,9 @@ int main(int argc, char* argv[]) {
     IrProgram ir_program = emit_ir(&program);
 
     if (stage == STAGE_IR) {
-        destroy_ir(&ir_program);
-        destroy_program(&program);
-        token_list_destroy(&tokens);
+        ir_program_destroy(&ir_program);
+        ast_program_destroy(&program);
+        free_tokens(&tokens);
         return 0;
     }
 
@@ -133,9 +132,9 @@ int main(int argc, char* argv[]) {
     if (asm_out == NULL) {
         fprintf(stderr, "Error: cannot open %s for writing\n", asm_path);
         free(asm_path);
-        destroy_x86_program(&asm_prog);
-        destroy_program(&program);
-        token_list_destroy(&tokens);
+        x86_program_destroy(&asm_prog);
+        ast_program_destroy(&program);
+        free_tokens(&tokens);
         return 2;
     }
 
@@ -144,9 +143,9 @@ int main(int argc, char* argv[]) {
 
     if (stage == STAGE_CODEGEN) {
         free(asm_path);
-        destroy_x86_program(&asm_prog);
-        destroy_program(&program);
-        token_list_destroy(&tokens);
+        x86_program_destroy(&asm_prog);
+        ast_program_destroy(&program);
+        free_tokens(&tokens);
         return 0;
     }
 
@@ -165,9 +164,9 @@ int main(int argc, char* argv[]) {
 
     free(asm_path);
     free(exe_path);
-    destroy_x86_program(&asm_prog);
-    destroy_program(&program);
-    token_list_destroy(&tokens);
+    x86_program_destroy(&asm_prog);
+    ast_program_destroy(&program);
+    free_tokens(&tokens);
 
     if (ret != 0) {
         fprintf(stderr, "Error: assembler/linker failed\n");

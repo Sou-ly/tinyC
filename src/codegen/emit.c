@@ -142,10 +142,10 @@ static void emit_instr(x86_Instr* instr, FILE* out) {
 void emit_asm(x86_Program* prog, FILE* out) {
     for (int i = 0; i < prog->num_functions; i++) {
         x86_Function* fn = &prog->functions[i];
-        if (strcmp(fn->name, "main") == 0) {
-            fprintf(out, ".global " SYMBOL_PREFIX "%s\n", fn->name);
+        if (strcmp(fn->identifier, "main") == 0) {
+            fprintf(out, ".global " SYMBOL_PREFIX "%s\n", fn->identifier);
         }
-        fprintf(out, SYMBOL_PREFIX "%s:\n", fn->name);
+        fprintf(out, SYMBOL_PREFIX "%s:\n", fn->identifier);
         fprintf(out, "    pushq %%rbp\n");
         fprintf(out, "    movq %%rsp, %%rbp\n");
         for (x86_Instr* instr = fn->instrs.head; instr; instr = instr->next) {

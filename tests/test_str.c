@@ -211,7 +211,7 @@ void test_str_trim_no_whitespace() {
 
 void test_str_split_spaces() {
 	str s = str_from("int main void");
-	StringList sl = string_list_create(4);
+	StringList sl = (StringList){0};
 	size_t count = str_split(s, " ", &sl);
 	assert(count == 3);
 	assert(sl.count == 3);
@@ -223,14 +223,14 @@ void test_str_split_spaces() {
 	assert(str_eq_cstr(t2, "void"));
 	str_free(&t0); str_free(&t1); str_free(&t2);
 	for (size_t i = 0; i < sl.count; i++) free(sl.items[i]);
-	string_list_destroy(&sl);
+	list_free(&sl);
 	str_free(&s);
 	printf("  PASS: str_split_spaces\n");
 }
 
 void test_str_split_multiple_delimiters() {
 	str s = str_from("int\tmain\n{return 0;}");
-	StringList sl = string_list_create(4);
+	StringList sl = (StringList){0};
 	size_t count = str_split(s, " \t\n", &sl);
 	assert(count == 4);
 	str t0 = str_from(sl.items[0]);
@@ -243,39 +243,39 @@ void test_str_split_multiple_delimiters() {
 	assert(str_eq_cstr(t3, "0;}"));
 	str_free(&t0); str_free(&t1); str_free(&t2); str_free(&t3);
 	for (size_t i = 0; i < sl.count; i++) free(sl.items[i]);
-	string_list_destroy(&sl);
+	list_free(&sl);
 	str_free(&s);
 	printf("  PASS: str_split_multiple_delimiters\n");
 }
 
 void test_str_split_empty() {
 	str s = str_from("");
-	StringList sl = string_list_create(4);
+	StringList sl = (StringList){0};
 	size_t count = str_split(s, " ", &sl);
 	assert(count == 0);
 	assert(sl.count == 0);
-	string_list_destroy(&sl);
+	list_free(&sl);
 	str_free(&s);
 	printf("  PASS: str_split_empty\n");
 }
 
 void test_str_split_no_delimiters_found() {
 	str s = str_from("hello");
-	StringList sl = string_list_create(4);
+	StringList sl = (StringList){0};
 	size_t count = str_split(s, ",", &sl);
 	assert(count == 1);
 	str t0 = str_from(sl.items[0]);
 	assert(str_eq_cstr(t0, "hello"));
 	str_free(&t0);
 	free(sl.items[0]);
-	string_list_destroy(&sl);
+	list_free(&sl);
 	str_free(&s);
 	printf("  PASS: str_split_no_delimiters_found\n");
 }
 
 void test_str_split_leading_trailing() {
 	str s = str_from("  hello  world  ");
-	StringList sl = string_list_create(4);
+	StringList sl = (StringList){0};
 	size_t count = str_split(s, " ", &sl);
 	assert(count == 2);
 	str t0 = str_from(sl.items[0]);
@@ -284,7 +284,7 @@ void test_str_split_leading_trailing() {
 	assert(str_eq_cstr(t1, "world"));
 	str_free(&t0); str_free(&t1);
 	for (size_t i = 0; i < sl.count; i++) free(sl.items[i]);
-	string_list_destroy(&sl);
+	list_free(&sl);
 	str_free(&s);
 	printf("  PASS: str_split_leading_trailing\n");
 }

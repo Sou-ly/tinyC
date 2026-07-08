@@ -8,60 +8,59 @@
 #include "../src/parser/ast.h"
 #include "../src/parser/parser.h"
 #include "../src/lexer/token.h"
-#include "../src/lexer/token_list.h"
 
 // --- AST unit tests ---
 
 void test_create_int_exp() {
-    AstExp* e = create_int_exp(42);
+    AstExp* e = ast_exp_int(42);
     assert(e != NULL);
     assert(e->kind == EXP_INT);
     assert(e->as.int_lit.value == 42);
-    destroy_exp(e);
+    ast_exp_destroy(e);
     printf("  PASS: test_create_int_exp\n");
 }
 
 void test_create_unary_exp() {
-    AstExp* e = create_unary_exp(UNOP_MINUS, create_int_exp(5));
+    AstExp* e = ast_exp_unary(UNOP_MINUS, ast_exp_int(5));
     assert(e != NULL);
     assert(e->kind == EXP_UNOP);
     assert(e->as.unary.op_type == UNOP_MINUS);
     assert(e->as.unary.operand->as.int_lit.value == 5);
-    destroy_exp(e);
+    ast_exp_destroy(e);
     printf("  PASS: test_create_unary_exp\n");
 }
 
 void test_create_binop_exp() {
-    AstExp* e = create_binop_exp(BINOP_ADD, create_int_exp(3), create_int_exp(7));
+    AstExp* e = ast_exp_binop(BINOP_ADD, ast_exp_int(3), ast_exp_int(7));
     assert(e != NULL);
     assert(e->kind == EXP_BINOP);
     assert(e->as.binop.op_type == BINOP_ADD);
     assert(e->as.binop.lhs->as.int_lit.value == 3);
     assert(e->as.binop.rhs->as.int_lit.value == 7);
-    destroy_exp(e);
+    ast_exp_destroy(e);
     printf("  PASS: test_create_binop_exp\n");
 }
 
 void test_create_conditional_exp() {
-    AstExp* e = create_conditional_exp(create_int_exp(1), create_int_exp(2), create_int_exp(3));
+    AstExp* e = ast_exp_conditional(ast_exp_int(1), ast_exp_int(2), ast_exp_int(3));
     assert(e != NULL);
     assert(e->kind == EXP_CONDITIONAL);
     assert(e->as.conditional.lhs->as.int_lit.value == 1);
     assert(e->as.conditional.mid->as.int_lit.value == 2);
     assert(e->as.conditional.rhs->as.int_lit.value == 3);
-    destroy_exp(e);
+    ast_exp_destroy(e);
     printf("  PASS: test_create_conditional_exp\n");
 }
 
 void test_create_return_stmt() {
-    AstStatement* s = make_return_stmt(create_int_exp(2));
+    AstStatement* s = ast_stmt_return(ast_exp_int(2));
     assert(s->kind == STMT_RETURN);
     assert(s->as.ret.exp->as.int_lit.value == 2);
-    destroy_stmt(s);
+    ast_stmt_destroy(s);
     printf("  PASS: test_create_return_stmt\n");
 }
 
-// make_if_stmt takes heap-owned branches; make_*_stmt already heap-allocates,
+// ast_stmt_if takes heap-owned branches; make_*_stmt already heap-allocates,
 // so this is just a pass-through kept for readability at the call sites.
 static AstStatement* heap_stmt(AstStatement* stmt) {
     return stmt;
@@ -70,10 +69,10 @@ static AstStatement* heap_stmt(AstStatement* stmt) {
 // An if with both branches records the condition and both heap-owned branches,
 // and leaves the (loop/label pass) label unset.
 void test_create_if_stmt_with_else() {
-    AstStatement* s = make_if_stmt(
-        create_int_exp(1),
-        heap_stmt(make_return_stmt(create_int_exp(2))),
-        heap_stmt(make_return_stmt(create_int_exp(3))));
+    AstStatement* s = ast_stmt_if(
+        ast_exp_int(1),
+        heap_stmt(ast_stmt_return(ast_exp_int(2))),
+        heap_stmt(ast_stmt_return(ast_exp_int(3))));
 
     assert(s->kind == STMT_IF);
     assert(s->as.if_cond.cond->kind == EXP_INT);
@@ -84,35 +83,35 @@ void test_create_if_stmt_with_else() {
     assert(s->as.if_cond.else_br->kind == STMT_RETURN);
     assert(s->as.if_cond.else_br->as.ret.exp->as.int_lit.value == 3);
 
-    destroy_stmt(s);
+    ast_stmt_destroy(s);
     printf("  PASS: test_create_if_stmt_with_else\n");
 }
 
-// A plain if leaves else_br NULL; destroy_stmt must tolerate the missing branch.
+// A plain if leaves else_br NULL; ast_stmt_destroy must tolerate the missing branch.
 void test_create_if_stmt_no_else() {
-    AstStatement* s = make_if_stmt(
-        create_int_exp(1),
-        heap_stmt(make_return_stmt(create_int_exp(2))),
+    AstStatement* s = ast_stmt_if(
+        ast_exp_int(1),
+        heap_stmt(ast_stmt_return(ast_exp_int(2))),
         NULL);
 
     assert(s->kind == STMT_IF);
     assert(s->as.if_cond.then_br->kind == STMT_RETURN);
     assert(s->as.if_cond.else_br == NULL);
 
-    destroy_stmt(s);
+    ast_stmt_destroy(s);
     printf("  PASS: test_create_if_stmt_no_else\n");
 }
 
 void test_create_function_decl() {
-    AstFunction fn = ast_function_make("main", ast_block_make(8));
+    AstFunction fn = ast_function_create("main", (AstBlock){0});
     ast_function_append(&fn, (AstBlockItem){
-        .type = AST_STATEMENT,
-        .as.stmt = make_return_stmt(create_int_exp(0)),
+        .kind = AST_STATEMENT,
+        .as.stmt = ast_stmt_return(ast_exp_int(0)),
     });
 
     assert(strcmp(fn.identifier, "main") == 0);
-    assert(fn.body.size == 1);
-    assert(fn.body.items[0].type == AST_STATEMENT);
+    assert(fn.body.count == 1);
+    assert(fn.body.items[0].kind == AST_STATEMENT);
     assert(fn.body.items[0].as.stmt->kind == STMT_RETURN);
     ast_function_destroy(&fn);
     printf("  PASS: test_create_function_decl\n");
@@ -122,30 +121,30 @@ void test_create_function_decl() {
 // Parses: int main() { return 2; }
 
 void test_parse_return_2() {
-    TokenList tokens = token_list_create(8);
+    TokenList tokens = (TokenList){0};
 
-    token_list_push(&tokens, (Token){TOK_KEYWORD,   {.kw = TOK_INT},          1, 1});
-    token_list_push(&tokens, (Token){TOK_IDENTIFIER, {.ident = strdup("main")}, 1, 5});
-    token_list_push(&tokens, (Token){TOK_SEPARATOR, {.sep = TOK_LPAR},       1, 9});
-    token_list_push(&tokens, (Token){TOK_SEPARATOR, {.sep = TOK_RPAR},       1, 10});
-    token_list_push(&tokens, (Token){TOK_SEPARATOR, {.sep = TOK_LBRACE},     1, 12});
-    token_list_push(&tokens, (Token){TOK_KEYWORD,   {.kw = TOK_RETURN},       2, 5});
-    token_list_push(&tokens, (Token){TOK_INT_LITERAL, {.int_val = 2},        2, 12});
-    token_list_push(&tokens, (Token){TOK_SEPARATOR, {.sep = TOK_SEMICOLON},  2, 13});
-    token_list_push(&tokens, (Token){TOK_SEPARATOR, {.sep = TOK_RBRACE},     3, 1});
+    list_push(&tokens, ((Token){TOK_KEYWORD,   {.keyword = TOK_INT},          1, 1}));
+    list_push(&tokens, ((Token){TOK_IDENTIFIER, {.identifier = strdup("main")}, 1, 5}));
+    list_push(&tokens, ((Token){TOK_SEPARATOR, {.separator = TOK_LPAR},       1, 9}));
+    list_push(&tokens, ((Token){TOK_SEPARATOR, {.separator = TOK_RPAR},       1, 10}));
+    list_push(&tokens, ((Token){TOK_SEPARATOR, {.separator = TOK_LBRACE},     1, 12}));
+    list_push(&tokens, ((Token){TOK_KEYWORD,   {.keyword = TOK_RETURN},       2, 5}));
+    list_push(&tokens, ((Token){TOK_INT_LITERAL, {.int_value = 2},        2, 12}));
+    list_push(&tokens, ((Token){TOK_SEPARATOR, {.separator = TOK_SEMICOLON},  2, 13}));
+    list_push(&tokens, ((Token){TOK_SEPARATOR, {.separator = TOK_RBRACE},     3, 1}));
 
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    assert(prog.num_functions == 1);
-    assert(strcmp(prog.functions[0].identifier, "main") == 0);
-    assert(prog.functions[0].body.size == 1);
-    assert(prog.functions[0].body.items[0].type == AST_STATEMENT);
-    assert(prog.functions[0].body.items[0].as.stmt->kind == STMT_RETURN);
-    assert(prog.functions[0].body.items[0].as.stmt->as.ret.exp->kind == EXP_INT);
-    assert(prog.functions[0].body.items[0].as.stmt->as.ret.exp->as.int_lit.value == 2);
+    assert(prog.count == 1);
+    assert(strcmp(prog.items[0].identifier, "main") == 0);
+    assert(prog.items[0].body.count == 1);
+    assert(prog.items[0].body.items[0].kind == AST_STATEMENT);
+    assert(prog.items[0].body.items[0].as.stmt->kind == STMT_RETURN);
+    assert(prog.items[0].body.items[0].as.stmt->as.ret.exp->kind == EXP_INT);
+    assert(prog.items[0].body.items[0].as.stmt->as.ret.exp->as.int_lit.value == 2);
 
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     free(tokens.items);
     printf("  PASS: test_parse_return_2\n");
 }
@@ -159,19 +158,19 @@ void test_parse_return_2() {
 #define COUNT_OF(array) (sizeof(array) / sizeof((array)[0]))
 
 static Token make_int_token(int value) {
-    return (Token){TOK_INT_LITERAL, {.int_val = value}, 1, 1};
+    return (Token){TOK_INT_LITERAL, {.int_value = value}, 1, 1};
 }
 
 static Token make_op_token(TokenOperator op) {
-    return (Token){TOK_OPERATOR, {.op = op}, 1, 1};
+    return (Token){TOK_OPERATOR, {.operator = op}, 1, 1};
 }
 
 static Token make_ident_token(const char* name) {
-    return (Token){TOK_IDENTIFIER, {.ident = strdup(name)}, 1, 1};
+    return (Token){TOK_IDENTIFIER, {.identifier = strdup(name)}, 1, 1};
 }
 
 static Token make_sep_token(TokenSeparator sep) {
-    return (Token){TOK_SEPARATOR, {.sep = sep}, 1, 1};
+    return (Token){TOK_SEPARATOR, {.separator = sep}, 1, 1};
 }
 
 static const char* binop_name(AstBinopType op) {
@@ -281,24 +280,24 @@ static bool exp_equals(const AstExp* a, const AstExp* b) {
 // expression matches `expected`. Takes ownership of `expected`.
 static void check_return_exp(const char* description, const Token* exp_tokens,
                              size_t num_exp_tokens, AstExp* expected) {
-    TokenList tokens = token_list_create(num_exp_tokens + 8);
+    TokenList tokens = (TokenList){0};
 
-    token_list_push(&tokens, (Token){TOK_KEYWORD,    {.kw = TOK_INT},            1, 1});
-    token_list_push(&tokens, (Token){TOK_IDENTIFIER, {.ident = strdup("main")}, 1, 1});
-    token_list_push(&tokens, make_sep_token(TOK_LPAR));
-    token_list_push(&tokens, make_sep_token(TOK_RPAR));
-    token_list_push(&tokens, make_sep_token(TOK_LBRACE));
-    token_list_push(&tokens, (Token){TOK_KEYWORD,    {.kw = TOK_RETURN},         1, 1});
+    list_push(&tokens, ((Token){TOK_KEYWORD,    {.keyword = TOK_INT},            1, 1}));
+    list_push(&tokens, ((Token){TOK_IDENTIFIER, {.identifier = strdup("main")}, 1, 1}));
+    list_push(&tokens, make_sep_token(TOK_LPAR));
+    list_push(&tokens, make_sep_token(TOK_RPAR));
+    list_push(&tokens, make_sep_token(TOK_LBRACE));
+    list_push(&tokens, ((Token){TOK_KEYWORD,    {.keyword = TOK_RETURN},         1, 1}));
     for (size_t i = 0; i < num_exp_tokens; i++) {
-        token_list_push(&tokens, exp_tokens[i]);
+        list_push(&tokens, exp_tokens[i]);
     }
-    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
-    token_list_push(&tokens, make_sep_token(TOK_RBRACE));
+    list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    list_push(&tokens, make_sep_token(TOK_RBRACE));
 
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstExp* actual = prog.functions[0].body.items[0].as.stmt->as.ret.exp;
+    AstExp* actual = prog.items[0].body.items[0].as.stmt->as.ret.exp;
     if (!exp_equals(actual, expected)) {
         printf("  FAIL: %s\n    expected: ", description);
         print_exp(expected);
@@ -308,9 +307,9 @@ static void check_return_exp(const char* description, const Token* exp_tokens,
         exit(1);
     }
 
-    destroy_exp(expected);
-    destroy_program(&prog);
-    token_list_destroy(&tokens);
+    ast_exp_destroy(expected);
+    ast_program_destroy(&prog);
+    free_tokens(&tokens);
     printf("  PASS: %s\n", description);
 }
 
@@ -321,17 +320,17 @@ void test_precedence_mul_over_add() {
         make_int_token(2), make_op_token(TOK_STAR), make_int_token(3),
     };
     check_return_exp("1 + 2 * 3;", left, COUNT_OF(left),
-        create_binop_exp(BINOP_ADD, create_int_exp(1),
-            create_binop_exp(BINOP_MUL, create_int_exp(2), create_int_exp(3))));
+        ast_exp_binop(BINOP_ADD, ast_exp_int(1),
+            ast_exp_binop(BINOP_MUL, ast_exp_int(2), ast_exp_int(3))));
 
     Token right[] = {
         make_int_token(2), make_op_token(TOK_STAR), make_int_token(3),
         make_op_token(TOK_PLUS), make_int_token(4),
     };
     check_return_exp("2 * 3 + 4", right, COUNT_OF(right),
-        create_binop_exp(BINOP_ADD,
-            create_binop_exp(BINOP_MUL, create_int_exp(2), create_int_exp(3)),
-            create_int_exp(4)));
+        ast_exp_binop(BINOP_ADD,
+            ast_exp_binop(BINOP_MUL, ast_exp_int(2), ast_exp_int(3)),
+            ast_exp_int(4)));
 }
 
 // Same-precedence operators associate to the left.
@@ -341,27 +340,27 @@ void test_precedence_left_associativity() {
         make_int_token(4), make_op_token(TOK_MINUS), make_int_token(3),
     };
     check_return_exp("10 - 4 - 3", sub, COUNT_OF(sub),
-        create_binop_exp(BINOP_SUB,
-            create_binop_exp(BINOP_SUB, create_int_exp(10), create_int_exp(4)),
-            create_int_exp(3)));
+        ast_exp_binop(BINOP_SUB,
+            ast_exp_binop(BINOP_SUB, ast_exp_int(10), ast_exp_int(4)),
+            ast_exp_int(3)));
 
     Token div_mod[] = {
         make_int_token(8), make_op_token(TOK_FSLASH),
         make_int_token(4), make_op_token(TOK_PERCENT), make_int_token(3),
     };
     check_return_exp("8 / 4 % 3", div_mod, COUNT_OF(div_mod),
-        create_binop_exp(BINOP_MOD,
-            create_binop_exp(BINOP_DIV, create_int_exp(8), create_int_exp(4)),
-            create_int_exp(3)));
+        ast_exp_binop(BINOP_MOD,
+            ast_exp_binop(BINOP_DIV, ast_exp_int(8), ast_exp_int(4)),
+            ast_exp_int(3)));
 
     Token shift[] = {
         make_int_token(1), make_op_token(TOK_LSHIFT),
         make_int_token(2), make_op_token(TOK_LSHIFT), make_int_token(3),
     };
     check_return_exp("1 << 2 << 3", shift, COUNT_OF(shift),
-        create_binop_exp(BINOP_LSHIFT,
-            create_binop_exp(BINOP_LSHIFT, create_int_exp(1), create_int_exp(2)),
-            create_int_exp(3)));
+        ast_exp_binop(BINOP_LSHIFT,
+            ast_exp_binop(BINOP_LSHIFT, ast_exp_int(1), ast_exp_int(2)),
+            ast_exp_int(3)));
 }
 
 // Additive binds tighter than shifts.
@@ -371,17 +370,17 @@ void test_precedence_add_over_shift() {
         make_int_token(2), make_op_token(TOK_PLUS), make_int_token(3),
     };
     check_return_exp("1 << 2 + 3", lshift, COUNT_OF(lshift),
-        create_binop_exp(BINOP_LSHIFT, create_int_exp(1),
-            create_binop_exp(BINOP_ADD, create_int_exp(2), create_int_exp(3))));
+        ast_exp_binop(BINOP_LSHIFT, ast_exp_int(1),
+            ast_exp_binop(BINOP_ADD, ast_exp_int(2), ast_exp_int(3))));
 
     Token rshift[] = {
         make_int_token(1), make_op_token(TOK_PLUS),
         make_int_token(2), make_op_token(TOK_RSHIFT), make_int_token(3),
     };
     check_return_exp("1 + 2 >> 3", rshift, COUNT_OF(rshift),
-        create_binop_exp(BINOP_RSHIFT,
-            create_binop_exp(BINOP_ADD, create_int_exp(1), create_int_exp(2)),
-            create_int_exp(3)));
+        ast_exp_binop(BINOP_RSHIFT,
+            ast_exp_binop(BINOP_ADD, ast_exp_int(1), ast_exp_int(2)),
+            ast_exp_int(3)));
 }
 
 // Bitwise tiers: shift > & > ^ > |.
@@ -391,24 +390,24 @@ void test_precedence_bitwise_tiers() {
         make_int_token(2), make_op_token(TOK_LSHIFT), make_int_token(3),
     };
     check_return_exp("1 & 2 << 3", shift_over_and, COUNT_OF(shift_over_and),
-        create_binop_exp(BINOP_AND, create_int_exp(1),
-            create_binop_exp(BINOP_LSHIFT, create_int_exp(2), create_int_exp(3))));
+        ast_exp_binop(BINOP_AND, ast_exp_int(1),
+            ast_exp_binop(BINOP_LSHIFT, ast_exp_int(2), ast_exp_int(3))));
 
     Token and_over_xor[] = {
         make_int_token(1), make_op_token(TOK_XOR),
         make_int_token(2), make_op_token(TOK_AND), make_int_token(3),
     };
     check_return_exp("1 ^ 2 & 3", and_over_xor, COUNT_OF(and_over_xor),
-        create_binop_exp(BINOP_XOR, create_int_exp(1),
-            create_binop_exp(BINOP_AND, create_int_exp(2), create_int_exp(3))));
+        ast_exp_binop(BINOP_XOR, ast_exp_int(1),
+            ast_exp_binop(BINOP_AND, ast_exp_int(2), ast_exp_int(3))));
 
     Token xor_over_or[] = {
         make_int_token(1), make_op_token(TOK_OR),
         make_int_token(2), make_op_token(TOK_XOR), make_int_token(3),
     };
     check_return_exp("1 | 2 ^ 3", xor_over_or, COUNT_OF(xor_over_or),
-        create_binop_exp(BINOP_OR, create_int_exp(1),
-            create_binop_exp(BINOP_XOR, create_int_exp(2), create_int_exp(3))));
+        ast_exp_binop(BINOP_OR, ast_exp_int(1),
+            ast_exp_binop(BINOP_XOR, ast_exp_int(2), ast_exp_int(3))));
 }
 
 // One expression exercising every precedence tier at once:
@@ -423,13 +422,13 @@ void test_precedence_full_chain() {
         make_int_token(6), make_op_token(TOK_STAR), make_int_token(7),
     };
     check_return_exp("1 | 2 ^ 3 & 4 << 5 + 6 * 7", chain, COUNT_OF(chain),
-        create_binop_exp(BINOP_OR, create_int_exp(1),
-            create_binop_exp(BINOP_XOR, create_int_exp(2),
-                create_binop_exp(BINOP_AND, create_int_exp(3),
-                    create_binop_exp(BINOP_LSHIFT, create_int_exp(4),
-                        create_binop_exp(BINOP_ADD, create_int_exp(5),
-                            create_binop_exp(BINOP_MUL, create_int_exp(6),
-                                create_int_exp(7))))))));
+        ast_exp_binop(BINOP_OR, ast_exp_int(1),
+            ast_exp_binop(BINOP_XOR, ast_exp_int(2),
+                ast_exp_binop(BINOP_AND, ast_exp_int(3),
+                    ast_exp_binop(BINOP_LSHIFT, ast_exp_int(4),
+                        ast_exp_binop(BINOP_ADD, ast_exp_int(5),
+                            ast_exp_binop(BINOP_MUL, ast_exp_int(6),
+                                ast_exp_int(7))))))));
 }
 
 // Parentheses override precedence.
@@ -441,9 +440,9 @@ void test_precedence_parentheses() {
         make_op_token(TOK_AND), make_int_token(3),
     };
     check_return_exp("(1 | 2) & 3", grouped, COUNT_OF(grouped),
-        create_binop_exp(BINOP_AND,
-            create_binop_exp(BINOP_OR, create_int_exp(1), create_int_exp(2)),
-            create_int_exp(3)));
+        ast_exp_binop(BINOP_AND,
+            ast_exp_binop(BINOP_OR, ast_exp_int(1), ast_exp_int(2)),
+            ast_exp_int(3)));
 }
 
 // Unary minus binds tighter than any binary operator.
@@ -453,9 +452,9 @@ void test_precedence_unary_over_binary() {
         make_op_token(TOK_PLUS), make_int_token(2),
     };
     check_return_exp("-1 + 2", negated, COUNT_OF(negated),
-        create_binop_exp(BINOP_ADD,
-            create_unary_exp(UNOP_MINUS, create_int_exp(1)),
-            create_int_exp(2)));
+        ast_exp_binop(BINOP_ADD,
+            ast_exp_unary(UNOP_MINUS, ast_exp_int(1)),
+            ast_exp_int(2)));
 }
 
 // --- Compound assignment tests ---
@@ -466,23 +465,23 @@ void test_precedence_unary_over_binary() {
 // operator tag is mapped correctly.
 static void check_assign_op(const char* description, TokenOperator tok_op,
                             AstAssignOp expected_op) {
-    TokenList tokens = token_list_create(16);
-    token_list_push(&tokens, (Token){TOK_KEYWORD,    {.kw = TOK_INT},            1, 1});
-    token_list_push(&tokens, (Token){TOK_IDENTIFIER, {.ident = strdup("main")}, 1, 1});
-    token_list_push(&tokens, make_sep_token(TOK_LPAR));
-    token_list_push(&tokens, make_sep_token(TOK_RPAR));
-    token_list_push(&tokens, make_sep_token(TOK_LBRACE));
-    token_list_push(&tokens, (Token){TOK_IDENTIFIER, {.ident = strdup("x")}, 1, 1});
-    token_list_push(&tokens, make_op_token(tok_op));
-    token_list_push(&tokens, make_int_token(5));
-    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
-    token_list_push(&tokens, make_sep_token(TOK_RBRACE));
+    TokenList tokens = (TokenList){0};
+    list_push(&tokens, ((Token){TOK_KEYWORD,    {.keyword = TOK_INT},            1, 1}));
+    list_push(&tokens, ((Token){TOK_IDENTIFIER, {.identifier = strdup("main")}, 1, 1}));
+    list_push(&tokens, make_sep_token(TOK_LPAR));
+    list_push(&tokens, make_sep_token(TOK_RPAR));
+    list_push(&tokens, make_sep_token(TOK_LBRACE));
+    list_push(&tokens, ((Token){TOK_IDENTIFIER, {.identifier = strdup("x")}, 1, 1}));
+    list_push(&tokens, make_op_token(tok_op));
+    list_push(&tokens, make_int_token(5));
+    list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    list_push(&tokens, make_sep_token(TOK_RBRACE));
 
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstBlockItem item = prog.functions[0].body.items[0];
-    assert(item.type == AST_STATEMENT);
+    AstBlockItem item = prog.items[0].body.items[0];
+    assert(item.kind == AST_STATEMENT);
     assert(item.as.stmt->kind == STMT_EXP);
     AstExp* exp = item.as.stmt->as.exp_stmt.exp;
     assert(exp->kind == EXP_ASSIGN);
@@ -495,8 +494,8 @@ static void check_assign_op(const char* description, TokenOperator tok_op,
         exit(1);
     }
 
-    destroy_program(&prog);
-    token_list_destroy(&tokens);
+    ast_program_destroy(&prog);
+    free_tokens(&tokens);
     printf("  PASS: %s\n", description);
 }
 
@@ -518,24 +517,24 @@ void test_parse_compound_assign_ops() {
 // Assignment is right-associative: `x += y += 5` parses as `x += (y += 5)`,
 // and each node keeps its own operator tag.
 void test_parse_compound_assign_right_assoc() {
-    TokenList tokens = token_list_create(16);
-    token_list_push(&tokens, (Token){TOK_KEYWORD,    {.kw = TOK_INT},            1, 1});
-    token_list_push(&tokens, (Token){TOK_IDENTIFIER, {.ident = strdup("main")}, 1, 1});
-    token_list_push(&tokens, make_sep_token(TOK_LPAR));
-    token_list_push(&tokens, make_sep_token(TOK_RPAR));
-    token_list_push(&tokens, make_sep_token(TOK_LBRACE));
-    token_list_push(&tokens, (Token){TOK_IDENTIFIER, {.ident = strdup("x")}, 1, 1});
-    token_list_push(&tokens, make_op_token(TOK_PLUS_EQ));
-    token_list_push(&tokens, (Token){TOK_IDENTIFIER, {.ident = strdup("y")}, 1, 1});
-    token_list_push(&tokens, make_op_token(TOK_MUL_EQ));
-    token_list_push(&tokens, make_int_token(5));
-    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
-    token_list_push(&tokens, make_sep_token(TOK_RBRACE));
+    TokenList tokens = (TokenList){0};
+    list_push(&tokens, ((Token){TOK_KEYWORD,    {.keyword = TOK_INT},            1, 1}));
+    list_push(&tokens, ((Token){TOK_IDENTIFIER, {.identifier = strdup("main")}, 1, 1}));
+    list_push(&tokens, make_sep_token(TOK_LPAR));
+    list_push(&tokens, make_sep_token(TOK_RPAR));
+    list_push(&tokens, make_sep_token(TOK_LBRACE));
+    list_push(&tokens, ((Token){TOK_IDENTIFIER, {.identifier = strdup("x")}, 1, 1}));
+    list_push(&tokens, make_op_token(TOK_PLUS_EQ));
+    list_push(&tokens, ((Token){TOK_IDENTIFIER, {.identifier = strdup("y")}, 1, 1}));
+    list_push(&tokens, make_op_token(TOK_MUL_EQ));
+    list_push(&tokens, make_int_token(5));
+    list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    list_push(&tokens, make_sep_token(TOK_RBRACE));
 
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstExp* outer = prog.functions[0].body.items[0].as.stmt->as.exp_stmt.exp;
+    AstExp* outer = prog.items[0].body.items[0].as.stmt->as.exp_stmt.exp;
     assert(outer->kind == EXP_ASSIGN && outer->as.assign.op == ASSIGN_ADD);
     assert(outer->as.assign.lhs->kind == EXP_VAR);
     assert(strcmp(outer->as.assign.lhs->as.variable.identifier, "x") == 0);
@@ -546,8 +545,8 @@ void test_parse_compound_assign_right_assoc() {
     assert(strcmp(inner->as.assign.lhs->as.variable.identifier, "y") == 0);
     assert(inner->as.assign.rhs->kind == EXP_INT && inner->as.assign.rhs->as.int_lit.value == 5);
 
-    destroy_program(&prog);
-    token_list_destroy(&tokens);
+    ast_program_destroy(&prog);
+    free_tokens(&tokens);
     printf("  PASS: test_parse_compound_assign_right_assoc\n");
 }
 
@@ -559,25 +558,25 @@ void test_parse_compound_assign_right_assoc() {
 void test_parse_prefix_increment() {
     Token toks[] = { make_op_token(TOK_INCR), make_ident_token("x") };
     check_return_exp("++x", toks, COUNT_OF(toks),
-        create_unary_exp(UNOP_PREINC, create_variable_exp("x")));
+        ast_exp_unary(UNOP_PREINC, ast_exp_var("x")));
 }
 
 void test_parse_prefix_decrement() {
     Token toks[] = { make_op_token(TOK_DECR), make_ident_token("x") };
     check_return_exp("--x", toks, COUNT_OF(toks),
-        create_unary_exp(UNOP_PREDEC, create_variable_exp("x")));
+        ast_exp_unary(UNOP_PREDEC, ast_exp_var("x")));
 }
 
 void test_parse_postfix_increment() {
     Token toks[] = { make_ident_token("x"), make_op_token(TOK_INCR) };
     check_return_exp("x++", toks, COUNT_OF(toks),
-        create_unary_exp(UNOP_POSTINC, create_variable_exp("x")));
+        ast_exp_unary(UNOP_POSTINC, ast_exp_var("x")));
 }
 
 void test_parse_postfix_decrement() {
     Token toks[] = { make_ident_token("x"), make_op_token(TOK_DECR) };
     check_return_exp("x--", toks, COUNT_OF(toks),
-        create_unary_exp(UNOP_POSTDEC, create_variable_exp("x")));
+        ast_exp_unary(UNOP_POSTDEC, ast_exp_var("x")));
 }
 
 // --- Conditional (ternary) tests ---
@@ -593,7 +592,7 @@ void test_parse_conditional_basic() {
         make_int_token(2), make_sep_token(TOK_COLON), make_int_token(3),
     };
     check_return_exp("1 ? 2 : 3", toks, COUNT_OF(toks),
-        create_conditional_exp(create_int_exp(1), create_int_exp(2), create_int_exp(3)));
+        ast_exp_conditional(ast_exp_int(1), ast_exp_int(2), ast_exp_int(3)));
 }
 
 // The condition is lower precedence than arithmetic: `1 + 2 ? 3 : 4` groups as
@@ -605,9 +604,9 @@ void test_parse_conditional_below_arithmetic() {
         make_int_token(3), make_sep_token(TOK_COLON), make_int_token(4),
     };
     check_return_exp("1 + 2 ? 3 : 4", toks, COUNT_OF(toks),
-        create_conditional_exp(
-            create_binop_exp(BINOP_ADD, create_int_exp(1), create_int_exp(2)),
-            create_int_exp(3), create_int_exp(4)));
+        ast_exp_conditional(
+            ast_exp_binop(BINOP_ADD, ast_exp_int(1), ast_exp_int(2)),
+            ast_exp_int(3), ast_exp_int(4)));
 }
 
 // The middle branch is a full expression, so a bare binop there stays grouped:
@@ -619,9 +618,9 @@ void test_parse_conditional_middle_is_full_exp() {
         make_sep_token(TOK_COLON), make_int_token(4),
     };
     check_return_exp("1 ? 2 + 3 : 4", toks, COUNT_OF(toks),
-        create_conditional_exp(create_int_exp(1),
-            create_binop_exp(BINOP_ADD, create_int_exp(2), create_int_exp(3)),
-            create_int_exp(4)));
+        ast_exp_conditional(ast_exp_int(1),
+            ast_exp_binop(BINOP_ADD, ast_exp_int(2), ast_exp_int(3)),
+            ast_exp_int(4)));
 }
 
 // Conditionals are right-associative: `1 ? 2 : 3 ? 4 : 5` groups as
@@ -634,9 +633,9 @@ void test_parse_conditional_right_assoc() {
         make_int_token(4), make_sep_token(TOK_COLON), make_int_token(5),
     };
     check_return_exp("1 ? 2 : 3 ? 4 : 5", toks, COUNT_OF(toks),
-        create_conditional_exp(create_int_exp(1), create_int_exp(2),
-            create_conditional_exp(create_int_exp(3), create_int_exp(4),
-                create_int_exp(5))));
+        ast_exp_conditional(ast_exp_int(1), ast_exp_int(2),
+            ast_exp_conditional(ast_exp_int(3), ast_exp_int(4),
+                ast_exp_int(5))));
 }
 
 // --- Loop parsing tests ---
@@ -645,169 +644,169 @@ void test_parse_conditional_right_assoc() {
 // and checks the resulting AST structure.
 
 static Token make_kw_token(TokenKeyword kw) {
-    return (Token){TOK_KEYWORD, {.kw = kw}, 1, 1};
+    return (Token){TOK_KEYWORD, {.keyword = kw}, 1, 1};
 }
 
 // Parses: int main() { while (1) 2; }
 void test_parse_while_loop() {
-    TokenList tokens = token_list_create(16);
-    token_list_push(&tokens, make_kw_token(TOK_INT));
-    token_list_push(&tokens, make_ident_token("main"));
-    token_list_push(&tokens, make_sep_token(TOK_LPAR));
-    token_list_push(&tokens, make_sep_token(TOK_RPAR));
-    token_list_push(&tokens, make_sep_token(TOK_LBRACE));
+    TokenList tokens = (TokenList){0};
+    list_push(&tokens, make_kw_token(TOK_INT));
+    list_push(&tokens, make_ident_token("main"));
+    list_push(&tokens, make_sep_token(TOK_LPAR));
+    list_push(&tokens, make_sep_token(TOK_RPAR));
+    list_push(&tokens, make_sep_token(TOK_LBRACE));
     // while (1) 2;
-    token_list_push(&tokens, make_kw_token(TOK_WHILE));
-    token_list_push(&tokens, make_sep_token(TOK_LPAR));
-    token_list_push(&tokens, make_int_token(1));
-    token_list_push(&tokens, make_sep_token(TOK_RPAR));
-    token_list_push(&tokens, make_int_token(2));
-    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
-    token_list_push(&tokens, make_sep_token(TOK_RBRACE));
+    list_push(&tokens, make_kw_token(TOK_WHILE));
+    list_push(&tokens, make_sep_token(TOK_LPAR));
+    list_push(&tokens, make_int_token(1));
+    list_push(&tokens, make_sep_token(TOK_RPAR));
+    list_push(&tokens, make_int_token(2));
+    list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    list_push(&tokens, make_sep_token(TOK_RBRACE));
 
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstStatement* stmt = prog.functions[0].body.items[0].as.stmt;
+    AstStatement* stmt = prog.items[0].body.items[0].as.stmt;
     assert(stmt->kind == STMT_WHILE);
     assert(stmt->as.while_loop.label == NULL);
     assert(stmt->as.while_loop.cond->as.int_lit.value == 1);
     assert(stmt->as.while_loop.body->kind == STMT_EXP);
     assert(stmt->as.while_loop.body->as.exp_stmt.exp->as.int_lit.value == 2);
 
-    destroy_program(&prog);
-    token_list_destroy(&tokens);
+    ast_program_destroy(&prog);
+    free_tokens(&tokens);
     printf("  PASS: test_parse_while_loop\n");
 }
 
 // Parses: int main() { do 1; while (2); }
 void test_parse_do_while_loop() {
-    TokenList tokens = token_list_create(16);
-    token_list_push(&tokens, make_kw_token(TOK_INT));
-    token_list_push(&tokens, make_ident_token("main"));
-    token_list_push(&tokens, make_sep_token(TOK_LPAR));
-    token_list_push(&tokens, make_sep_token(TOK_RPAR));
-    token_list_push(&tokens, make_sep_token(TOK_LBRACE));
+    TokenList tokens = (TokenList){0};
+    list_push(&tokens, make_kw_token(TOK_INT));
+    list_push(&tokens, make_ident_token("main"));
+    list_push(&tokens, make_sep_token(TOK_LPAR));
+    list_push(&tokens, make_sep_token(TOK_RPAR));
+    list_push(&tokens, make_sep_token(TOK_LBRACE));
     // do 1; while (2);
-    token_list_push(&tokens, make_kw_token(TOK_DO));
-    token_list_push(&tokens, make_int_token(1));
-    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
-    token_list_push(&tokens, make_kw_token(TOK_WHILE));
-    token_list_push(&tokens, make_sep_token(TOK_LPAR));
-    token_list_push(&tokens, make_int_token(2));
-    token_list_push(&tokens, make_sep_token(TOK_RPAR));
-    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
-    token_list_push(&tokens, make_sep_token(TOK_RBRACE));
+    list_push(&tokens, make_kw_token(TOK_DO));
+    list_push(&tokens, make_int_token(1));
+    list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    list_push(&tokens, make_kw_token(TOK_WHILE));
+    list_push(&tokens, make_sep_token(TOK_LPAR));
+    list_push(&tokens, make_int_token(2));
+    list_push(&tokens, make_sep_token(TOK_RPAR));
+    list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    list_push(&tokens, make_sep_token(TOK_RBRACE));
 
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstStatement* stmt = prog.functions[0].body.items[0].as.stmt;
+    AstStatement* stmt = prog.items[0].body.items[0].as.stmt;
     assert(stmt->kind == STMT_DO_WHILE);
     assert(stmt->as.do_while_loop.label == NULL);
     assert(stmt->as.do_while_loop.cond->as.int_lit.value == 2);
     assert(stmt->as.do_while_loop.body->kind == STMT_EXP);
 
-    destroy_program(&prog);
-    token_list_destroy(&tokens);
+    ast_program_destroy(&prog);
+    free_tokens(&tokens);
     printf("  PASS: test_parse_do_while_loop\n");
 }
 
 // Parses: int main() { for (0; 1; 2) 3; }
 void test_parse_for_loop() {
-    TokenList tokens = token_list_create(16);
-    token_list_push(&tokens, make_kw_token(TOK_INT));
-    token_list_push(&tokens, make_ident_token("main"));
-    token_list_push(&tokens, make_sep_token(TOK_LPAR));
-    token_list_push(&tokens, make_sep_token(TOK_RPAR));
-    token_list_push(&tokens, make_sep_token(TOK_LBRACE));
+    TokenList tokens = (TokenList){0};
+    list_push(&tokens, make_kw_token(TOK_INT));
+    list_push(&tokens, make_ident_token("main"));
+    list_push(&tokens, make_sep_token(TOK_LPAR));
+    list_push(&tokens, make_sep_token(TOK_RPAR));
+    list_push(&tokens, make_sep_token(TOK_LBRACE));
     // for (0; 1; 2) 3;
-    token_list_push(&tokens, make_kw_token(TOK_FOR));
-    token_list_push(&tokens, make_sep_token(TOK_LPAR));
-    token_list_push(&tokens, make_int_token(0));
-    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
-    token_list_push(&tokens, make_int_token(1));
-    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
-    token_list_push(&tokens, make_int_token(2));
-    token_list_push(&tokens, make_sep_token(TOK_RPAR));
-    token_list_push(&tokens, make_int_token(3));
-    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
-    token_list_push(&tokens, make_sep_token(TOK_RBRACE));
+    list_push(&tokens, make_kw_token(TOK_FOR));
+    list_push(&tokens, make_sep_token(TOK_LPAR));
+    list_push(&tokens, make_int_token(0));
+    list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    list_push(&tokens, make_int_token(1));
+    list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    list_push(&tokens, make_int_token(2));
+    list_push(&tokens, make_sep_token(TOK_RPAR));
+    list_push(&tokens, make_int_token(3));
+    list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    list_push(&tokens, make_sep_token(TOK_RBRACE));
 
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstStatement* stmt = prog.functions[0].body.items[0].as.stmt;
+    AstStatement* stmt = prog.items[0].body.items[0].as.stmt;
     assert(stmt->kind == STMT_FOR);
     assert(stmt->as.for_loop.label == NULL);
     assert(stmt->as.for_loop.cond.present);
-    assert(stmt->as.for_loop.cond.exp->as.int_lit.value == 1);
+    assert(stmt->as.for_loop.cond.value->as.int_lit.value == 1);
     assert(stmt->as.for_loop.post.present);
-    assert(stmt->as.for_loop.post.exp->as.int_lit.value == 2);
+    assert(stmt->as.for_loop.post.value->as.int_lit.value == 2);
     assert(stmt->as.for_loop.body->kind == STMT_EXP);
 
-    destroy_program(&prog);
-    token_list_destroy(&tokens);
+    ast_program_destroy(&prog);
+    free_tokens(&tokens);
     printf("  PASS: test_parse_for_loop\n");
 }
 
 // Parses: int main() { while (1) break; }
 void test_parse_break_in_loop() {
-    TokenList tokens = token_list_create(16);
-    token_list_push(&tokens, make_kw_token(TOK_INT));
-    token_list_push(&tokens, make_ident_token("main"));
-    token_list_push(&tokens, make_sep_token(TOK_LPAR));
-    token_list_push(&tokens, make_sep_token(TOK_RPAR));
-    token_list_push(&tokens, make_sep_token(TOK_LBRACE));
+    TokenList tokens = (TokenList){0};
+    list_push(&tokens, make_kw_token(TOK_INT));
+    list_push(&tokens, make_ident_token("main"));
+    list_push(&tokens, make_sep_token(TOK_LPAR));
+    list_push(&tokens, make_sep_token(TOK_RPAR));
+    list_push(&tokens, make_sep_token(TOK_LBRACE));
     // while (1) break;
-    token_list_push(&tokens, make_kw_token(TOK_WHILE));
-    token_list_push(&tokens, make_sep_token(TOK_LPAR));
-    token_list_push(&tokens, make_int_token(1));
-    token_list_push(&tokens, make_sep_token(TOK_RPAR));
-    token_list_push(&tokens, make_kw_token(TOK_BREAK));
-    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
-    token_list_push(&tokens, make_sep_token(TOK_RBRACE));
+    list_push(&tokens, make_kw_token(TOK_WHILE));
+    list_push(&tokens, make_sep_token(TOK_LPAR));
+    list_push(&tokens, make_int_token(1));
+    list_push(&tokens, make_sep_token(TOK_RPAR));
+    list_push(&tokens, make_kw_token(TOK_BREAK));
+    list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    list_push(&tokens, make_sep_token(TOK_RBRACE));
 
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstStatement* stmt = prog.functions[0].body.items[0].as.stmt;
+    AstStatement* stmt = prog.items[0].body.items[0].as.stmt;
     assert(stmt->kind == STMT_WHILE);
     assert(stmt->as.while_loop.body->kind == STMT_BREAK);
     assert(stmt->as.while_loop.body->as.break_stmt.label == NULL);
 
-    destroy_program(&prog);
-    token_list_destroy(&tokens);
+    ast_program_destroy(&prog);
+    free_tokens(&tokens);
     printf("  PASS: test_parse_break_in_loop\n");
 }
 
 // Parses: int main() { while (1) continue; }
 void test_parse_continue_in_loop() {
-    TokenList tokens = token_list_create(16);
-    token_list_push(&tokens, make_kw_token(TOK_INT));
-    token_list_push(&tokens, make_ident_token("main"));
-    token_list_push(&tokens, make_sep_token(TOK_LPAR));
-    token_list_push(&tokens, make_sep_token(TOK_RPAR));
-    token_list_push(&tokens, make_sep_token(TOK_LBRACE));
+    TokenList tokens = (TokenList){0};
+    list_push(&tokens, make_kw_token(TOK_INT));
+    list_push(&tokens, make_ident_token("main"));
+    list_push(&tokens, make_sep_token(TOK_LPAR));
+    list_push(&tokens, make_sep_token(TOK_RPAR));
+    list_push(&tokens, make_sep_token(TOK_LBRACE));
     // while (1) continue;
-    token_list_push(&tokens, make_kw_token(TOK_WHILE));
-    token_list_push(&tokens, make_sep_token(TOK_LPAR));
-    token_list_push(&tokens, make_int_token(1));
-    token_list_push(&tokens, make_sep_token(TOK_RPAR));
-    token_list_push(&tokens, make_kw_token(TOK_CONTINUE));
-    token_list_push(&tokens, make_sep_token(TOK_SEMICOLON));
-    token_list_push(&tokens, make_sep_token(TOK_RBRACE));
+    list_push(&tokens, make_kw_token(TOK_WHILE));
+    list_push(&tokens, make_sep_token(TOK_LPAR));
+    list_push(&tokens, make_int_token(1));
+    list_push(&tokens, make_sep_token(TOK_RPAR));
+    list_push(&tokens, make_kw_token(TOK_CONTINUE));
+    list_push(&tokens, make_sep_token(TOK_SEMICOLON));
+    list_push(&tokens, make_sep_token(TOK_RBRACE));
 
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstStatement* stmt = prog.functions[0].body.items[0].as.stmt;
+    AstStatement* stmt = prog.items[0].body.items[0].as.stmt;
     assert(stmt->kind == STMT_WHILE);
     assert(stmt->as.while_loop.body->kind == STMT_CONTINUE);
     assert(stmt->as.while_loop.body->as.continue_stmt.label == NULL);
 
-    destroy_program(&prog);
-    token_list_destroy(&tokens);
+    ast_program_destroy(&prog);
+    free_tokens(&tokens);
     printf("  PASS: test_parse_continue_in_loop\n");
 }
 
@@ -818,44 +817,44 @@ void test_parse_continue_in_loop() {
 
 // Helper: wraps a single statement in a program with one function.
 static AstProgram make_test_program(AstStatement* stmt) {
-    AstBlock body = ast_block_make(1);
-    ast_block_append(&body, (AstBlockItem){ .type = AST_STATEMENT, .as.stmt = stmt });
+    AstBlock body = (AstBlock){0};
+    ast_block_append(&body, (AstBlockItem){ .kind = AST_STATEMENT, .as.stmt = stmt });
     AstFunction* fn = malloc(sizeof(AstFunction));
-    *fn = ast_function_make("main", body);
+    *fn = ast_function_create("main", body);
     return ast_program_create(fn, 1);
 }
 
 // resolve_labels assigns a label to a while loop and its nested break.
 void test_resolve_labels_while_break() {
     AstProgram prog = make_test_program(
-        make_while_stmt(create_int_exp(1), make_break_stmt(NULL)));
+        ast_stmt_while(ast_exp_int(1), ast_stmt_break(NULL)));
 
     resolve_labels(&prog);
 
-    AstStatement* resolved = prog.functions[0].body.items[0].as.stmt;
+    AstStatement* resolved = prog.items[0].body.items[0].as.stmt;
     assert(resolved->kind == STMT_WHILE);
     assert(resolved->as.while_loop.label != NULL);
     char* loop_label = resolved->as.while_loop.label;
     assert(resolved->as.while_loop.body->kind == STMT_BREAK);
     assert(strcmp(resolved->as.while_loop.body->as.break_stmt.label, loop_label) == 0);
 
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_resolve_labels_while_break\n");
 }
 
 // resolve_labels assigns a label to a while loop and its nested continue.
 void test_resolve_labels_while_continue() {
     AstProgram prog = make_test_program(
-        make_while_stmt(create_int_exp(1), make_continue_stmt(NULL)));
+        ast_stmt_while(ast_exp_int(1), ast_stmt_continue(NULL)));
 
     resolve_labels(&prog);
 
-    AstStatement* resolved = prog.functions[0].body.items[0].as.stmt;
+    AstStatement* resolved = prog.items[0].body.items[0].as.stmt;
     assert(resolved->as.while_loop.label != NULL);
     assert(strcmp(resolved->as.while_loop.body->as.continue_stmt.label,
                  resolved->as.while_loop.label) == 0);
 
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_resolve_labels_while_continue\n");
 }
 
@@ -863,20 +862,20 @@ void test_resolve_labels_while_continue() {
 // in each body get the label of their enclosing loop.
 void test_resolve_labels_nested_loops() {
     // inner: for (0; 1; 2) break;
-    AstForInit init = make_for_init_exp(NULL);
-    AstStatement* inner = make_for_stmt(init, no_exp(), no_exp(), make_break_stmt(NULL));
+    AstForInit init = ast_for_init_exp(NULL);
+    AstStatement* inner = ast_stmt_for(init, no_exp(), no_exp(), ast_stmt_break(NULL));
 
     // outer body: { inner_loop; continue; }
-    AstBlock outer_body = ast_block_make(2);
-    ast_block_append(&outer_body, (AstBlockItem){ .type = AST_STATEMENT, .as.stmt = inner });
-    ast_block_append(&outer_body, (AstBlockItem){ .type = AST_STATEMENT, .as.stmt = make_continue_stmt(NULL) });
+    AstBlock outer_body = (AstBlock){0};
+    ast_block_append(&outer_body, (AstBlockItem){ .kind = AST_STATEMENT, .as.stmt = inner });
+    ast_block_append(&outer_body, (AstBlockItem){ .kind = AST_STATEMENT, .as.stmt = ast_stmt_continue(NULL) });
 
     AstProgram prog = make_test_program(
-        make_while_stmt(create_int_exp(1), make_compound_stmt(outer_body)));
+        ast_stmt_while(ast_exp_int(1), ast_stmt_compound(outer_body)));
 
     resolve_labels(&prog);
 
-    AstStatement* r_outer = prog.functions[0].body.items[0].as.stmt;
+    AstStatement* r_outer = prog.items[0].body.items[0].as.stmt;
     assert(r_outer->kind == STMT_WHILE);
     char* outer_label = r_outer->as.while_loop.label;
     assert(outer_label != NULL);
@@ -897,24 +896,24 @@ void test_resolve_labels_nested_loops() {
     AstStatement* r_cont = compound->items[1].as.stmt;
     assert(strcmp(r_cont->as.continue_stmt.label, outer_label) == 0);
 
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_resolve_labels_nested_loops\n");
 }
 
 // resolve_labels propagates through if branches inside a loop.
 void test_resolve_labels_through_if() {
     // while (1) if (2) break; else continue;
-    AstStatement* if_stmt = make_if_stmt(
-        create_int_exp(2),
-        make_break_stmt(NULL),
-        make_continue_stmt(NULL));
+    AstStatement* if_stmt = ast_stmt_if(
+        ast_exp_int(2),
+        ast_stmt_break(NULL),
+        ast_stmt_continue(NULL));
 
     AstProgram prog = make_test_program(
-        make_while_stmt(create_int_exp(1), if_stmt));
+        ast_stmt_while(ast_exp_int(1), if_stmt));
 
     resolve_labels(&prog);
 
-    AstStatement* resolved = prog.functions[0].body.items[0].as.stmt;
+    AstStatement* resolved = prog.items[0].body.items[0].as.stmt;
     char* label = resolved->as.while_loop.label;
     assert(label != NULL);
 
@@ -923,24 +922,24 @@ void test_resolve_labels_through_if() {
     assert(strcmp(r_if->as.if_cond.then_br->as.break_stmt.label, label) == 0);
     assert(strcmp(r_if->as.if_cond.else_br->as.continue_stmt.label, label) == 0);
 
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_resolve_labels_through_if\n");
 }
 
 // resolve_labels assigns a label to a do-while loop.
 void test_resolve_labels_do_while() {
     AstProgram prog = make_test_program(
-        make_do_while_stmt(create_int_exp(1), make_break_stmt(NULL)));
+        ast_stmt_do_while(ast_exp_int(1), ast_stmt_break(NULL)));
 
     resolve_labels(&prog);
 
-    AstStatement* resolved = prog.functions[0].body.items[0].as.stmt;
+    AstStatement* resolved = prog.items[0].body.items[0].as.stmt;
     assert(resolved->kind == STMT_DO_WHILE);
     assert(resolved->as.do_while_loop.label != NULL);
     assert(strcmp(resolved->as.do_while_loop.body->as.break_stmt.label,
                  resolved->as.do_while_loop.label) == 0);
 
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_resolve_labels_do_while\n");
 }
 
@@ -951,19 +950,19 @@ void test_resolve_labels_do_while() {
 // token list can be freed right after) and then inspect the resulting AST.
 
 static AstProgram parse_src(const char* src) {
-    TokenList tokens = token_list_create(16);
+    TokenList tokens = (TokenList){0};
     assert(tokenize(src, &tokens) == ERR_OK);
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
-    token_list_destroy(&tokens);
+    free_tokens(&tokens);
     return prog;
 }
 
 static AstStatement* nth_stmt(AstProgram* prog, size_t i) {
-    assert(prog->num_functions == 1);
-    assert(i < prog->functions[0].body.size);
-    AstBlockItem item = prog->functions[0].body.items[i];
-    assert(item.type == AST_STATEMENT);
+    assert(prog->count == 1);
+    assert(i < prog->items[0].body.count);
+    AstBlockItem item = prog->items[0].body.items[i];
+    assert(item.kind == AST_STATEMENT);
     return item.as.stmt;
 }
 
@@ -971,23 +970,23 @@ static AstStatement* nth_stmt(AstProgram* prog, size_t i) {
 // statement, so the body holds two items.
 void test_parse_label() {
     AstProgram prog = parse_src("int main() { start: return 1; }");
-    assert(prog.functions[0].body.size == 2);
+    assert(prog.items[0].body.count == 2);
     AstStatement* label = nth_stmt(&prog, 0);
     assert(label->kind == STMT_LABEL);
     assert(strcmp(label->as.label.identifier, "start") == 0);
     assert(nth_stmt(&prog, 1)->kind == STMT_RETURN);
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_parse_label\n");
 }
 
 // `goto end;` parses to STMT_GOTO carrying the target name.
 void test_parse_goto() {
     AstProgram prog = parse_src("int main() { goto end; }");
-    assert(prog.functions[0].body.size == 1);
+    assert(prog.items[0].body.count == 1);
     AstStatement* g = nth_stmt(&prog, 0);
     assert(g->kind == STMT_GOTO);
     assert(strcmp(g->as.goto_stmt.target, "end") == 0);
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_parse_goto\n");
 }
 
@@ -998,19 +997,19 @@ void test_parse_assignment_not_label() {
     AstStatement* s = nth_stmt(&prog, 0);
     assert(s->kind == STMT_EXP);
     assert(s->as.exp_stmt.exp->kind == EXP_ASSIGN);
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_parse_assignment_not_label\n");
 }
 
 // label followed by a goto back to it: two statements, matching names.
 void test_parse_label_and_goto() {
     AstProgram prog = parse_src("int main() { loop: goto loop; }");
-    assert(prog.functions[0].body.size == 2);
+    assert(prog.items[0].body.count == 2);
     AstStatement* label = nth_stmt(&prog, 0);
     AstStatement* g = nth_stmt(&prog, 1);
     assert(label->kind == STMT_LABEL && strcmp(label->as.label.identifier, "loop") == 0);
     assert(g->kind == STMT_GOTO && strcmp(g->as.goto_stmt.target, "loop") == 0);
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_parse_label_and_goto\n");
 }
 
@@ -1024,7 +1023,7 @@ static void expect_parse_error(const char* description, const char* src) {
     if (pid == 0) {
         freopen("/dev/null", "w", stderr);
         AstProgram prog = parse_src(src);  // expected to exit(1) before returning
-        destroy_program(&prog);
+        ast_program_destroy(&prog);
         _exit(0);                          // reached only if it wrongly succeeded
     }
     int status = 0;
@@ -1049,14 +1048,14 @@ void test_parse_switch_basic() {
     AstStatement* s = nth_stmt(&prog, 0);
     assert(s->kind == STMT_SWITCH);
     assert(s->as.switch_stmt.cond->kind == EXP_VAR);
-    assert(s->as.switch_stmt.num_clauses == 3);
+    assert(s->as.switch_stmt.clauses.count == 3);
 
-    AstSwitchClause* c = s->as.switch_stmt.clauses;
-    assert(!c[0].is_default && c[0].value == 1 && c[0].body.size == 1);
-    assert(!c[1].is_default && c[1].value == 2 && c[1].body.size == 2); // two stmts
-    assert(c[2].is_default && c[2].body.size == 1);
+    AstSwitchClause* c = s->as.switch_stmt.clauses.items;
+    assert(!c[0].is_default && c[0].value == 1 && c[0].body.count == 1);
+    assert(!c[1].is_default && c[1].value == 2 && c[1].body.count == 2); // two stmts
+    assert(c[2].is_default && c[2].body.count == 1);
 
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_parse_switch_basic\n");
 }
 
@@ -1065,9 +1064,9 @@ void test_parse_switch_empty() {
     AstProgram prog = parse_src("int main() { switch (x) { } }");
     AstStatement* s = nth_stmt(&prog, 0);
     assert(s->kind == STMT_SWITCH);
-    assert(s->as.switch_stmt.num_clauses == 0);
-    assert(s->as.switch_stmt.clauses == NULL);
-    destroy_program(&prog);
+    assert(s->as.switch_stmt.clauses.count == 0);
+    assert(s->as.switch_stmt.clauses.items == NULL);
+    ast_program_destroy(&prog);
     printf("  PASS: test_parse_switch_empty\n");
 }
 
@@ -1076,12 +1075,12 @@ void test_parse_switch_default_in_middle() {
     AstProgram prog = parse_src(
         "int main() { switch (x) { case 1: y = 1; default: y = 9; case 2: y = 2; } }");
     AstStatement* s = nth_stmt(&prog, 0);
-    assert(s->as.switch_stmt.num_clauses == 3);
-    AstSwitchClause* c = s->as.switch_stmt.clauses;
+    assert(s->as.switch_stmt.clauses.count == 3);
+    AstSwitchClause* c = s->as.switch_stmt.clauses.items;
     assert(!c[0].is_default && c[0].value == 1);
     assert(c[1].is_default);                       // default sits in the middle
     assert(!c[2].is_default && c[2].value == 2);
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_parse_switch_default_in_middle\n");
 }
 
@@ -1105,13 +1104,13 @@ void test_resolve_labels_switch_break() {
     assert(strcmp(switch_label, loop_label) != 0);   // distinct labels
 
     // break -> switch label; continue -> enclosing loop label
-    AstSwitchClause* c = sw->as.switch_stmt.clauses;
+    AstSwitchClause* c = sw->as.switch_stmt.clauses.items;
     AstStatement* brk = c[0].body.items[0].as.stmt;
     AstStatement* cont = c[1].body.items[0].as.stmt;
     assert(brk->kind == STMT_BREAK && strcmp(brk->as.break_stmt.label, switch_label) == 0);
     assert(cont->kind == STMT_CONTINUE && strcmp(cont->as.continue_stmt.label, loop_label) == 0);
 
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_resolve_labels_switch_break\n");
 }
 
@@ -1142,7 +1141,7 @@ void test_resolve_goto_label_basic() {
     assert(strcmp(label->as.label.identifier, "start") != 0);       // renamed
     assert(strstr(label->as.label.identifier, ".L") != NULL);       // unique form
     assert(strcmp(label->as.label.identifier, g->as.goto_stmt.target) == 0); // consistent
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_resolve_goto_label_basic\n");
 }
 
@@ -1154,7 +1153,7 @@ void test_resolve_goto_forward_reference() {
     AstStatement* label = nth_stmt(&prog, 1);
     assert(g->kind == STMT_GOTO && label->kind == STMT_LABEL);
     assert(strcmp(g->as.goto_stmt.target, label->as.label.identifier) == 0);
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_resolve_goto_forward_reference\n");
 }
 
@@ -1169,7 +1168,7 @@ void test_resolve_goto_nested_in_if() {
     AstStatement* label = if_stmt->as.if_cond.then_br;
     assert(label->kind == STMT_LABEL);
     assert(strcmp(g->as.goto_stmt.target, label->as.label.identifier) == 0);
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_resolve_goto_nested_in_if\n");
 }
 
@@ -1178,12 +1177,12 @@ void test_resolve_goto_nested_in_if() {
 void test_resolve_labels_unique_across_functions() {
     AstProgram prog = parse_src("int f() { done: return 0; } int g() { done: return 1; }");
     resolve_goto_labels(&prog);
-    assert(prog.num_functions == 2);
-    AstStatement* l0 = prog.functions[0].body.items[0].as.stmt;
-    AstStatement* l1 = prog.functions[1].body.items[0].as.stmt;
+    assert(prog.count == 2);
+    AstStatement* l0 = prog.items[0].body.items[0].as.stmt;
+    AstStatement* l1 = prog.items[1].body.items[0].as.stmt;
     assert(l0->kind == STMT_LABEL && l1->kind == STMT_LABEL);
     assert(strcmp(l0->as.label.identifier, l1->as.label.identifier) != 0);
-    destroy_program(&prog);
+    ast_program_destroy(&prog);
     printf("  PASS: test_resolve_labels_unique_across_functions\n");
 }
 
@@ -1197,7 +1196,7 @@ static void expect_goto_error(const char* description, const char* src) {
         freopen("/dev/null", "w", stderr);
         AstProgram prog = parse_src(src);
         resolve_goto_labels(&prog);  // expected to exit(1) before returning
-        destroy_program(&prog);
+        ast_program_destroy(&prog);
         _exit(0);                    // reached only if it wrongly succeeded
     }
     int status = 0;

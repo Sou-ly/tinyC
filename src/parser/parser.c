@@ -9,7 +9,7 @@ static bool is_binop(Token* tok) {
 	if (tok == NULL || tok->kind != TOK_OPERATOR) {
 		return false;
 	}
-	switch (tok->op) {
+	switch (tok->as.operator) {
 		case TOK_PLUS:
 		case TOK_MINUS:
     	case TOK_STAR:
@@ -47,7 +47,7 @@ static bool is_binop(Token* tok) {
 }
 
 static int precedence(Token* tok) {
-	switch (tok->op) {
+	switch (tok->as.operator) {
 		case TOK_STAR:		return 50;
 		case TOK_FSLASH:	return 50;
 		case TOK_PERCENT:	return 50;
@@ -163,7 +163,7 @@ static bool at_end(Parser* p) {
 }
 
 static void expect_keyword(Parser* p, TokenKeyword kw) {
-    if (at_end(p) || current(p)->kind != TOK_KEYWORD || current(p)->kw != kw) {
+    if (at_end(p) || current(p)->kind != TOK_KEYWORD || current(p)->as.keyword != kw) {
         fprintf(stderr, "parse error at %zu:%zu: expected keyword '%s'\n",
                 current(p)->line, current(p)->col, keyword_name(kw));
         exit(1);
@@ -172,7 +172,7 @@ static void expect_keyword(Parser* p, TokenKeyword kw) {
 }
 
 static void expect_separator(Parser* p, TokenSeparator sep) {
-    if (at_end(p) || current(p)->kind != TOK_SEPARATOR || current(p)->sep != sep) {
+    if (at_end(p) || current(p)->kind != TOK_SEPARATOR || current(p)->as.separator != sep) {
         fprintf(stderr, "parse error at %zu:%zu: expected '%s'\n",
                 current(p)->line, current(p)->col, separator_name(sep));
         exit(1);
@@ -183,7 +183,7 @@ static void expect_separator(Parser* p, TokenSeparator sep) {
 // --- Parsing ---
 
 static AstExp* parse_expression(Parser* p, int min_prec);
-static AstDeclaration parse_declaration(Parser* p);
+static AstVarDecl parse_declaration(Parser* p);
 static AstBlockItem parse_block_item(Parser* p);
 static AstBlock parse_block(Parser* p);
 
@@ -192,15 +192,15 @@ static AstBlock parse_block(Parser* p);
 static bool at_switch_clause_end(Parser* p) {
 	if (at_end(p)) return true;
 	Token* tok = current(p);
-	if (tok->kind == TOK_SEPARATOR && tok->sep == TOK_RBRACE) return true;
-	if (tok->kind == TOK_KEYWORD && (tok->kw == TOK_CASE || tok->kw == TOK_DEFAULT)) return true;
+	if (tok->kind == TOK_SEPARATOR && tok->as.separator == TOK_RBRACE) return true;
+	if (tok->kind == TOK_KEYWORD && (tok->as.keyword == TOK_CASE || tok->as.keyword == TOK_DEFAULT)) return true;
 	return false;
 }
 
 // Parses the block items that make up one case/default clause body: everything
 // up to the next label or the switch's closing brace. No braces of its own.
 static AstBlock parse_switch_clause_body(Parser* p) {
-	AstBlock block = ast_block_make(8);
+	AstBlock block = (AstBlock){0};
 	while (!at_switch_clause_end(p)) {
 		ast_block_append(&block, parse_block_item(p));
 	}
@@ -212,22 +212,22 @@ static AstExp* parse_factor(Parser* p) {
     Token* tok = current(p);
     switch (tok->kind) {
         case TOK_INT_LITERAL: {
-            int val = tok->int_val;
+            int val = tok->as.int_value;
             advance(p);
-            return create_int_exp(val);
+            return ast_exp_int(val);
         }
         case TOK_OPERATOR:
             advance(p);
 			// TODO: should probably have some check on lvalue instead... need to check C standard
-			if ((tok->op == TOK_INCR || tok->op == TOK_DECR) && current(p)->kind == TOK_IDENTIFIER) {
-				AstExp* exp = create_variable_exp(current(p)->ident);
+			if ((tok->as.operator == TOK_INCR || tok->as.operator == TOK_DECR) && current(p)->kind == TOK_IDENTIFIER) {
+				AstExp* exp = ast_exp_var(current(p)->as.identifier);
 				advance(p);
-				return create_unary_exp(tok->op == TOK_INCR? UNOP_PREINC : UNOP_PREDEC, exp);
+				return ast_exp_unary(tok->as.operator == TOK_INCR? UNOP_PREINC : UNOP_PREDEC, exp);
 			} else {
-				return create_unary_exp(tok_to_unop(tok->op), parse_factor(p));
+				return ast_exp_unary(tok_to_unop(tok->as.operator), parse_factor(p));
 			}
 		case TOK_SEPARATOR:
-            if (tok->sep == TOK_LPAR) {
+            if (tok->as.separator == TOK_LPAR) {
                 advance(p);
                 AstExp* exp = parse_expression(p, 0);
                 expect_separator(p, TOK_RPAR);
@@ -235,12 +235,12 @@ static AstExp* parse_factor(Parser* p) {
             }
             break;
 		case TOK_IDENTIFIER: {
-			AstExp* exp = create_variable_exp(current(p)->ident);
+			AstExp* exp = ast_exp_var(current(p)->as.identifier);
 			advance(p);
-			if (current(p)->kind == TOK_OPERATOR && (current(p)->op == TOK_INCR || current(p)->op == TOK_DECR)) {
-				TokenOperator postfix = current(p)->op;
+			if (current(p)->kind == TOK_OPERATOR && (current(p)->as.operator == TOK_INCR || current(p)->as.operator == TOK_DECR)) {
+				TokenOperator postfix = current(p)->as.operator;
 				advance(p);
-				return create_unary_exp(postfix == TOK_INCR? UNOP_POSTINC : UNOP_POSTDEC, exp);
+				return ast_exp_unary(postfix == TOK_INCR? UNOP_POSTINC : UNOP_POSTDEC, exp);
 			} else {
 				return exp;
 			}
@@ -277,21 +277,21 @@ static AstExp* parse_expression(Parser* p, int min_prec) {
     AstExp* lhs = parse_factor(p);
 	Token* tok = current(p);
     while (is_binop(tok) && precedence(tok) >= min_prec) {
-        AstBinopType op = tok_to_binop(current(p)->op);
+        AstBinopType op = tok_to_binop(current(p)->as.operator);
 		int prec = precedence(tok);
 		advance(p);
 		AstExp* rhs;
 		if (op == BINOP_ASSIGN) {
 			rhs = parse_expression(p, prec);
-			lhs = create_assign_exp(tok_to_assign_op(tok->op), lhs, rhs);
+			lhs = ast_exp_assign(tok_to_assign_op(tok->as.operator), lhs, rhs);
 		} else if (op == BINOP_CONDITION) {
 			AstExp* mid = parse_expression(p, 0);
 			expect_separator(p, TOK_COLON);
 			rhs = parse_expression(p, prec);
-			lhs = create_conditional_exp(lhs, mid, rhs);
+			lhs = ast_exp_conditional(lhs, mid, rhs);
 		} else {
 			rhs = parse_expression(p, prec + 1);
-			lhs = create_binop_exp(op, lhs, rhs);
+			lhs = ast_exp_binop(op, lhs, rhs);
 		}
 		tok = current(p);
     }
@@ -303,31 +303,31 @@ static AstStatement* parse_statement(Parser* p) {
     // expression statement that merely starts with an identifier (e.g. `x = 1;`).
     Token* next = peek(p, 1);
     if (current(p)->kind == TOK_IDENTIFIER &&
-            next != NULL && next->kind == TOK_SEPARATOR && next->sep == TOK_COLON) {
-        char* identifier = strdup(current(p)->ident);
+            next != NULL && next->kind == TOK_SEPARATOR && next->as.separator == TOK_COLON) {
+        char* identifier = strdup(current(p)->as.identifier);
         advance(p); // identifier
         advance(p); // ':'
-        return make_label_stmt(identifier);
+        return ast_stmt_label(identifier);
     }
 
     // compound statement: a `{ ... }` block used where a statement is expected
     // (e.g. a loop/if body with several statements). parse_block owns the braces.
-    if (current(p)->kind == TOK_SEPARATOR && current(p)->sep == TOK_LBRACE) {
-        return make_compound_stmt(parse_block(p));
+    if (current(p)->kind == TOK_SEPARATOR && current(p)->as.separator == TOK_LBRACE) {
+        return ast_stmt_compound(parse_block(p));
     }
 
     if (current(p)->kind != TOK_KEYWORD) {
 		AstExp* exp = parse_expression(p, 0);
     	expect_separator(p, TOK_SEMICOLON);
-    	return make_exp_stmt(exp);
+    	return ast_stmt_exp(exp);
     }
 
-	switch(current(p)->kw) {
+	switch(current(p)->as.keyword) {
 		case TOK_RETURN: {
 			advance(p); // consume 'return'
     		AstExp* exp = parse_expression(p, 0);
     		expect_separator(p, TOK_SEMICOLON);
-    		return make_return_stmt(exp);
+    		return ast_stmt_return(exp);
 		}
 		case TOK_IF: {
 			advance(p);
@@ -336,33 +336,33 @@ static AstStatement* parse_statement(Parser* p) {
 			expect_separator(p, TOK_RPAR);
 			AstStatement* then_br = parse_statement(p);
 			AstStatement* else_br = NULL;
-			if (current(p)->kind == TOK_KEYWORD && current(p)->kw == TOK_ELSE) {
+			if (current(p)->kind == TOK_KEYWORD && current(p)->as.keyword == TOK_ELSE) {
 				advance(p);
 				else_br = parse_statement(p);
 			}
-			return make_if_stmt(cond, then_br, else_br);
+			return ast_stmt_if(cond, then_br, else_br);
 		}
 		case TOK_FOR: {
 			advance(p);
 			expect_separator(p, TOK_LPAR);
 			AstForInit for_init;
-			if (current(p)->kind == TOK_KEYWORD && current(p)->kw == TOK_INT) {
-				for_init = make_for_init_decl(parse_declaration(p));
+			if (current(p)->kind == TOK_KEYWORD && current(p)->as.keyword == TOK_INT) {
+				for_init = ast_for_init_decl(parse_declaration(p));
 			} else {
 				AstExp* exp = parse_expression(p, 0);
 				expect_separator(p, TOK_SEMICOLON);
-				for_init = make_for_init_exp(exp);
+				for_init = ast_for_init_exp(exp);
 			}
 			OptionalExp cond = no_exp();
-			if (!(current(p)->kind == TOK_SEPARATOR && current(p)->sep == TOK_SEMICOLON))
+			if (!(current(p)->kind == TOK_SEPARATOR && current(p)->as.separator == TOK_SEMICOLON))
 				cond = some_exp(parse_expression(p, 0));
 			expect_separator(p, TOK_SEMICOLON);
 			OptionalExp post = no_exp();
-			if (!(current(p)->kind == TOK_SEPARATOR && current(p)->sep == TOK_RPAR))
+			if (!(current(p)->kind == TOK_SEPARATOR && current(p)->as.separator == TOK_RPAR))
 				post = some_exp(parse_expression(p, 0));
 			expect_separator(p, TOK_RPAR);
 			AstStatement* body = parse_statement(p);
-			return make_for_stmt(for_init, cond, post, body);
+			return ast_stmt_for(for_init, cond, post, body);
 		}
 		case TOK_WHILE: {
 			advance(p);
@@ -370,7 +370,7 @@ static AstStatement* parse_statement(Parser* p) {
 			AstExp* cond = parse_expression(p, 0);
 			expect_separator(p, TOK_RPAR);
 			AstStatement* body = parse_statement(p);
-			return make_while_stmt(cond, body);
+			return ast_stmt_while(cond, body);
 		}
 		case TOK_DO: {
 			advance(p);
@@ -380,7 +380,7 @@ static AstStatement* parse_statement(Parser* p) {
 			AstExp* cond = parse_expression(p, 0);
 			expect_separator(p, TOK_RPAR);
 			expect_separator(p, TOK_SEMICOLON);
-			return make_do_while_stmt(cond, body);
+			return ast_stmt_do_while(cond, body);
 		}
 		case TOK_ELSE:
 			fprintf(stderr, "Missing if statement\n");
@@ -388,11 +388,11 @@ static AstStatement* parse_statement(Parser* p) {
 		case TOK_CONTINUE:
 			advance(p);
 			expect_separator(p, TOK_SEMICOLON);
-			return make_continue_stmt(NULL); // label assigned by loop-labelling pass
+			return ast_stmt_continue(NULL); // label assigned by loop-labelling pass
 		case TOK_BREAK:
 			advance(p);
 			expect_separator(p, TOK_SEMICOLON);
-			return make_break_stmt(NULL); // label assigned by loop-labelling pass
+			return ast_stmt_break(NULL); // label assigned by loop-labelling pass
 		case TOK_GOTO: {
 			advance(p); // consume 'goto'
 			if (current(p)->kind != TOK_IDENTIFIER) {
@@ -400,10 +400,10 @@ static AstStatement* parse_statement(Parser* p) {
 						current(p)->line, current(p)->col);
 				exit(1);
 			}
-			char* target = strdup(current(p)->ident);
+			char* target = strdup(current(p)->as.identifier);
 			advance(p); // consume target
 			expect_separator(p, TOK_SEMICOLON);
-			return make_goto_stmt(target);
+			return ast_stmt_goto(target);
 		}
 		case TOK_SWITCH: {
 			advance(p); // consume 'switch'
@@ -415,22 +415,21 @@ static AstStatement* parse_statement(Parser* p) {
 			// Clauses are kept in source order so codegen can lay their bodies
 			// out contiguously (C fallthrough) and place `default` wherever it
 			// appears. A second `default` is a parse error.
-			AstSwitchClause* clauses = NULL;
-			size_t num_clauses = 0, cap_clauses = 0;
+			AstClauseList clauses = {0};
 			bool have_default = false;
 
-			while (!at_end(p) && !(current(p)->kind == TOK_SEPARATOR && current(p)->sep == TOK_RBRACE)) {
+			while (!at_end(p) && !(current(p)->kind == TOK_SEPARATOR && current(p)->as.separator == TOK_RBRACE)) {
 				AstSwitchClause clause = { .is_default = false, .value = 0 };
-				if (current(p)->kind == TOK_KEYWORD && current(p)->kw == TOK_CASE) {
+				if (current(p)->kind == TOK_KEYWORD && current(p)->as.keyword == TOK_CASE) {
 					advance(p); // consume 'case'
 					if (current(p)->kind != TOK_INT_LITERAL) {
 						fprintf(stderr, "parse error at %zu:%zu: expected integer literal after 'case'\n",
 								current(p)->line, current(p)->col);
 						exit(1);
 					}
-					clause.value = current(p)->int_val;
+					clause.value = current(p)->as.int_value;
 					advance(p); // consume the literal
-				} else if (current(p)->kind == TOK_KEYWORD && current(p)->kw == TOK_DEFAULT) {
+				} else if (current(p)->kind == TOK_KEYWORD && current(p)->as.keyword == TOK_DEFAULT) {
 					advance(p); // consume 'default'
 					if (have_default) {
 						fprintf(stderr, "parse error at %zu:%zu: multiple 'default' labels in one switch\n",
@@ -446,14 +445,10 @@ static AstStatement* parse_statement(Parser* p) {
 				}
 				expect_separator(p, TOK_COLON);
 				clause.body = parse_switch_clause_body(p);
-				if (num_clauses == cap_clauses) {
-					cap_clauses = cap_clauses ? cap_clauses * 2 : 4;
-					clauses = realloc(clauses, cap_clauses * sizeof(AstSwitchClause));
-				}
-				clauses[num_clauses++] = clause;
+				list_push(&clauses, clause);
 			}
 			expect_separator(p, TOK_RBRACE);
-			return make_switch_stmt(cond, clauses, num_clauses);
+			return ast_stmt_switch(cond, clauses);
 		}
 		default:
 			break;
@@ -463,17 +458,32 @@ static AstStatement* parse_statement(Parser* p) {
 	exit(1);
 }
 
-static AstDeclaration parse_declaration(Parser* p) {
+static AstVarDecl parse_declaration(Parser* p) {
 	AstDeclaration declaration;
-	if (current(p)->kind == TOK_KEYWORD && current(p)->kw == TOK_INT) {
+	if (current(p)->kind == TOK_KEYWORD && current(p)->as.keyword == TOK_INT) {
 		advance(p); // consume int
 		if (current(p)->kind != TOK_IDENTIFIER) {
     	    fprintf(stderr, "parse error at %zu:%zu: expected variable name\n", current(p)->line, current(p)->col);
     	    exit(1);
     	}
-    	declaration.identifier = strdup(current(p)->ident);
+    	declaration.identifier = strdup(current(p)->as.identifier);
 		advance(p);
-		if (current(p)->kind == TOK_OPERATOR && current(p)->op == TOK_ASSIGN) {
+		// function declaration
+		if (current(p)->kind == TOK_SEPARATOR && current(p)->as.separator == TOK_LPAR) {
+			AstFuncDecl function_declaration;
+			advance(p); // consume '('
+			while (current(p)->kind == TOK_KEYWORD && (current(p)->as.keyword == TOK_INT || current(p)->as.keyword == TOK_VOID)) {
+				advance(p);
+				if (current(p)->kind == TOK_IDENTIFIER) {
+					function_declaration.identifier = strdup(current(p)->as.identifier);
+
+				}
+			}
+			expect_separator(TOK_RPAR);
+			parse_block(p);
+		}
+		// variable declaration
+		else if (current(p)->kind == TOK_OPERATOR && current(p)->as.operator == TOK_ASSIGN) {
 			advance(p); // consume '='
 			declaration.init = some_exp(parse_expression(p, 0));
 		} else {
@@ -489,11 +499,11 @@ static AstDeclaration parse_declaration(Parser* p) {
 
 static AstBlockItem parse_block_item(Parser* p) {
 	AstBlockItem block_item;
-	if (current(p)->kind == TOK_KEYWORD && current(p)->kw == TOK_INT) {
-		block_item.type = AST_DECLARATION;
+	if (current(p)->kind == TOK_KEYWORD && current(p)->as.keyword == TOK_INT) {
+		block_item.kind = AST_DECLARATION;
 		block_item.as.decl = parse_declaration(p);
 	} else {
-		block_item.type = AST_STATEMENT;
+		block_item.kind = AST_STATEMENT;
 		block_item.as.stmt = parse_statement(p);
 	}
 	return block_item;
@@ -501,8 +511,8 @@ static AstBlockItem parse_block_item(Parser* p) {
 
 static AstBlock parse_block(Parser* p) {
     expect_separator(p, TOK_LBRACE);
-	AstBlock block = ast_block_make(8);
-    while (!at_end(p) && !(current(p)->kind == TOK_SEPARATOR && current(p)->sep == TOK_RBRACE)) {
+	AstBlock block = (AstBlock){0};
+    while (!at_end(p) && !(current(p)->kind == TOK_SEPARATOR && current(p)->as.separator == TOK_RBRACE)) {
 		AstBlockItem block_item = parse_block_item(p);
 		ast_block_append(&block, block_item);
     }
@@ -517,12 +527,12 @@ static AstFunction parse_function(Parser* p) {
         fprintf(stderr, "parse error at %zu:%zu: expected function name\n", current(p)->line, current(p)->col);
         exit(1);
     }
-    char* name = strdup(current(p)->ident);
+    char* name = strdup(current(p)->as.identifier);
     advance(p);
     expect_separator(p, TOK_LPAR);
     expect_separator(p, TOK_RPAR);
 	AstBlock block = parse_block(p);
-	AstFunction function = ast_function_make(name, block);
+	AstFunction function = ast_function_create(name, block);
     return function;
 }
 
@@ -536,19 +546,11 @@ Parser parser_create(TokenList* tokens) {
 }
 
 AstProgram parse_program(Parser* p) {
-    int capacity = 4;
-    int count = 0;
-    AstFunction* functions = malloc(sizeof(AstFunction) * capacity);
-
+    AstProgram program = {0};
     while (!at_end(p)) {
-        if (count >= capacity) {
-            capacity *= 2;
-            functions = realloc(functions, sizeof(AstFunction) * capacity);
-        }
-        functions[count++] = parse_function(p);
+        list_push(&program, parse_function(p));
     }
-
-    return ast_program_create(functions, count);
+    return program;
 }
 
 // --- Variable resolution ---
@@ -658,7 +660,7 @@ static AstExp* resolve_expression(AstExp* exp, VarMap* map) {
 	return exp;
 }
 
-static void resolve_declaration(AstDeclaration* decl, VarMap* map) {
+static void resolve_declaration(AstVarDecl* decl, VarMap* map) {
 	for (int i = 0; i < map->size; i++) {
 		if (map->entries[i].is_cur_scope &&
 				strcmp(map->entries[i].key, decl->identifier) == 0) {
@@ -671,14 +673,14 @@ static void resolve_declaration(AstDeclaration* decl, VarMap* map) {
 	varmap_put(map, (VarMapEntry) { .key=strdup(decl->identifier), .val=strdup(unique), .is_cur_scope=true });
 
 	if (decl->init.present)
-		decl->init.exp = resolve_expression(decl->init.exp, map);
+		decl->init.value = resolve_expression(decl->init.value, map);
 
 	free(decl->identifier);
 	decl->identifier = unique;
 }
 
 static void resolve_for_init(AstForInit* for_init, VarMap* map) {
-	switch (for_init->init_type) {
+	switch (for_init->kind) {
 		case AST_INIT_DECL:
 			resolve_declaration(&for_init->as.decl, map);
 			break;
@@ -715,9 +717,9 @@ static void resolve_statement(AstStatement* stmt, VarMap* map) {
 			VarMap new_map = varmap_copy(*map);
 			resolve_for_init(&stmt->as.for_loop.init, &new_map);
 			if (stmt->as.for_loop.cond.present)
-				stmt->as.for_loop.cond.exp = resolve_expression(stmt->as.for_loop.cond.exp, &new_map);
+				stmt->as.for_loop.cond.value = resolve_expression(stmt->as.for_loop.cond.value, &new_map);
 			if (stmt->as.for_loop.post.present)
-				stmt->as.for_loop.post.exp = resolve_expression(stmt->as.for_loop.post.exp, &new_map);
+				stmt->as.for_loop.post.value = resolve_expression(stmt->as.for_loop.post.value, &new_map);
 			resolve_statement(stmt->as.for_loop.body, &new_map);
 			varmap_destroy(&new_map);
 			break;
@@ -738,12 +740,9 @@ static void resolve_statement(AstStatement* stmt, VarMap* map) {
 		}
 		case STMT_SWITCH: {
 			stmt->as.switch_stmt.cond = resolve_expression(stmt->as.switch_stmt.cond, map);
-			// The whole switch body is one block scope in C, so a declaration in
-			// one clause is visible in later clauses -- resolve every clause body
-			// against a single shared copy of the enclosing scope.
 			VarMap new_map = varmap_copy(*map);
-			for (size_t i = 0; i < stmt->as.switch_stmt.num_clauses; i++)
-				resolve_block(&stmt->as.switch_stmt.clauses[i].body, &new_map);
+			for (size_t i = 0; i < stmt->as.switch_stmt.clauses.count; i++)
+				resolve_block(&stmt->as.switch_stmt.clauses.items[i].body, &new_map);
 			varmap_destroy(&new_map);
 			break;
 		}
@@ -757,7 +756,7 @@ static void resolve_statement(AstStatement* stmt, VarMap* map) {
 }
 
 static void resolve_block_item(AstBlockItem* item, VarMap* map) {
-	switch (item->type) {
+	switch (item->kind) {
 		case AST_DECLARATION:
 			resolve_declaration(&item->as.decl, map);
 			break;
@@ -768,7 +767,7 @@ static void resolve_block_item(AstBlockItem* item, VarMap* map) {
 }
 
 static void resolve_block(AstBlock* block, VarMap* map) {
-	for (size_t i = 0; i < block->size; i++) {
+	for (size_t i = 0; i < block->count; i++) {
 		resolve_block_item(&block->items[i], map);
 	}
 }
@@ -781,8 +780,8 @@ static void resolve_function(AstFunction* func) {
 
 void resolve_variables(AstProgram* program) {
 	RESOLVE_COUNTER = 0;
-	for (int i = 0; i < program->num_functions; i++) {
-		resolve_function(&program->functions[i]);
+	for (int i = 0; i < program->count; i++) {
+		resolve_function(&program->items[i]);
 	}
 }
 
@@ -826,8 +825,8 @@ static void label_statement(AstStatement* statement, char* break_label, char* co
 			char* label = generate_label();
 			statement->as.switch_stmt.label = label;
 			// break exits the switch; continue passes through to the enclosing loop.
-			for (size_t i = 0; i < statement->as.switch_stmt.num_clauses; i++)
-				label_block(&statement->as.switch_stmt.clauses[i].body, label, continue_label);
+			for (size_t i = 0; i < statement->as.switch_stmt.clauses.count; i++)
+				label_block(&statement->as.switch_stmt.clauses.items[i].body, label, continue_label);
 			break;
 		}
 		case STMT_BREAK:
@@ -858,9 +857,9 @@ static void label_statement(AstStatement* statement, char* break_label, char* co
 }
 
 static void label_block(AstBlock* block, char* break_label, char* continue_label) {
-	for (size_t i = 0; i < block->size; i++) {
+	for (size_t i = 0; i < block->count; i++) {
 		AstBlockItem* item = &block->items[i];
-		if (item->type == AST_STATEMENT) {
+		if (item->kind == AST_STATEMENT) {
 			label_statement(item->as.stmt, break_label, continue_label);
 		}
 	}
@@ -868,8 +867,8 @@ static void label_block(AstBlock* block, char* break_label, char* continue_label
 
 void resolve_labels(AstProgram* program) {
 	LABEL_COUNTER = 0;
-	for (int i = 0; i < program->num_functions; i++) {
-		label_block(&program->functions[i].body, NULL, NULL);
+	for (int i = 0; i < program->count; i++) {
+		label_block(&program->items[i].body, NULL, NULL);
 	}
 }
 
@@ -932,8 +931,8 @@ static void collect_labels_statement(AstStatement* stmt, VarMap* labels) {
 			collect_labels_statement(stmt->as.do_while_loop.body, labels);
 			break;
 		case STMT_SWITCH:
-			for (size_t i = 0; i < stmt->as.switch_stmt.num_clauses; i++)
-				collect_labels_block(&stmt->as.switch_stmt.clauses[i].body, labels);
+			for (size_t i = 0; i < stmt->as.switch_stmt.clauses.count; i++)
+				collect_labels_block(&stmt->as.switch_stmt.clauses.items[i].body, labels);
 			break;
 		case STMT_RETURN:
 		case STMT_EXP:
@@ -945,9 +944,9 @@ static void collect_labels_statement(AstStatement* stmt, VarMap* labels) {
 }
 
 static void collect_labels_block(AstBlock* block, VarMap* labels) {
-	for (size_t i = 0; i < block->size; i++) {
+	for (size_t i = 0; i < block->count; i++) {
 		AstBlockItem* item = &block->items[i];
-		if (item->type == AST_STATEMENT)
+		if (item->kind == AST_STATEMENT)
 			collect_labels_statement(item->as.stmt, labels);
 	}
 }
@@ -993,8 +992,8 @@ static void rewrite_gotos_statement(AstStatement* stmt, VarMap* labels) {
 			rewrite_gotos_statement(stmt->as.do_while_loop.body, labels);
 			break;
 		case STMT_SWITCH:
-			for (size_t i = 0; i < stmt->as.switch_stmt.num_clauses; i++)
-				rewrite_gotos_block(&stmt->as.switch_stmt.clauses[i].body, labels);
+			for (size_t i = 0; i < stmt->as.switch_stmt.clauses.count; i++)
+				rewrite_gotos_block(&stmt->as.switch_stmt.clauses.items[i].body, labels);
 			break;
 		case STMT_RETURN:
 		case STMT_EXP:
@@ -1005,21 +1004,21 @@ static void rewrite_gotos_statement(AstStatement* stmt, VarMap* labels) {
 }
 
 static void rewrite_gotos_block(AstBlock* block, VarMap* labels) {
-	for (size_t i = 0; i < block->size; i++) {
+	for (size_t i = 0; i < block->count; i++) {
 		AstBlockItem* item = &block->items[i];
-		if (item->type == AST_STATEMENT)
+		if (item->kind == AST_STATEMENT)
 			rewrite_gotos_statement(item->as.stmt, labels);
 	}
 }
 
 void resolve_goto_labels(AstProgram* program) {
 	GOTO_LABEL_COUNTER = 0;
-	for (int i = 0; i < program->num_functions; i++) {
+	for (int i = 0; i < program->count; i++) {
 		// one map per function: labels do not cross function boundaries, but the
 		// counter keeps climbing so names stay unique across the whole program.
 		VarMap labels = varmap_create(8);
-		collect_labels_block(&program->functions[i].body, &labels);
-		rewrite_gotos_block(&program->functions[i].body, &labels);
+		collect_labels_block(&program->items[i].body, &labels);
+		rewrite_gotos_block(&program->items[i].body, &labels);
 		varmap_destroy(&labels);
 	}
 }
