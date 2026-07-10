@@ -51,28 +51,18 @@ void test_create_x86_program() {
 
 // --- helpers ---
 
-static AstProgram make_test_program(AstExp* expr) {
-    AstFunction fn = ast_function_create("main", (AstBlock){0});
-    ast_function_append(&fn, (AstBlockItem){
-        .kind = AST_STATEMENT,
-        .as.stmt = ast_stmt_return(expr),
-    });
-    AstFunction* functions = malloc(sizeof(AstFunction));
-    functions[0] = fn;
+// Wrap a single statement into a "main" program.
+static AstProgram make_stmt_program(AstStatement* stmt) {
+    AstBlock body = {0};
+    ast_block_append(&body, (AstBlockItem){ .kind = AST_STATEMENT, .as.statement = stmt });
+    AstFunctionDeclaration* functions = malloc(sizeof(AstFunctionDeclaration));
+    functions[0] = ast_function_declaration(strdup("main"), (AstParamList){0},
+                                            SOME(OptionalBlock, body));
     return ast_program_create(functions, 1);
 }
 
-// Wrap a single statement (rather than a bare return expression) into a "main"
-// program — used for if-statement codegen.
-static AstProgram make_stmt_program(AstStatement* stmt) {
-    AstFunction fn = ast_function_create("main", (AstBlock){0});
-    ast_function_append(&fn, (AstBlockItem){
-        .kind = AST_STATEMENT,
-        .as.stmt = stmt,
-    });
-    AstFunction* functions = malloc(sizeof(AstFunction));
-    functions[0] = fn;
-    return ast_program_create(functions, 1);
+static AstProgram make_test_program(AstExp* expr) {
+    return make_stmt_program(ast_stmt_return(expr));
 }
 
 // make_*_stmt already heap-allocates, so an if-statement's branch pointers can

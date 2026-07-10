@@ -97,15 +97,6 @@ AstExp* ast_exp_assign(AstAssignOp op, AstExp* lhs, AstExp* rhs);
 AstExp* ast_exp_conditional(AstExp* lhs, AstExp* mid, AstExp* rhs);
 void ast_exp_destroy(AstExp* exp);
 
-// --- Optional expression ---
-
-typedef OPTIONAL_OF(AstExp*) OptionalExp;
-
-#define some_exp(e) ((OptionalExp)SOME(e))
-#define no_exp()    ((OptionalExp)NONE)
-
-
-
 // --- Blocks ---
 
 typedef struct AstBlockItem AstBlockItem;
@@ -113,24 +104,43 @@ typedef struct AstStatement AstStatement;
 
 typedef LIST_OF(AstBlockItem) AstBlock;
 
-typedef struct AstVarDecl {
-	char* identifier;
-	OptionalExp init;
-} AstVarDecl;
+// Prototype (absent) vs empty body (present, count 0) are different declarations.
+OPTIONAL_TYPE(OptionalBlock, AstBlock);
 
-typedef struct AstFuncDecl {
+// --- Declarations ---
+
+typedef LIST_OF(char*) AstParamList;
+
+typedef struct AstVariableDeclaration {
 	char* identifier;
-	LIST_OF(char*) params;
-	AstBlock* body;
-} AstFuncDecl;
+	AstExp* init;			// nullable: `int x;` has no initializer
+} AstVariableDeclaration;
+
+typedef struct AstFunctionDeclaration {
+	char* identifier;
+	AstParamList params;
+	OptionalBlock body;		// absent for a prototype, present for a definition
+} AstFunctionDeclaration;
+
+typedef enum { DECL_FUNC, DECL_VAR } AstDeclarationKind;
 
 typedef struct AstDeclaration {
-	enum DeclarationKind { DECL_FUNC, DECL_VAR } kind;
+	AstDeclarationKind kind;
 	union {
-		AstFuncDecl	func;
-		AstVarDecl	var;
+		AstFunctionDeclaration	function;
+		AstVariableDeclaration	variable;
 	} as;
 } AstDeclaration;
+
+// Adopt identifier and the params/body/init given. Destroys free what the
+// declaration owns, not the node (declarations are stored by value).
+AstFunctionDeclaration ast_function_declaration(char* identifier, AstParamList params, OptionalBlock body);
+AstVariableDeclaration ast_variable_declaration(char* identifier, AstExp* init);
+AstDeclaration ast_declaration_function(AstFunctionDeclaration function);
+AstDeclaration ast_declaration_variable(AstVariableDeclaration variable);
+void ast_function_declaration_destroy(AstFunctionDeclaration* declaration);
+void ast_variable_declaration_destroy(AstVariableDeclaration* declaration);
+void ast_declaration_destroy(AstDeclaration* declaration);
 
 // --- Statements ---
 
@@ -179,7 +189,7 @@ typedef enum { AST_INIT_DECL, AST_INIT_EXP } AstForInitKind;
 typedef struct {
 	AstForInitKind kind;
 	union {
-		AstVarDecl	decl;
+		AstVariableDeclaration	decl;
 		AstExp*		exp;
 	} as;
 } AstForInit;
@@ -187,8 +197,8 @@ typedef struct {
 typedef struct AstStmtFor {
 	char*			label;
 	AstForInit		init;
-	OptionalExp		cond;
-	OptionalExp		post;
+	AstExp*			cond;	// nullable
+	AstExp*			post;	// nullable
 	AstStatement*	body;
 } AstStmtFor;
 
@@ -228,7 +238,7 @@ AstStatement* ast_stmt_return(AstExp* exp);
 AstStatement* ast_stmt_exp(AstExp* exp);
 AstStatement* ast_stmt_if(AstExp* cond, AstStatement* then_br, AstStatement* else_br);
 AstStatement* ast_stmt_compound(AstBlock block);
-AstStatement* ast_stmt_for(AstForInit init, OptionalExp cond, OptionalExp post, AstStatement* body);
+AstStatement* ast_stmt_for(AstForInit init, AstExp* cond, AstExp* post, AstStatement* body);
 AstStatement* ast_stmt_while(AstExp* cond, AstStatement* body);
 AstStatement* ast_stmt_do_while(AstExp* cond, AstStatement* body);
 AstStatement* ast_stmt_break(char* label);
@@ -236,44 +246,29 @@ AstStatement* ast_stmt_continue(char * label);
 AstStatement* ast_stmt_label(char* identifier);
 AstStatement* ast_stmt_goto(char* target);
 AstStatement* ast_stmt_switch(AstExp* cond, AstClauseList clauses);
-AstForInit ast_for_init_decl(AstVarDecl decl);
+AstForInit ast_for_init_decl(AstVariableDeclaration decl);
 AstForInit ast_for_init_exp(AstExp* exp);
 void ast_stmt_destroy(AstStatement* stmt);
 
-// --- Declarations & block items ---
+// --- Block items ---
 
 struct AstBlockItem {
 	enum AstBlockItemKind { AST_DECLARATION, AST_STATEMENT } kind;
 	union {
-		AstVarDecl		decl;
-		AstStatement*	stmt;
+		AstDeclaration	declaration;
+		AstStatement*	statement;
 	} as;
 };
 
-// Blocks are LIST_OF(AstBlockItem): build with (AstBlock){0} and list_push,
-// or ast_block_append for a compound-literal item (list_push can't take one
-// directly — its braces' commas would be read as extra macro arguments).
-// ast_block_destroy frees each item's owned contents, then the storage.
+// Build blocks with (AstBlock){0} and ast_block_append -- list_push can't take a
+// compound literal, its braces' commas read as extra macro arguments.
 void ast_block_append(AstBlock* block, AstBlockItem block_item);
 void ast_block_destroy(AstBlock* block);
 
-// --- Functions ---
-
-typedef struct {
-	char* identifier;
-	AstBlock body;
-} AstFunction;
-
-AstFunction ast_function_create(const char* identifier, AstBlock block);
-void ast_function_append(AstFunction* function, AstBlockItem block_item);
-void ast_function_destroy(AstFunction* function);
-
 // --- Program ---
 
-typedef LIST_OF(AstFunction) AstProgram;
+typedef LIST_OF(AstFunctionDeclaration) AstProgram;
 
-// Adopts `functions` (a heap array of `num_functions`) as the list's backing
-// storage — no copy; the program owns and later frees it.
-AstProgram ast_program_create(AstFunction* functions, int num_functions);
-char* ast_program_to_string(AstProgram);
+// Adopts `functions` (a heap array of `num_functions`) as backing storage.
+AstProgram ast_program_create(AstFunctionDeclaration* functions, int num_functions);
 void ast_program_destroy(AstProgram* program);

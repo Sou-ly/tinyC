@@ -52,6 +52,47 @@ AstExp* ast_exp_conditional(AstExp* lhs, AstExp* mid, AstExp* rhs) {
     return e;
 }
 
+// --- Declarations ---
+
+AstFunctionDeclaration ast_function_declaration(char* identifier, AstParamList params, OptionalBlock body) {
+	return (AstFunctionDeclaration){ .identifier = identifier, .params = params, .body = body };
+}
+
+AstVariableDeclaration ast_variable_declaration(char* identifier, AstExp* init) {
+	return (AstVariableDeclaration){ .identifier = identifier, .init = init };
+}
+
+AstDeclaration ast_declaration_function(AstFunctionDeclaration function) {
+	return (AstDeclaration){ .kind = DECL_FUNC, .as.function = function };
+}
+
+AstDeclaration ast_declaration_variable(AstVariableDeclaration variable) {
+	return (AstDeclaration){ .kind = DECL_VAR, .as.variable = variable };
+}
+
+void ast_function_declaration_destroy(AstFunctionDeclaration* declaration) {
+	free(declaration->identifier);
+	for (size_t i = 0; i < declaration->params.count; i++)
+		free(declaration->params.items[i]);
+	list_free(&declaration->params);
+	if (declaration->body.present)
+		ast_block_destroy(&declaration->body.value);
+}
+
+void ast_variable_declaration_destroy(AstVariableDeclaration* declaration) {
+	free(declaration->identifier);
+	ast_exp_destroy(declaration->init);
+}
+
+void ast_declaration_destroy(AstDeclaration* declaration) {
+	switch (declaration->kind) {
+		case DECL_FUNC: ast_function_declaration_destroy(&declaration->as.function); break;
+		case DECL_VAR:  ast_variable_declaration_destroy(&declaration->as.variable); break;
+	}
+}
+
+// --- Blocks ---
+
 void ast_block_append(AstBlock* block, AstBlockItem block_item) {
 	list_push(block, block_item);
 }
@@ -61,17 +102,14 @@ void ast_block_destroy(AstBlock* block) {
 		AstBlockItem* block_item = block->items+i;
 		switch (block_item->kind) {
 			case AST_DECLARATION:
-				free(block_item->as.decl.identifier);
-				if (block_item->as.decl.init.present)
-					ast_exp_destroy(block_item->as.decl.init.value);
+				ast_declaration_destroy(&block_item->as.declaration);
 				break;
 			case AST_STATEMENT:
-				ast_stmt_destroy(block_item->as.stmt);
+				ast_stmt_destroy(block_item->as.statement);
 				break;
 		}
 	}
-	free(block->items);
-	return;
+	list_free(block);
 }
 
 void ast_exp_destroy(AstExp* exp) {
@@ -130,7 +168,7 @@ AstStatement* ast_stmt_compound(AstBlock block) {
 	return alloc_stmt((AstStatement) {.kind=STMT_COMPOUND, .as.compound=block});
 }
 
-AstForInit ast_for_init_decl(AstVarDecl decl) {
+AstForInit ast_for_init_decl(AstVariableDeclaration decl) {
 	return (AstForInit){ .kind = AST_INIT_DECL, .as.decl = decl };
 }
 
@@ -138,8 +176,8 @@ AstForInit ast_for_init_exp(AstExp* exp) {
 	return (AstForInit){ .kind = AST_INIT_EXP, .as.exp = exp };
 }
 
-// body is heap-owned. label is left NULL here and filled in by the loop-labelling pass.
-AstStatement* ast_stmt_for(AstForInit init, OptionalExp cond, OptionalExp post, AstStatement* body) {
+// cond and post are nullable (`for (;;)`); label is filled in by the loop-labelling pass.
+AstStatement* ast_stmt_for(AstForInit init, AstExp* cond, AstExp* post, AstStatement* body) {
 	return alloc_stmt((AstStatement){ .kind = STMT_FOR, .as.for_loop = { .label = NULL, .init = init, .cond = cond, .post = post, .body = body } });
 }
 
@@ -205,18 +243,14 @@ void ast_stmt_destroy(AstStatement* stmt) {
             free(stmt->as.for_loop.label);
             switch (stmt->as.for_loop.init.kind) {
                 case AST_INIT_DECL:
-                    free(stmt->as.for_loop.init.as.decl.identifier);
-                    if (stmt->as.for_loop.init.as.decl.init.present)
-                        ast_exp_destroy(stmt->as.for_loop.init.as.decl.init.value);
+                    ast_variable_declaration_destroy(&stmt->as.for_loop.init.as.decl);
                     break;
                 case AST_INIT_EXP:
                     ast_exp_destroy(stmt->as.for_loop.init.as.exp);
                     break;
             }
-            if (stmt->as.for_loop.cond.present)
-                ast_exp_destroy(stmt->as.for_loop.cond.value);
-            if (stmt->as.for_loop.post.present)
-                ast_exp_destroy(stmt->as.for_loop.post.value);
+            ast_exp_destroy(stmt->as.for_loop.cond);
+            ast_exp_destroy(stmt->as.for_loop.post);
             ast_stmt_destroy(stmt->as.for_loop.body);
             break;
         case STMT_WHILE:
@@ -253,32 +287,15 @@ void ast_stmt_destroy(AstStatement* stmt) {
     free(stmt);
 }
 
-AstFunction ast_function_create(const char* identifier, AstBlock block) {
-	AstFunction function;
-	function.identifier = strdup(identifier);
-	function.body = block;
-	return function;
-}
-
-void ast_function_append(AstFunction* function, AstBlockItem block_item) {
-	list_push(&function->body, block_item);
-}
-
-void ast_function_destroy(AstFunction* function) {
-	free(function->identifier);
-	ast_block_destroy(&function->body);
-	return;
-}
-
 // --- Program ---
 
-AstProgram ast_program_create(AstFunction* functions, int num_functions) {
+AstProgram ast_program_create(AstFunctionDeclaration* functions, int num_functions) {
 	return (AstProgram){ .items = functions, .count = num_functions, .capacity = num_functions };
 }
 
 void ast_program_destroy(AstProgram* program) {
     for (size_t i = 0; i < program->count; i++) {
-        ast_function_destroy(&program->items[i]);
+        ast_function_declaration_destroy(&program->items[i]);
     }
     list_free(program);
 }

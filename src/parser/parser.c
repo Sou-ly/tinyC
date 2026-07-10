@@ -183,7 +183,9 @@ static void expect_separator(Parser* p, TokenSeparator sep) {
 // --- Parsing ---
 
 static AstExp* parse_expression(Parser* p, int min_prec);
-static AstVarDecl parse_declaration(Parser* p);
+static AstDeclaration parse_declaration(Parser* p);
+static AstVariableDeclaration parse_variable_declaration(Parser* p);
+static AstFunctionDeclaration parse_function_declaration_tail(Parser* p, char* identifier);
 static AstBlockItem parse_block_item(Parser* p);
 static AstBlock parse_block(Parser* p);
 
@@ -347,19 +349,22 @@ static AstStatement* parse_statement(Parser* p) {
 			expect_separator(p, TOK_LPAR);
 			AstForInit for_init;
 			if (current(p)->kind == TOK_KEYWORD && current(p)->as.keyword == TOK_INT) {
-				for_init = ast_for_init_decl(parse_declaration(p));
+				for_init = ast_for_init_decl(parse_variable_declaration(p));
+			} else if (current(p)->kind == TOK_SEPARATOR && current(p)->as.separator == TOK_SEMICOLON) {
+				advance(p);	// `for (;` -- no initializer
+				for_init = ast_for_init_exp(NULL);
 			} else {
 				AstExp* exp = parse_expression(p, 0);
 				expect_separator(p, TOK_SEMICOLON);
 				for_init = ast_for_init_exp(exp);
 			}
-			OptionalExp cond = no_exp();
+			AstExp* cond = NULL;
 			if (!(current(p)->kind == TOK_SEPARATOR && current(p)->as.separator == TOK_SEMICOLON))
-				cond = some_exp(parse_expression(p, 0));
+				cond = parse_expression(p, 0);
 			expect_separator(p, TOK_SEMICOLON);
-			OptionalExp post = no_exp();
+			AstExp* post = NULL;
 			if (!(current(p)->kind == TOK_SEPARATOR && current(p)->as.separator == TOK_RPAR))
-				post = some_exp(parse_expression(p, 0));
+				post = parse_expression(p, 0);
 			expect_separator(p, TOK_RPAR);
 			AstStatement* body = parse_statement(p);
 			return ast_stmt_for(for_init, cond, post, body);
@@ -458,53 +463,54 @@ static AstStatement* parse_statement(Parser* p) {
 	exit(1);
 }
 
-static AstVarDecl parse_declaration(Parser* p) {
-	AstDeclaration declaration;
-	if (current(p)->kind == TOK_KEYWORD && current(p)->as.keyword == TOK_INT) {
-		advance(p); // consume int
-		if (current(p)->kind != TOK_IDENTIFIER) {
-    	    fprintf(stderr, "parse error at %zu:%zu: expected variable name\n", current(p)->line, current(p)->col);
-    	    exit(1);
-    	}
-    	declaration.identifier = strdup(current(p)->as.identifier);
-		advance(p);
-		// function declaration
-		if (current(p)->kind == TOK_SEPARATOR && current(p)->as.separator == TOK_LPAR) {
-			AstFuncDecl function_declaration;
-			advance(p); // consume '('
-			while (current(p)->kind == TOK_KEYWORD && (current(p)->as.keyword == TOK_INT || current(p)->as.keyword == TOK_VOID)) {
-				advance(p);
-				if (current(p)->kind == TOK_IDENTIFIER) {
-					function_declaration.identifier = strdup(current(p)->as.identifier);
-
-				}
-			}
-			expect_separator(TOK_RPAR);
-			parse_block(p);
-		}
-		// variable declaration
-		else if (current(p)->kind == TOK_OPERATOR && current(p)->as.operator == TOK_ASSIGN) {
-			advance(p); // consume '='
-			declaration.init = some_exp(parse_expression(p, 0));
-		} else {
-			declaration.init = no_exp();
-		}
-		expect_separator(p, TOK_SEMICOLON);
-		return declaration;
+// Consumes `int <name>` and dispatches on the next token: '(' starts a function
+// declaration, everything else is a variable declaration.
+static AstDeclaration parse_declaration(Parser* p) {
+	if (!(current(p)->kind == TOK_KEYWORD && current(p)->as.keyword == TOK_INT)) {
+		fprintf(stderr, "parse error at %zu:%zu: expected declaration\n",
+				current(p)->line, current(p)->col);
+		exit(1);
 	}
-    fprintf(stderr, "parse error at %zu:%zu: expected declaration\n",
-            current(p)->line, current(p)->col);
-    exit(1);
+	advance(p); // consume int
+	if (current(p)->kind != TOK_IDENTIFIER) {
+		fprintf(stderr, "parse error at %zu:%zu: expected declared name\n",
+				current(p)->line, current(p)->col);
+		exit(1);
+	}
+	char* identifier = strdup(current(p)->as.identifier);
+	advance(p);
+
+	if (current(p)->kind == TOK_SEPARATOR && current(p)->as.separator == TOK_LPAR)
+		return ast_declaration_function(parse_function_declaration_tail(p, identifier));
+
+	AstExp* init = NULL;
+	if (current(p)->kind == TOK_OPERATOR && current(p)->as.operator == TOK_ASSIGN) {
+		advance(p); // consume '='
+		init = parse_expression(p, 0);
+	}
+	expect_separator(p, TOK_SEMICOLON);
+	return ast_declaration_variable(ast_variable_declaration(identifier, init));
+}
+
+// for-init admits a variable declaration only: `for (int f(void); ...)` is not C.
+static AstVariableDeclaration parse_variable_declaration(Parser* p) {
+	AstDeclaration declaration = parse_declaration(p);
+	if (declaration.kind != DECL_VAR) {
+		fprintf(stderr, "parse error at %zu:%zu: expected variable declaration\n",
+				current(p)->line, current(p)->col);
+		exit(1);
+	}
+	return declaration.as.variable;
 }
 
 static AstBlockItem parse_block_item(Parser* p) {
 	AstBlockItem block_item;
 	if (current(p)->kind == TOK_KEYWORD && current(p)->as.keyword == TOK_INT) {
 		block_item.kind = AST_DECLARATION;
-		block_item.as.decl = parse_declaration(p);
+		block_item.as.declaration = parse_declaration(p);
 	} else {
 		block_item.kind = AST_STATEMENT;
-		block_item.as.stmt = parse_statement(p);
+		block_item.as.statement = parse_statement(p);
 	}
 	return block_item;
 }
@@ -520,20 +526,68 @@ static AstBlock parse_block(Parser* p) {
     return block;
 }
 
-static AstFunction parse_function(Parser* p) {
-    // expect: int <name> ( )  { block-items  }
-    expect_keyword(p, TOK_INT);
-    if (current(p)->kind != TOK_IDENTIFIER) {
-        fprintf(stderr, "parse error at %zu:%zu: expected function name\n", current(p)->line, current(p)->col);
-        exit(1);
-    }
-    char* name = strdup(current(p)->as.identifier);
-    advance(p);
-    expect_separator(p, TOK_LPAR);
-    expect_separator(p, TOK_RPAR);
-	AstBlock block = parse_block(p);
-	AstFunction function = ast_function_create(name, block);
-    return function;
+// Picks up after `int <name>`, at '('. 
+static AstFunctionDeclaration parse_function_declaration_tail(Parser* p, char* identifier) {
+	expect_separator(p, TOK_LPAR);
+	AstParamList params = {0};
+	// A parameter may go unnamed in a prototype but not in a definition, so the
+	// first one is remembered here and reported once the body is known.
+	bool has_unnamed = false;
+	size_t unnamed_line = 0, unnamed_col = 0;
+	while (!at_end(p) && current(p)->kind == TOK_KEYWORD) {
+		if (current(p)->as.keyword == TOK_VOID) {
+			advance(p);
+			break;
+		}
+		advance(p);
+		if (current(p)->kind == TOK_IDENTIFIER) {
+			list_push(&params, strdup(current(p)->as.identifier));
+			advance(p);
+		} else {
+			list_push(&params, NULL);
+			if (!has_unnamed) {
+				has_unnamed = true;
+				unnamed_line = current(p)->line;
+				unnamed_col = current(p)->col;
+			}
+		}
+		if (!(current(p)->kind == TOK_SEPARATOR && current(p)->as.separator == TOK_COMMA)) {
+			break;
+		}
+		expect_separator(p, TOK_COMMA);
+		// a ',' commits to another parameter: `int f(int a,)` is not C.
+		if (at_end(p)) {
+			fprintf(stderr, "parse error: unexpected end of input after ','\n");
+			exit(1);
+		}
+		if (current(p)->kind != TOK_KEYWORD) {
+			fprintf(stderr, "parse error at %zu:%zu: expected parameter after ','\n",
+					current(p)->line, current(p)->col);
+			exit(1);
+		}
+	}
+	expect_separator(p, TOK_RPAR);
+
+	if (current(p)->kind == TOK_SEPARATOR && current(p)->as.separator == TOK_SEMICOLON) {
+		advance(p);
+		return ast_function_declaration(identifier, params, NONE(OptionalBlock));
+	}
+	if (has_unnamed) {
+		fprintf(stderr, "parse error at %zu:%zu: unnamed parameter in definition of '%s'\n",
+				unnamed_line, unnamed_col, identifier);
+		exit(1);
+	}
+	return ast_function_declaration(identifier, params, SOME(OptionalBlock, parse_block(p)));
+}
+
+static AstFunctionDeclaration parse_function(Parser* p) {
+	AstDeclaration declaration = parse_declaration(p);
+	if (declaration.kind != DECL_FUNC) {
+		fprintf(stderr, "parse error at %zu:%zu: expected function declaration\n",
+				current(p)->line, current(p)->col);
+		exit(1);
+	}
+	return declaration.as.function;
 }
 
 // --- Public API ---
@@ -660,7 +714,7 @@ static AstExp* resolve_expression(AstExp* exp, VarMap* map) {
 	return exp;
 }
 
-static void resolve_declaration(AstVarDecl* decl, VarMap* map) {
+static void resolve_declaration(AstVariableDeclaration* decl, VarMap* map) {
 	for (int i = 0; i < map->size; i++) {
 		if (map->entries[i].is_cur_scope &&
 				strcmp(map->entries[i].key, decl->identifier) == 0) {
@@ -672,8 +726,8 @@ static void resolve_declaration(AstVarDecl* decl, VarMap* map) {
 	char* unique = make_unique_name(decl->identifier);
 	varmap_put(map, (VarMapEntry) { .key=strdup(decl->identifier), .val=strdup(unique), .is_cur_scope=true });
 
-	if (decl->init.present)
-		decl->init.value = resolve_expression(decl->init.value, map);
+	if (decl->init)
+		decl->init = resolve_expression(decl->init, map);
 
 	free(decl->identifier);
 	decl->identifier = unique;
@@ -716,10 +770,10 @@ static void resolve_statement(AstStatement* stmt, VarMap* map) {
 		case STMT_FOR: {
 			VarMap new_map = varmap_copy(*map);
 			resolve_for_init(&stmt->as.for_loop.init, &new_map);
-			if (stmt->as.for_loop.cond.present)
-				stmt->as.for_loop.cond.value = resolve_expression(stmt->as.for_loop.cond.value, &new_map);
-			if (stmt->as.for_loop.post.present)
-				stmt->as.for_loop.post.value = resolve_expression(stmt->as.for_loop.post.value, &new_map);
+			if (stmt->as.for_loop.cond)
+				stmt->as.for_loop.cond = resolve_expression(stmt->as.for_loop.cond, &new_map);
+			if (stmt->as.for_loop.post)
+				stmt->as.for_loop.post = resolve_expression(stmt->as.for_loop.post, &new_map);
 			resolve_statement(stmt->as.for_loop.body, &new_map);
 			varmap_destroy(&new_map);
 			break;
@@ -758,10 +812,23 @@ static void resolve_statement(AstStatement* stmt, VarMap* map) {
 static void resolve_block_item(AstBlockItem* item, VarMap* map) {
 	switch (item->kind) {
 		case AST_DECLARATION:
-			resolve_declaration(&item->as.decl, map);
+			switch (item->as.declaration.kind) {
+				case DECL_VAR:
+					resolve_declaration(&item->as.declaration.as.variable, map);
+					break;
+				case DECL_FUNC:
+					// a block-scope function declaration is a prototype; it declares no
+					// variable, and a nested definition is not C.
+					if (item->as.declaration.as.function.body.present) {
+						fprintf(stderr, "error: nested function definition '%s'\n",
+								item->as.declaration.as.function.identifier);
+						exit(1);
+					}
+					break;
+			}
 			break;
 		case AST_STATEMENT:
-			resolve_statement(item->as.stmt, map);
+			resolve_statement(item->as.statement, map);
 			break;
 	}
 }
@@ -772,15 +839,16 @@ static void resolve_block(AstBlock* block, VarMap* map) {
 	}
 }
 
-static void resolve_function(AstFunction* func) {
+static void resolve_function(AstFunctionDeclaration* func) {
+	if (!func->body.present) return;
 	VarMap map = varmap_create(16);
-	resolve_block(&func->body, &map);
+	resolve_block(&func->body.value, &map);
 	varmap_destroy(&map);
 }
 
 void resolve_variables(AstProgram* program) {
 	RESOLVE_COUNTER = 0;
-	for (int i = 0; i < program->count; i++) {
+	for (size_t i = 0; i < program->count; i++) {
 		resolve_function(&program->items[i]);
 	}
 }
@@ -860,15 +928,16 @@ static void label_block(AstBlock* block, char* break_label, char* continue_label
 	for (size_t i = 0; i < block->count; i++) {
 		AstBlockItem* item = &block->items[i];
 		if (item->kind == AST_STATEMENT) {
-			label_statement(item->as.stmt, break_label, continue_label);
+			label_statement(item->as.statement, break_label, continue_label);
 		}
 	}
 }
 
 void resolve_labels(AstProgram* program) {
 	LABEL_COUNTER = 0;
-	for (int i = 0; i < program->count; i++) {
-		label_block(&program->items[i].body, NULL, NULL);
+	for (size_t i = 0; i < program->count; i++) {
+		if (program->items[i].body.present)
+			label_block(&program->items[i].body.value, NULL, NULL);
 	}
 }
 
@@ -947,7 +1016,7 @@ static void collect_labels_block(AstBlock* block, VarMap* labels) {
 	for (size_t i = 0; i < block->count; i++) {
 		AstBlockItem* item = &block->items[i];
 		if (item->kind == AST_STATEMENT)
-			collect_labels_statement(item->as.stmt, labels);
+			collect_labels_statement(item->as.statement, labels);
 	}
 }
 
@@ -1007,18 +1076,19 @@ static void rewrite_gotos_block(AstBlock* block, VarMap* labels) {
 	for (size_t i = 0; i < block->count; i++) {
 		AstBlockItem* item = &block->items[i];
 		if (item->kind == AST_STATEMENT)
-			rewrite_gotos_statement(item->as.stmt, labels);
+			rewrite_gotos_statement(item->as.statement, labels);
 	}
 }
 
 void resolve_goto_labels(AstProgram* program) {
 	GOTO_LABEL_COUNTER = 0;
-	for (int i = 0; i < program->count; i++) {
+	for (size_t i = 0; i < program->count; i++) {
+		if (!program->items[i].body.present) continue;
 		// one map per function: labels do not cross function boundaries, but the
 		// counter keeps climbing so names stay unique across the whole program.
 		VarMap labels = varmap_create(8);
-		collect_labels_block(&program->items[i].body, &labels);
-		rewrite_gotos_block(&program->items[i].body, &labels);
+		collect_labels_block(&program->items[i].body.value, &labels);
+		rewrite_gotos_block(&program->items[i].body.value, &labels);
 		varmap_destroy(&labels);
 	}
 }
