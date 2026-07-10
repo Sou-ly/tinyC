@@ -7,19 +7,26 @@
 
 // --- helpers ---
 
+// A function definition named `identifier` whose body is `body`.
+static AstFunctionDeclaration function_of(const char* identifier, AstBlock body) {
+    return ast_function_declaration(strdup(identifier), (AstParamList){0},
+                                    SOME(OptionalBlock, body));
+}
+
+static AstBlockItem statement_item(AstStatement* stmt) {
+    return (AstBlockItem){ .kind = AST_STATEMENT, .as.statement = stmt };
+}
+
 // Wrap a list of statements into a single-function ("main") program.
 // Takes ownership of `stmts` (each statement is copied into the function).
 static AstProgram program_of(AstStatement** stmts, int num_stmts) {
-    AstFunction fn = ast_function_create("main", (AstBlock){0});
+    AstBlock body = {0};
     for (int i = 0; i < num_stmts; i++) {
-        ast_function_append(&fn, (AstBlockItem){
-            .kind = AST_STATEMENT,
-            .as.stmt = stmts[i],
-        });
+        ast_block_append(&body, statement_item(stmts[i]));
     }
     free(stmts);
-    AstFunction* functions = malloc(sizeof(AstFunction));
-    functions[0] = fn;
+    AstFunctionDeclaration* functions = malloc(sizeof(AstFunctionDeclaration));
+    functions[0] = function_of("main", body);
     return ast_program_create(functions, 1);
 }
 
@@ -212,16 +219,14 @@ void test_emit_expr_statement_no_instruction() {
 
 // A program with more than one function lowers each independently.
 void test_emit_multiple_functions() {
-    AstFunction foo = ast_function_create("foo", (AstBlock){0});
-    ast_function_append(&foo, (AstBlockItem){
-        .kind = AST_STATEMENT, .as.stmt = ast_stmt_return(ast_exp_int(1))});
-    AstFunction bar = ast_function_create("bar", (AstBlock){0});
-    ast_function_append(&bar, (AstBlockItem){
-        .kind = AST_STATEMENT, .as.stmt = ast_stmt_return(ast_exp_int(2))});
+    AstBlock foo_body = {0};
+    ast_block_append(&foo_body, statement_item(ast_stmt_return(ast_exp_int(1))));
+    AstBlock bar_body = {0};
+    ast_block_append(&bar_body, statement_item(ast_stmt_return(ast_exp_int(2))));
 
-    AstFunction* functions = malloc(2 * sizeof(AstFunction));
-    functions[0] = foo;
-    functions[1] = bar;
+    AstFunctionDeclaration* functions = malloc(2 * sizeof(AstFunctionDeclaration));
+    functions[0] = function_of("foo", foo_body);
+    functions[1] = function_of("bar", bar_body);
     AstProgram ast = ast_program_create(functions, 2);
     IrProgram ir = emit_ir(&ast);
 

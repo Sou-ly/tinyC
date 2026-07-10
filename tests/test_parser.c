@@ -103,17 +103,20 @@ void test_create_if_stmt_no_else() {
 }
 
 void test_create_function_decl() {
-    AstFunction fn = ast_function_create("main", (AstBlock){0});
-    ast_function_append(&fn, (AstBlockItem){
+    AstBlock body = (AstBlock){0};
+    ast_block_append(&body, (AstBlockItem){
         .kind = AST_STATEMENT,
-        .as.stmt = ast_stmt_return(ast_exp_int(0)),
+        .as.statement = ast_stmt_return(ast_exp_int(0)),
     });
+    AstFunctionDeclaration fn = ast_function_declaration(
+        strdup("main"), (AstParamList){0}, SOME(OptionalBlock, body));
 
     assert(strcmp(fn.identifier, "main") == 0);
-    assert(fn.body.count == 1);
-    assert(fn.body.items[0].kind == AST_STATEMENT);
-    assert(fn.body.items[0].as.stmt->kind == STMT_RETURN);
-    ast_function_destroy(&fn);
+    assert(fn.body.present);
+    assert(fn.body.value.count == 1);
+    assert(fn.body.value.items[0].kind == AST_STATEMENT);
+    assert(fn.body.value.items[0].as.statement->kind == STMT_RETURN);
+    ast_function_declaration_destroy(&fn);
     printf("  PASS: test_create_function_decl\n");
 }
 
@@ -138,11 +141,11 @@ void test_parse_return_2() {
 
     assert(prog.count == 1);
     assert(strcmp(prog.items[0].identifier, "main") == 0);
-    assert(prog.items[0].body.count == 1);
-    assert(prog.items[0].body.items[0].kind == AST_STATEMENT);
-    assert(prog.items[0].body.items[0].as.stmt->kind == STMT_RETURN);
-    assert(prog.items[0].body.items[0].as.stmt->as.ret.exp->kind == EXP_INT);
-    assert(prog.items[0].body.items[0].as.stmt->as.ret.exp->as.int_lit.value == 2);
+    assert(prog.items[0].body.value.count == 1);
+    assert(prog.items[0].body.value.items[0].kind == AST_STATEMENT);
+    assert(prog.items[0].body.value.items[0].as.statement->kind == STMT_RETURN);
+    assert(prog.items[0].body.value.items[0].as.statement->as.ret.exp->kind == EXP_INT);
+    assert(prog.items[0].body.value.items[0].as.statement->as.ret.exp->as.int_lit.value == 2);
 
     ast_program_destroy(&prog);
     free(tokens.items);
@@ -297,7 +300,7 @@ static void check_return_exp(const char* description, const Token* exp_tokens,
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstExp* actual = prog.items[0].body.items[0].as.stmt->as.ret.exp;
+    AstExp* actual = prog.items[0].body.value.items[0].as.statement->as.ret.exp;
     if (!exp_equals(actual, expected)) {
         printf("  FAIL: %s\n    expected: ", description);
         print_exp(expected);
@@ -480,10 +483,10 @@ static void check_assign_op(const char* description, TokenOperator tok_op,
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstBlockItem item = prog.items[0].body.items[0];
+    AstBlockItem item = prog.items[0].body.value.items[0];
     assert(item.kind == AST_STATEMENT);
-    assert(item.as.stmt->kind == STMT_EXP);
-    AstExp* exp = item.as.stmt->as.exp_stmt.exp;
+    assert(item.as.statement->kind == STMT_EXP);
+    AstExp* exp = item.as.statement->as.exp_stmt.exp;
     assert(exp->kind == EXP_ASSIGN);
     assert(exp->as.assign.lhs->kind == EXP_VAR);
     assert(strcmp(exp->as.assign.lhs->as.variable.identifier, "x") == 0);
@@ -534,7 +537,7 @@ void test_parse_compound_assign_right_assoc() {
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstExp* outer = prog.items[0].body.items[0].as.stmt->as.exp_stmt.exp;
+    AstExp* outer = prog.items[0].body.value.items[0].as.statement->as.exp_stmt.exp;
     assert(outer->kind == EXP_ASSIGN && outer->as.assign.op == ASSIGN_ADD);
     assert(outer->as.assign.lhs->kind == EXP_VAR);
     assert(strcmp(outer->as.assign.lhs->as.variable.identifier, "x") == 0);
@@ -667,7 +670,7 @@ void test_parse_while_loop() {
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstStatement* stmt = prog.items[0].body.items[0].as.stmt;
+    AstStatement* stmt = prog.items[0].body.value.items[0].as.statement;
     assert(stmt->kind == STMT_WHILE);
     assert(stmt->as.while_loop.label == NULL);
     assert(stmt->as.while_loop.cond->as.int_lit.value == 1);
@@ -701,7 +704,7 @@ void test_parse_do_while_loop() {
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstStatement* stmt = prog.items[0].body.items[0].as.stmt;
+    AstStatement* stmt = prog.items[0].body.value.items[0].as.statement;
     assert(stmt->kind == STMT_DO_WHILE);
     assert(stmt->as.do_while_loop.label == NULL);
     assert(stmt->as.do_while_loop.cond->as.int_lit.value == 2);
@@ -736,13 +739,13 @@ void test_parse_for_loop() {
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstStatement* stmt = prog.items[0].body.items[0].as.stmt;
+    AstStatement* stmt = prog.items[0].body.value.items[0].as.statement;
     assert(stmt->kind == STMT_FOR);
     assert(stmt->as.for_loop.label == NULL);
-    assert(stmt->as.for_loop.cond.present);
-    assert(stmt->as.for_loop.cond.value->as.int_lit.value == 1);
-    assert(stmt->as.for_loop.post.present);
-    assert(stmt->as.for_loop.post.value->as.int_lit.value == 2);
+    assert(stmt->as.for_loop.cond);
+    assert(stmt->as.for_loop.cond->as.int_lit.value == 1);
+    assert(stmt->as.for_loop.post);
+    assert(stmt->as.for_loop.post->as.int_lit.value == 2);
     assert(stmt->as.for_loop.body->kind == STMT_EXP);
 
     ast_program_destroy(&prog);
@@ -770,7 +773,7 @@ void test_parse_break_in_loop() {
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstStatement* stmt = prog.items[0].body.items[0].as.stmt;
+    AstStatement* stmt = prog.items[0].body.value.items[0].as.statement;
     assert(stmt->kind == STMT_WHILE);
     assert(stmt->as.while_loop.body->kind == STMT_BREAK);
     assert(stmt->as.while_loop.body->as.break_stmt.label == NULL);
@@ -800,7 +803,7 @@ void test_parse_continue_in_loop() {
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstStatement* stmt = prog.items[0].body.items[0].as.stmt;
+    AstStatement* stmt = prog.items[0].body.value.items[0].as.statement;
     assert(stmt->kind == STMT_WHILE);
     assert(stmt->as.while_loop.body->kind == STMT_CONTINUE);
     assert(stmt->as.while_loop.body->as.continue_stmt.label == NULL);
@@ -818,9 +821,9 @@ void test_parse_continue_in_loop() {
 // Helper: wraps a single statement in a program with one function.
 static AstProgram make_test_program(AstStatement* stmt) {
     AstBlock body = (AstBlock){0};
-    ast_block_append(&body, (AstBlockItem){ .kind = AST_STATEMENT, .as.stmt = stmt });
-    AstFunction* fn = malloc(sizeof(AstFunction));
-    *fn = ast_function_create("main", body);
+    ast_block_append(&body, (AstBlockItem){ .kind = AST_STATEMENT, .as.statement = stmt });
+    AstFunctionDeclaration* fn = malloc(sizeof(AstFunctionDeclaration));
+    *fn = ast_function_declaration(strdup("main"), (AstParamList){0}, SOME(OptionalBlock, body));
     return ast_program_create(fn, 1);
 }
 
@@ -831,7 +834,7 @@ void test_resolve_labels_while_break() {
 
     resolve_labels(&prog);
 
-    AstStatement* resolved = prog.items[0].body.items[0].as.stmt;
+    AstStatement* resolved = prog.items[0].body.value.items[0].as.statement;
     assert(resolved->kind == STMT_WHILE);
     assert(resolved->as.while_loop.label != NULL);
     char* loop_label = resolved->as.while_loop.label;
@@ -849,7 +852,7 @@ void test_resolve_labels_while_continue() {
 
     resolve_labels(&prog);
 
-    AstStatement* resolved = prog.items[0].body.items[0].as.stmt;
+    AstStatement* resolved = prog.items[0].body.value.items[0].as.statement;
     assert(resolved->as.while_loop.label != NULL);
     assert(strcmp(resolved->as.while_loop.body->as.continue_stmt.label,
                  resolved->as.while_loop.label) == 0);
@@ -863,25 +866,25 @@ void test_resolve_labels_while_continue() {
 void test_resolve_labels_nested_loops() {
     // inner: for (0; 1; 2) break;
     AstForInit init = ast_for_init_exp(NULL);
-    AstStatement* inner = ast_stmt_for(init, no_exp(), no_exp(), ast_stmt_break(NULL));
+    AstStatement* inner = ast_stmt_for(init, NULL, NULL, ast_stmt_break(NULL));
 
     // outer body: { inner_loop; continue; }
     AstBlock outer_body = (AstBlock){0};
-    ast_block_append(&outer_body, (AstBlockItem){ .kind = AST_STATEMENT, .as.stmt = inner });
-    ast_block_append(&outer_body, (AstBlockItem){ .kind = AST_STATEMENT, .as.stmt = ast_stmt_continue(NULL) });
+    ast_block_append(&outer_body, (AstBlockItem){ .kind = AST_STATEMENT, .as.statement = inner });
+    ast_block_append(&outer_body, (AstBlockItem){ .kind = AST_STATEMENT, .as.statement = ast_stmt_continue(NULL) });
 
     AstProgram prog = make_test_program(
         ast_stmt_while(ast_exp_int(1), ast_stmt_compound(outer_body)));
 
     resolve_labels(&prog);
 
-    AstStatement* r_outer = prog.items[0].body.items[0].as.stmt;
+    AstStatement* r_outer = prog.items[0].body.value.items[0].as.statement;
     assert(r_outer->kind == STMT_WHILE);
     char* outer_label = r_outer->as.while_loop.label;
     assert(outer_label != NULL);
 
     AstBlock* compound = &r_outer->as.while_loop.body->as.compound;
-    AstStatement* r_inner = compound->items[0].as.stmt;
+    AstStatement* r_inner = compound->items[0].as.statement;
     assert(r_inner->kind == STMT_FOR);
     char* inner_label = r_inner->as.for_loop.label;
     assert(inner_label != NULL);
@@ -893,7 +896,7 @@ void test_resolve_labels_nested_loops() {
     assert(strcmp(r_inner->as.for_loop.body->as.break_stmt.label, inner_label) == 0);
 
     // Outer continue gets outer label
-    AstStatement* r_cont = compound->items[1].as.stmt;
+    AstStatement* r_cont = compound->items[1].as.statement;
     assert(strcmp(r_cont->as.continue_stmt.label, outer_label) == 0);
 
     ast_program_destroy(&prog);
@@ -913,7 +916,7 @@ void test_resolve_labels_through_if() {
 
     resolve_labels(&prog);
 
-    AstStatement* resolved = prog.items[0].body.items[0].as.stmt;
+    AstStatement* resolved = prog.items[0].body.value.items[0].as.statement;
     char* label = resolved->as.while_loop.label;
     assert(label != NULL);
 
@@ -933,7 +936,7 @@ void test_resolve_labels_do_while() {
 
     resolve_labels(&prog);
 
-    AstStatement* resolved = prog.items[0].body.items[0].as.stmt;
+    AstStatement* resolved = prog.items[0].body.value.items[0].as.statement;
     assert(resolved->kind == STMT_DO_WHILE);
     assert(resolved->as.do_while_loop.label != NULL);
     assert(strcmp(resolved->as.do_while_loop.body->as.break_stmt.label,
@@ -960,17 +963,17 @@ static AstProgram parse_src(const char* src) {
 
 static AstStatement* nth_stmt(AstProgram* prog, size_t i) {
     assert(prog->count == 1);
-    assert(i < prog->items[0].body.count);
-    AstBlockItem item = prog->items[0].body.items[i];
+    assert(i < prog->items[0].body.value.count);
+    AstBlockItem item = prog->items[0].body.value.items[i];
     assert(item.kind == AST_STATEMENT);
-    return item.as.stmt;
+    return item.as.statement;
 }
 
 // `start:` is a standalone STMT_LABEL; the following `return 1;` is a separate
 // statement, so the body holds two items.
 void test_parse_label() {
     AstProgram prog = parse_src("int main() { start: return 1; }");
-    assert(prog.items[0].body.count == 2);
+    assert(prog.items[0].body.value.count == 2);
     AstStatement* label = nth_stmt(&prog, 0);
     assert(label->kind == STMT_LABEL);
     assert(strcmp(label->as.label.identifier, "start") == 0);
@@ -982,7 +985,7 @@ void test_parse_label() {
 // `goto end;` parses to STMT_GOTO carrying the target name.
 void test_parse_goto() {
     AstProgram prog = parse_src("int main() { goto end; }");
-    assert(prog.items[0].body.count == 1);
+    assert(prog.items[0].body.value.count == 1);
     AstStatement* g = nth_stmt(&prog, 0);
     assert(g->kind == STMT_GOTO);
     assert(strcmp(g->as.goto_stmt.target, "end") == 0);
@@ -1004,7 +1007,7 @@ void test_parse_assignment_not_label() {
 // label followed by a goto back to it: two statements, matching names.
 void test_parse_label_and_goto() {
     AstProgram prog = parse_src("int main() { loop: goto loop; }");
-    assert(prog.items[0].body.count == 2);
+    assert(prog.items[0].body.value.count == 2);
     AstStatement* label = nth_stmt(&prog, 0);
     AstStatement* g = nth_stmt(&prog, 1);
     assert(label->kind == STMT_LABEL && strcmp(label->as.label.identifier, "loop") == 0);
@@ -1097,7 +1100,7 @@ void test_resolve_labels_switch_break() {
     char* loop_label = loop->as.while_loop.label;
 
     // while body is a compound { switch ... }
-    AstStatement* sw = loop->as.while_loop.body->as.compound.items[0].as.stmt;
+    AstStatement* sw = loop->as.while_loop.body->as.compound.items[0].as.statement;
     assert(sw->kind == STMT_SWITCH);
     char* switch_label = sw->as.switch_stmt.label;
     assert(switch_label != NULL);
@@ -1105,8 +1108,8 @@ void test_resolve_labels_switch_break() {
 
     // break -> switch label; continue -> enclosing loop label
     AstSwitchClause* c = sw->as.switch_stmt.clauses.items;
-    AstStatement* brk = c[0].body.items[0].as.stmt;
-    AstStatement* cont = c[1].body.items[0].as.stmt;
+    AstStatement* brk = c[0].body.items[0].as.statement;
+    AstStatement* cont = c[1].body.items[0].as.statement;
     assert(brk->kind == STMT_BREAK && strcmp(brk->as.break_stmt.label, switch_label) == 0);
     assert(cont->kind == STMT_CONTINUE && strcmp(cont->as.continue_stmt.label, loop_label) == 0);
 
@@ -1178,8 +1181,8 @@ void test_resolve_labels_unique_across_functions() {
     AstProgram prog = parse_src("int f() { done: return 0; } int g() { done: return 1; }");
     resolve_goto_labels(&prog);
     assert(prog.count == 2);
-    AstStatement* l0 = prog.items[0].body.items[0].as.stmt;
-    AstStatement* l1 = prog.items[1].body.items[0].as.stmt;
+    AstStatement* l0 = prog.items[0].body.value.items[0].as.statement;
+    AstStatement* l1 = prog.items[1].body.value.items[0].as.statement;
     assert(l0->kind == STMT_LABEL && l1->kind == STMT_LABEL);
     assert(strcmp(l0->as.label.identifier, l1->as.label.identifier) != 0);
     ast_program_destroy(&prog);

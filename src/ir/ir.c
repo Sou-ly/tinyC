@@ -269,9 +269,9 @@ static char* switch_clause_label(const char* base, size_t index) {
 
 // A declaration with an initializer lowers to a copy of the initializer into a
 // variable named after the declared identifier; a bare declaration emits nothing.
-static void emit_ir_declaration(IrFunction* ir_function, const AstVarDecl* decl) {
-	if (!decl->init.present) return;
-	IrVal result = emit_ir_expression(decl->init.value, ir_function);
+static void emit_ir_declaration(IrFunction* ir_function, const AstVariableDeclaration* decl) {
+	if (!decl->init) return;
+	IrVal result = emit_ir_expression(decl->init, ir_function);
 	append_ir_instruction(ir_function, ir_instr_copy(result, ir_val_variable(strdup(decl->identifier))));
 }
 
@@ -316,13 +316,13 @@ static void emit_ir_statement(IrFunction* ir_function, const AstStatement* stmt)
 				case AST_INIT_EXP:	if (loop->init.as.exp) emit_ir_expression(loop->init.as.exp, ir_function); break;
 			}
 			append_ir_instruction(ir_function, ir_instr_label(start));
-			if (loop->cond.present) {
-				IrVal cond = emit_ir_expression(loop->cond.value, ir_function);
+			if (loop->cond) {
+				IrVal cond = emit_ir_expression(loop->cond, ir_function);
 				append_ir_instruction(ir_function, ir_instr_jump_zero(cond, brk));
 			}
 			emit_ir_statement(ir_function, loop->body);
 			append_ir_instruction(ir_function, ir_instr_label(cont));
-			if (loop->post.present) emit_ir_expression(loop->post.value, ir_function);
+			if (loop->post) emit_ir_expression(loop->post, ir_function);
 			append_ir_instruction(ir_function, ir_instr_jump(start));
 			append_ir_instruction(ir_function, ir_instr_label(brk));
 			return;
@@ -399,9 +399,11 @@ static void emit_ir_statement(IrFunction* ir_function, const AstStatement* stmt)
 
 static void emit_ir_block_item(IrFunction* ir_function, const AstBlockItem block_item) {
 	if (block_item.kind == AST_STATEMENT) {
-		emit_ir_statement(ir_function, block_item.as.stmt);
+		emit_ir_statement(ir_function, block_item.as.statement);
 	} else if (block_item.kind == AST_DECLARATION) {
-		emit_ir_declaration(ir_function, &block_item.as.decl);
+		// a block-scope function declaration is a prototype: nothing to lower.
+		if (block_item.as.declaration.kind == DECL_VAR)
+			emit_ir_declaration(ir_function, &block_item.as.declaration.as.variable);
 	}
 }
 
@@ -415,17 +417,18 @@ static void append_ir_function(IrProgram* program, IrFunction function) {
 	list_push(program, function);
 }
 
-static IrFunction emit_ir_function(const AstFunction* ast_function) {
+static IrFunction emit_ir_function(const AstFunctionDeclaration* ast_function) {
 	IrFunction ir_function = { .identifier = NULL, .instructions = {0} };
 	ir_function.identifier = strdup(ast_function->identifier);
-	emit_ir_block(&ir_function, ast_function->body);
+	emit_ir_block(&ir_function, ast_function->body.value);
 	return ir_function;
 }
 
 IrProgram emit_ir(const AstProgram* ast_program) {
 	IrProgram ir_program = {0};
 	for (size_t i = 0; i < ast_program->count; i++) {
-		const AstFunction* function = &ast_program->items[i];
+		const AstFunctionDeclaration* function = &ast_program->items[i];
+		if (!function->body.present) continue;	// prototype: nothing to lower
 		append_ir_function(&ir_program, emit_ir_function(function));
 	}
 	return ir_program;

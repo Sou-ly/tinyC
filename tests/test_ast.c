@@ -6,7 +6,7 @@
 
 // --- AstBlock unit tests ---
 //
-// These exercise the block container that was extracted out of AstFunction:
+// These exercise the block container that AstFunctionDeclaration holds as its body:
 // a block is a list of block items (statements or declarations), a compound
 // statement is just a block, and blocks therefore nest through statements.
 
@@ -25,17 +25,17 @@ void test_block_append_keeps_order() {
     AstBlock block = (AstBlock){0};
     ast_block_append(&block, (AstBlockItem){
         .kind = AST_STATEMENT,
-        .as.stmt = ast_stmt_return(ast_exp_int(1)),
+        .as.statement = ast_stmt_return(ast_exp_int(1)),
     });
     ast_block_append(&block, (AstBlockItem){
         .kind = AST_STATEMENT,
-        .as.stmt = ast_stmt_exp(ast_exp_int(2)),
+        .as.statement = ast_stmt_exp(ast_exp_int(2)),
     });
 
     assert(block.count == 2);
     assert(block.items[0].kind == AST_STATEMENT);
-    assert(block.items[0].as.stmt->kind == STMT_RETURN);
-    assert(block.items[1].as.stmt->kind == STMT_EXP);
+    assert(block.items[0].as.statement->kind == STMT_RETURN);
+    assert(block.items[1].as.statement->kind == STMT_EXP);
     ast_block_destroy(&block);
     printf("  PASS: test_block_append_keeps_order\n");
 }
@@ -47,14 +47,14 @@ void test_block_append_grows() {
     for (int i = 0; i < 10; i++) {
         ast_block_append(&block, (AstBlockItem){
             .kind = AST_STATEMENT,
-            .as.stmt = ast_stmt_return(ast_exp_int(i)),
+            .as.statement = ast_stmt_return(ast_exp_int(i)),
         });
     }
     assert(block.count == 10);
     assert(block.capacity >= 10);
     for (int i = 0; i < 10; i++) {
-        assert(block.items[i].as.stmt->kind == STMT_RETURN);
-        assert(block.items[i].as.stmt->as.ret.exp->as.int_lit.value == i);
+        assert(block.items[i].as.statement->kind == STMT_RETURN);
+        assert(block.items[i].as.statement->as.ret.exp->as.int_lit.value == i);
     }
     ast_block_destroy(&block);
     printf("  PASS: test_block_append_grows\n");
@@ -65,19 +65,20 @@ void test_block_holds_declarations() {
     AstBlock block = (AstBlock){0};
     ast_block_append(&block, (AstBlockItem){
         .kind = AST_DECLARATION,
-        .as.decl = { .identifier = strdup("x"), .init = some_exp(ast_exp_int(7)) },
+        .as.declaration = ast_declaration_variable(ast_variable_declaration(strdup("x"), ast_exp_int(7))),
     });
     ast_block_append(&block, (AstBlockItem){
         .kind = AST_DECLARATION,
-        .as.decl = { .identifier = strdup("y"), .init = no_exp() },
+        .as.declaration = ast_declaration_variable(ast_variable_declaration(strdup("y"), NULL)),
     });
 
     assert(block.count == 2);
     assert(block.items[0].kind == AST_DECLARATION);
-    assert(strcmp(block.items[0].as.decl.identifier, "x") == 0);
-    assert(block.items[0].as.decl.init.present);
-    assert(block.items[0].as.decl.init.value->as.int_lit.value == 7);
-    assert(!block.items[1].as.decl.init.present);
+    assert(block.items[0].as.declaration.kind == DECL_VAR);
+    const AstVariableDeclaration* x = &block.items[0].as.declaration.as.variable;
+    assert(strcmp(x->identifier, "x") == 0);
+    assert(x->init->as.int_lit.value == 7);
+    assert(block.items[1].as.declaration.as.variable.init == NULL);
     ast_block_destroy(&block);
     printf("  PASS: test_block_holds_declarations\n");
 }
@@ -88,13 +89,13 @@ void test_compound_stmt_wraps_block() {
     AstBlock block = (AstBlock){0};
     ast_block_append(&block, (AstBlockItem){
         .kind = AST_STATEMENT,
-        .as.stmt = ast_stmt_return(ast_exp_int(0)),
+        .as.statement = ast_stmt_return(ast_exp_int(0)),
     });
 
     AstStatement* stmt = ast_stmt_compound(block);
     assert(stmt->kind == STMT_COMPOUND);
     assert(stmt->as.compound.count == 1);
-    assert(stmt->as.compound.items[0].as.stmt->kind == STMT_RETURN);
+    assert(stmt->as.compound.items[0].as.statement->kind == STMT_RETURN);
     ast_stmt_destroy(stmt);
     printf("  PASS: test_compound_stmt_wraps_block\n");
 }
@@ -105,37 +106,49 @@ void test_nested_compound_block() {
     AstBlock inner = (AstBlock){0};
     ast_block_append(&inner, (AstBlockItem){
         .kind = AST_STATEMENT,
-        .as.stmt = ast_stmt_return(ast_exp_int(42)),
+        .as.statement = ast_stmt_return(ast_exp_int(42)),
     });
 
     AstBlock outer = (AstBlock){0};
     ast_block_append(&outer, (AstBlockItem){
         .kind = AST_STATEMENT,
-        .as.stmt = ast_stmt_compound(inner),
+        .as.statement = ast_stmt_compound(inner),
     });
 
-    assert(outer.items[0].as.stmt->kind == STMT_COMPOUND);
-    AstBlock nested = outer.items[0].as.stmt->as.compound;
+    assert(outer.items[0].as.statement->kind == STMT_COMPOUND);
+    AstBlock nested = outer.items[0].as.statement->as.compound;
     assert(nested.count == 1);
-    assert(nested.items[0].as.stmt->as.ret.exp->as.int_lit.value == 42);
+    assert(nested.items[0].as.statement->as.ret.exp->as.int_lit.value == 42);
     ast_block_destroy(&outer);
     printf("  PASS: test_nested_compound_block\n");
 }
 
-// AstFunction now delegates its list to an embedded AstBlock named body.
+// A function definition carries its block as a present OptionalBlock body.
 void test_function_holds_block() {
-    AstFunction fn = ast_function_create("main", (AstBlock){0});
-    ast_function_append(&fn, (AstBlockItem){
+    AstBlock body = (AstBlock){0};
+    ast_block_append(&body, (AstBlockItem){
         .kind = AST_STATEMENT,
-        .as.stmt = ast_stmt_return(ast_exp_int(0)),
+        .as.statement = ast_stmt_return(ast_exp_int(0)),
     });
+    AstFunctionDeclaration fn = ast_function_declaration(
+        strdup("main"), (AstParamList){0}, SOME(OptionalBlock, body));
 
     assert(strcmp(fn.identifier, "main") == 0);
-    assert(fn.body.count == 1);
-    assert(fn.body.items[0].kind == AST_STATEMENT);
-    assert(fn.body.items[0].as.stmt->kind == STMT_RETURN);
-    ast_function_destroy(&fn);
+    assert(fn.body.present);
+    assert(fn.body.value.count == 1);
+    assert(fn.body.value.items[0].kind == AST_STATEMENT);
+    assert(fn.body.value.items[0].as.statement->kind == STMT_RETURN);
+    ast_function_declaration_destroy(&fn);
     printf("  PASS: test_function_holds_block\n");
+}
+
+// A prototype has no body; destroying it must not touch body.value.
+void test_function_prototype_has_no_body() {
+    AstFunctionDeclaration fn = ast_function_declaration(
+        strdup("puts"), (AstParamList){0}, NONE(OptionalBlock));
+    assert(!fn.body.present);
+    ast_function_declaration_destroy(&fn);
+    printf("  PASS: test_function_prototype_has_no_body\n");
 }
 
 // --- Loop statement construction tests ---
@@ -170,14 +183,14 @@ void test_do_while_stmt_creation() {
 void test_for_stmt_creation() {
     AstForInit init = ast_for_init_exp(NULL);
     AstStatement* s = ast_stmt_for(
-        init, some_exp(ast_exp_int(1)), some_exp(ast_exp_int(2)),
+        init, ast_exp_int(1), ast_exp_int(2),
         ast_stmt_exp(ast_exp_int(3)));
     assert(s->kind == STMT_FOR);
     assert(s->as.for_loop.label == NULL);
-    assert(s->as.for_loop.cond.present);
-    assert(s->as.for_loop.cond.value->as.int_lit.value == 1);
-    assert(s->as.for_loop.post.present);
-    assert(s->as.for_loop.post.value->as.int_lit.value == 2);
+    assert(s->as.for_loop.cond);
+    assert(s->as.for_loop.cond->as.int_lit.value == 1);
+    assert(s->as.for_loop.post);
+    assert(s->as.for_loop.post->as.int_lit.value == 2);
     assert(s->as.for_loop.body->kind == STMT_EXP);
     ast_stmt_destroy(s);
     printf("  PASS: test_for_stmt_creation\n");
@@ -187,11 +200,11 @@ void test_for_stmt_creation() {
 void test_for_stmt_nullable_fields() {
     AstForInit init = ast_for_init_exp(NULL);
     AstStatement* s = ast_stmt_for(
-        init, no_exp(), no_exp(),
+        init, NULL, NULL,
         ast_stmt_exp(ast_exp_int(0)));
     assert(s->kind == STMT_FOR);
-    assert(!s->as.for_loop.cond.present);
-    assert(!s->as.for_loop.post.present);
+    assert(!s->as.for_loop.cond);
+    assert(!s->as.for_loop.post);
     ast_stmt_destroy(s);
     printf("  PASS: test_for_stmt_nullable_fields\n");
 }
@@ -220,11 +233,11 @@ void test_loop_with_break_continue() {
     AstBlock body = (AstBlock){0};
     ast_block_append(&body, (AstBlockItem){
         .kind = AST_STATEMENT,
-        .as.stmt = ast_stmt_break(NULL),
+        .as.statement = ast_stmt_break(NULL),
     });
     ast_block_append(&body, (AstBlockItem){
         .kind = AST_STATEMENT,
-        .as.stmt = ast_stmt_continue(NULL),
+        .as.statement = ast_stmt_continue(NULL),
     });
 
     AstStatement* loop = ast_stmt_while(
@@ -234,8 +247,8 @@ void test_loop_with_break_continue() {
     assert(loop->kind == STMT_WHILE);
     AstBlock* compound = &loop->as.while_loop.body->as.compound;
     assert(compound->count == 2);
-    assert(compound->items[0].as.stmt->kind == STMT_BREAK);
-    assert(compound->items[1].as.stmt->kind == STMT_CONTINUE);
+    assert(compound->items[0].as.statement->kind == STMT_BREAK);
+    assert(compound->items[1].as.statement->kind == STMT_CONTINUE);
     ast_stmt_destroy(loop);
     printf("  PASS: test_loop_with_break_continue\n");
 }
@@ -244,13 +257,13 @@ void test_loop_with_break_continue() {
 void test_nested_loops() {
     AstForInit init = ast_for_init_exp(NULL);
     AstStatement* inner = ast_stmt_for(
-        init, some_exp(ast_exp_int(1)), no_exp(),
+        init, ast_exp_int(1), NULL,
         ast_stmt_exp(ast_exp_int(0)));
 
     AstBlock outer_body = (AstBlock){0};
     ast_block_append(&outer_body, (AstBlockItem){
         .kind = AST_STATEMENT,
-        .as.stmt = inner,
+        .as.statement = inner,
     });
 
     AstStatement* outer = ast_stmt_while(
@@ -258,9 +271,9 @@ void test_nested_loops() {
         ast_stmt_compound(outer_body));
 
     assert(outer->kind == STMT_WHILE);
-    AstStatement* nested = outer->as.while_loop.body->as.compound.items[0].as.stmt;
+    AstStatement* nested = outer->as.while_loop.body->as.compound.items[0].as.statement;
     assert(nested->kind == STMT_FOR);
-    assert(nested->as.for_loop.cond.value->as.int_lit.value == 1);
+    assert(nested->as.for_loop.cond->as.int_lit.value == 1);
     ast_stmt_destroy(outer);
     printf("  PASS: test_nested_loops\n");
 }
@@ -274,6 +287,7 @@ int main() {
     test_compound_stmt_wraps_block();
     test_nested_compound_block();
     test_function_holds_block();
+    test_function_prototype_has_no_body();
     printf("Running loop statement tests...\n");
     test_while_stmt_creation();
     test_do_while_stmt_creation();

@@ -22,15 +22,15 @@
 // ---------------------------------------------------------------------------
 
 static AstBlockItem decl_item(const char* name, AstExp* initializer) {
-    OptionalExp opt = initializer ? some_exp(initializer) : no_exp();
     return (AstBlockItem){
         .kind = AST_DECLARATION,
-        .as.decl = { .identifier = strdup(name), .init = opt },
+        .as.declaration = ast_declaration_variable(
+            ast_variable_declaration(strdup(name), initializer)),
     };
 }
 
 static AstBlockItem stmt_item(AstStatement* stmt) {
-    return (AstBlockItem){ .kind = AST_STATEMENT, .as.stmt = stmt };
+    return (AstBlockItem){ .kind = AST_STATEMENT, .as.statement = stmt };
 }
 
 static AstBlockItem return_var(const char* name) {
@@ -40,18 +40,19 @@ static AstBlockItem return_var(const char* name) {
 // Wrap a finished body block into a single-function program. ast_program_destroy
 // frees the functions array, so it must be heap-allocated.
 static AstProgram program_with_body(AstBlock body) {
-    AstFunction* functions = malloc(sizeof(AstFunction));
-    functions[0] = ast_function_create("main", body);
+    AstFunctionDeclaration* functions = malloc(sizeof(AstFunctionDeclaration));
+    functions[0] = ast_function_declaration(strdup("main"), (AstParamList){0},
+                                            SOME(OptionalBlock, body));
     return ast_program_create(functions, 1);
 }
 
 // Convenience accessors into `main`'s top-level body.
 static AstBlockItem* item(AstProgram* prog, size_t index) {
-    return &prog->items[0].body.items[index];
+    return &prog->items[0].body.value.items[index];
 }
 
 static const char* decl_name(AstProgram* prog, size_t index) {
-    return item(prog, index)->as.decl.identifier;
+    return item(prog, index)->as.declaration.as.variable.identifier;
 }
 
 // ---------------------------------------------------------------------------
@@ -172,7 +173,7 @@ void test_resolve_single_declaration() {
     resolve_variables(&prog);
 
     assert(strcmp(decl_name(&prog, 0), "a.0") == 0);
-    AstExp* ret = item(&prog, 1)->as.stmt->as.ret.exp;
+    AstExp* ret = item(&prog, 1)->as.statement->as.ret.exp;
     assert(ret->kind == EXP_VAR);
     assert(strcmp(ret->as.variable.identifier, "a.0") == 0);
 
@@ -207,7 +208,7 @@ void test_resolve_initializer_reference() {
 
     assert(strcmp(decl_name(&prog, 0), "a.0") == 0);
     assert(strcmp(decl_name(&prog, 1), "b.1") == 0);
-    AstExp* init = item(&prog, 1)->as.decl.init.value;
+    AstExp* init = item(&prog, 1)->as.declaration.as.variable.init;
     assert(init->kind == EXP_VAR);
     assert(strcmp(init->as.variable.identifier, "a.0") == 0);
 
@@ -230,9 +231,9 @@ void test_resolve_inner_shadows_outer() {
     resolve_variables(&prog);
 
     assert(strcmp(decl_name(&prog, 0), "a.0") == 0);  // outer
-    AstBlock* blk = &item(&prog, 1)->as.stmt->as.compound;
-    assert(strcmp(blk->items[0].as.decl.identifier, "a.1") == 0);  // inner shadow
-    AstExp* ret = blk->items[1].as.stmt->as.ret.exp;
+    AstBlock* blk = &item(&prog, 1)->as.statement->as.compound;
+    assert(strcmp(blk->items[0].as.declaration.as.variable.identifier, "a.1") == 0);  // inner shadow
+    AstExp* ret = blk->items[1].as.statement->as.ret.exp;
     assert(strcmp(ret->as.variable.identifier, "a.1") == 0);  // binds to inner
 
     ast_program_destroy(&prog);
@@ -252,8 +253,8 @@ void test_resolve_inner_reads_outer() {
     resolve_variables(&prog);
 
     assert(strcmp(decl_name(&prog, 0), "a.0") == 0);
-    AstBlock* blk = &item(&prog, 1)->as.stmt->as.compound;
-    AstExp* ret = blk->items[0].as.stmt->as.ret.exp;
+    AstBlock* blk = &item(&prog, 1)->as.statement->as.compound;
+    AstExp* ret = blk->items[0].as.statement->as.ret.exp;
     assert(strcmp(ret->as.variable.identifier, "a.0") == 0);  // outer binding
 
     ast_program_destroy(&prog);
@@ -275,8 +276,8 @@ void test_resolve_sibling_scopes() {
 
     resolve_variables(&prog);
 
-    const char* a0 = item(&prog, 0)->as.stmt->as.compound.items[0].as.decl.identifier;
-    const char* a1 = item(&prog, 1)->as.stmt->as.compound.items[0].as.decl.identifier;
+    const char* a0 = item(&prog, 0)->as.statement->as.compound.items[0].as.declaration.as.variable.identifier;
+    const char* a1 = item(&prog, 1)->as.statement->as.compound.items[0].as.declaration.as.variable.identifier;
     assert(strcmp(a0, "a.0") == 0);
     assert(strcmp(a1, "a.1") == 0);
 
@@ -298,7 +299,7 @@ void test_resolve_inner_decl_does_not_leak() {
 
     resolve_variables(&prog);
 
-    AstExp* ret = item(&prog, 2)->as.stmt->as.ret.exp;
+    AstExp* ret = item(&prog, 2)->as.statement->as.ret.exp;
     assert(strcmp(ret->as.variable.identifier, "a.0") == 0);
 
     ast_program_destroy(&prog);
@@ -331,7 +332,7 @@ void test_resolve_if_statement() {
     assert(strcmp(decl_name(&prog, 0), "a.0") == 0);
     assert(strcmp(decl_name(&prog, 1), "b.1") == 0);
 
-    AstStmtIf* if_stmt = &item(&prog, 2)->as.stmt->as.if_cond;
+    AstStmtIf* if_stmt = &item(&prog, 2)->as.statement->as.if_cond;
     assert(strcmp(if_stmt->cond->as.variable.identifier, "a.0") == 0);
     assert(strcmp(if_stmt->then_br->as.ret.exp->as.variable.identifier, "b.1") == 0);
     assert(strcmp(if_stmt->else_br->as.ret.exp->as.variable.identifier, "a.0") == 0);
@@ -355,7 +356,7 @@ void test_resolve_conditional_expression() {
 
     resolve_variables(&prog);
 
-    AstExp* cond = item(&prog, 2)->as.stmt->as.ret.exp;
+    AstExp* cond = item(&prog, 2)->as.statement->as.ret.exp;
     assert(cond->kind == EXP_CONDITIONAL);
     assert(strcmp(cond->as.conditional.lhs->as.variable.identifier, "a.0") == 0);
     assert(strcmp(cond->as.conditional.mid->as.variable.identifier, "a.0") == 0);
