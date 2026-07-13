@@ -64,10 +64,12 @@ typedef enum {
 	EXP_BINOP,
 	EXP_VAR,
 	EXP_ASSIGN,
-	EXP_CONDITIONAL
+	EXP_CONDITIONAL,
+    EXP_FUNCTION_CALL
 } AstExpKind;
 
 typedef struct AstExp AstExp;
+typedef LIST_TYPE(AstArgList, AstExp) AstArgList;
 
 typedef struct { int value; }										AstExpInt;
 typedef struct { AstUnopType op_type; AstExp* operand; }			AstExpUnary;
@@ -75,7 +77,7 @@ typedef struct { AstBinopType op_type; AstExp* lhs; AstExp* rhs; }	AstExpBinop;
 typedef struct { char* identifier; }								AstExpVar;
 typedef struct { AstAssignOp op; AstExp* lhs; AstExp* rhs; }		AstExpAssign;
 typedef struct { AstExp* lhs; AstExp* mid; AstExp* rhs; }			AstExpConditional;
-typedef struct { char* identifier; AstExp* args; }					AstExpFunctionCall;
+typedef struct { char* identifier; AstArgList args; }				AstExpFunctionCall;
 
 struct AstExp {
     AstExpKind kind;
@@ -86,6 +88,7 @@ struct AstExp {
         AstExpVar			variable;
         AstExpAssign		assign;
 		AstExpConditional	conditional;
+        AstExpFunctionCall  funcall;
     } as;
 };
 
@@ -95,6 +98,7 @@ AstExp* ast_exp_binop(AstBinopType op_type, AstExp* lhs, AstExp* rhs);
 AstExp* ast_exp_var(const char* identifier);
 AstExp* ast_exp_assign(AstAssignOp op, AstExp* lhs, AstExp* rhs);
 AstExp* ast_exp_conditional(AstExp* lhs, AstExp* mid, AstExp* rhs);
+AstExp* ast_exp_function_call(char* identifier, AstArgList args);
 void ast_exp_destroy(AstExp* exp);
 
 // --- Blocks ---
