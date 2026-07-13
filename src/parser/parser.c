@@ -726,10 +726,22 @@ static AstExp* resolve_expression(AstExp* exp, VarMap* map) {
 			exp->as.conditional.mid = resolve_expression(exp->as.conditional.mid, map);
 			exp->as.conditional.rhs = resolve_expression(exp->as.conditional.rhs, map);
 			return exp;
-		case EXP_FUNCTION_CALL:
+		case EXP_FUNCTION_CALL: {
+			// The callee resolves against the same map as variables; a top-level
+			// function is present there mapped to its own name (external linkage,
+			// so it is not renamed).
+			VarMapEntry* resolved = varmap_get(map, exp->as.funcall.identifier);
+			if (!resolved) {
+				fprintf(stderr, "error: undeclared function '%s'\n",
+						exp->as.funcall.identifier);
+				exit(1);
+			}
+			free(exp->as.funcall.identifier);
+			exp->as.funcall.identifier = strdup(resolved->val);
 			for (size_t i = 0; i < exp->as.funcall.args.count; i++)
 				resolve_expression(&exp->as.funcall.args.items[i], map);
 			return exp;
+		}
 	}
 	return exp;
 }
@@ -859,12 +871,46 @@ static void resolve_block(AstBlock* block, VarMap* map) {
 	}
 }
 
-static void resolve_function(AstFunctionDeclaration* func) {
-	if (!func->body.present) return;
-	VarMap map = varmap_create(16);
+// True if `name` is already bound in the current (innermost) scope. Used for
+// duplicate-parameter and duplicate-declaration checks, which must ignore
+// same-named bindings inherited from enclosing scopes (those are shadowing).
+static bool bound_in_current_scope(VarMap* map, const char* name) {
+	for (int i = 0; i < map->size; i++) {
+		if (map->entries[i].is_cur_scope && strcmp(map->entries[i].key, name) == 0)
+			return true;
+	}
+	return false;
+}
+
+// Resolves one function against `globals` (the program's function names). A
+// prototype only checks its parameters for duplicates; a definition renames its
+// parameters and resolves its body. Parameters and the body's outermost block
+// share one scope, so a top-level local may not reuse a parameter's name.
+static void resolve_function(AstFunctionDeclaration* func, VarMap* globals) {
+	if (!func->body.present) {
+		// A prototype's parameters may be unnamed, and are never renamed (no body
+		// refers to them); still reject two named parameters that collide.
+		VarMap seen = varmap_create(8);
+		for (size_t i = 0; i < func->params.count; i++) {
+			char* param = func->params.items[i];
+			if (param == NULL) continue;
+			if (bound_in_current_scope(&seen, param)) {
+				fprintf(stderr, "error: duplicate parameter '%s' in function '%s'\n",
+						param, func->identifier);
+				exit(1);
+			}
+			varmap_put(&seen, (VarMapEntry){ .key=strdup(param), .val=strdup(param), .is_cur_scope=true });
+		}
+		varmap_destroy(&seen);
+		return;
+	}
+
+	// Start from the function names (demoted to an enclosing scope by the copy)
+	// so calls resolve; parameters go on top in the current scope.
+	VarMap map = varmap_copy(*globals);
 	for (size_t i = 0; i < func->params.count; i++) {
 		char* param = func->params.items[i];
-		if (varmap_get(&map, param) != NULL) {
+		if (bound_in_current_scope(&map, param)) {
 			fprintf(stderr, "error: duplicate parameter '%s' in function '%s'\n",
 					param, func->identifier);
 			exit(1);
@@ -880,9 +926,19 @@ static void resolve_function(AstFunctionDeclaration* func) {
 
 void resolve_variables(AstProgram* program) {
 	RESOLVE_COUNTER = 0;
+	// Top-level functions live in one program-wide scope and keep their source
+	// names (external linkage), so each maps to itself; a call looks the callee
+	// up here. A redeclaration (prototype plus definition) is bound once.
+	VarMap globals = varmap_create(16);
 	for (size_t i = 0; i < program->count; i++) {
-		resolve_function(&program->items[i]);
+		char* name = program->items[i].identifier;
+		if (varmap_get(&globals, name) == NULL)
+			varmap_put(&globals, (VarMapEntry){ .key=strdup(name), .val=strdup(name), .is_cur_scope=true });
 	}
+	for (size_t i = 0; i < program->count; i++) {
+		resolve_function(&program->items[i], &globals);
+	}
+	varmap_destroy(&globals);
 }
 
 static int LABEL_COUNTER = 0;
