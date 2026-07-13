@@ -278,6 +278,103 @@ void test_nested_loops() {
     printf("  PASS: test_nested_loops\n");
 }
 
+// --- Function-call and function-declaration construction tests ---
+
+// Push an expression value into an arg list and free the heap shell, matching
+// how the parser builds argument lists (args are stored by value, not pointer).
+static void arg_push(AstArgList* args, AstExp* exp) {
+    list_push(args, *exp);
+    free(exp);
+}
+
+// A call with no arguments: kind, owned identifier, and an empty arg list.
+void test_function_call_no_args() {
+    AstExp* call = ast_exp_function_call(strdup("foo"), (AstArgList){0});
+    assert(call->kind == EXP_FUNCTION_CALL);
+    assert(strcmp(call->as.funcall.identifier, "foo") == 0);
+    assert(call->as.funcall.args.count == 0);
+    ast_exp_destroy(call);
+    printf("  PASS: test_function_call_no_args\n");
+}
+
+// A call with two arguments keeps them by value in source order.
+void test_function_call_with_args() {
+    AstArgList args = (AstArgList){0};
+    arg_push(&args, ast_exp_int(1));
+    arg_push(&args, ast_exp_int(2));
+    AstExp* call = ast_exp_function_call(strdup("add"), args);
+
+    assert(call->as.funcall.args.count == 2);
+    assert(call->as.funcall.args.items[0].kind == EXP_INT);
+    assert(call->as.funcall.args.items[0].as.int_lit.value == 1);
+    assert(call->as.funcall.args.items[1].as.int_lit.value == 2);
+    ast_exp_destroy(call);
+    printf("  PASS: test_function_call_with_args\n");
+}
+
+// A call may appear as another call's argument; destroying the outer call must
+// recurse into the by-value inner call and free everything it owns (identifier
+// and its own arguments). Exercises the recursive arg cleanup path.
+void test_function_call_nested() {
+    AstArgList inner_args = (AstArgList){0};
+    arg_push(&inner_args, ast_exp_int(7));
+    AstExp* inner = ast_exp_function_call(strdup("g"), inner_args);
+
+    AstArgList outer_args = (AstArgList){0};
+    arg_push(&outer_args, inner);
+    AstExp* outer = ast_exp_function_call(strdup("f"), outer_args);
+
+    assert(outer->as.funcall.args.count == 1);
+    AstExp* arg = &outer->as.funcall.args.items[0];
+    assert(arg->kind == EXP_FUNCTION_CALL);
+    assert(strcmp(arg->as.funcall.identifier, "g") == 0);
+    assert(arg->as.funcall.args.items[0].as.int_lit.value == 7);
+    ast_exp_destroy(outer);
+    printf("  PASS: test_function_call_nested\n");
+}
+
+// Arguments that own heap memory (a variable's identifier) are freed on destroy.
+void test_function_call_owns_arg_contents() {
+    AstArgList args = (AstArgList){0};
+    arg_push(&args, ast_exp_var("x"));
+    AstExp* call = ast_exp_function_call(strdup("h"), args);
+
+    assert(call->as.funcall.args.items[0].kind == EXP_VAR);
+    assert(strcmp(call->as.funcall.args.items[0].as.variable.identifier, "x") == 0);
+    ast_exp_destroy(call);  // must free the arg's strdup'd identifier
+    printf("  PASS: test_function_call_owns_arg_contents\n");
+}
+
+// A prototype carries its parameter names and no body.
+void test_function_decl_with_params() {
+    AstParamList params = (AstParamList){0};
+    list_push(&params, strdup("a"));
+    list_push(&params, strdup("b"));
+    AstFunctionDeclaration fn =
+        ast_function_declaration(strdup("f"), params, NONE(OptionalBlock));
+
+    assert(strcmp(fn.identifier, "f") == 0);
+    assert(fn.params.count == 2);
+    assert(strcmp(fn.params.items[0], "a") == 0);
+    assert(strcmp(fn.params.items[1], "b") == 0);
+    assert(!fn.body.present);
+    ast_function_declaration_destroy(&fn);
+    printf("  PASS: test_function_decl_with_params\n");
+}
+
+// A prototype parameter may be unnamed (stored as NULL); destroy tolerates it.
+void test_function_decl_unnamed_param() {
+    AstParamList params = (AstParamList){0};
+    list_push(&params, NULL);   // `int f(int);`
+    AstFunctionDeclaration fn =
+        ast_function_declaration(strdup("f"), params, NONE(OptionalBlock));
+
+    assert(fn.params.count == 1);
+    assert(fn.params.items[0] == NULL);
+    ast_function_declaration_destroy(&fn);   // free(NULL) is a no-op
+    printf("  PASS: test_function_decl_unnamed_param\n");
+}
+
 int main() {
     printf("Running AST block tests...\n");
     test_block_make_empty();
@@ -288,6 +385,13 @@ int main() {
     test_nested_compound_block();
     test_function_holds_block();
     test_function_prototype_has_no_body();
+    printf("Running function construction tests...\n");
+    test_function_call_no_args();
+    test_function_call_with_args();
+    test_function_call_nested();
+    test_function_call_owns_arg_contents();
+    test_function_decl_with_params();
+    test_function_decl_unnamed_param();
     printf("Running loop statement tests...\n");
     test_while_stmt_creation();
     test_do_while_stmt_creation();
