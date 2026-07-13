@@ -209,7 +209,7 @@ static AstBlock parse_switch_clause_body(Parser* p) {
 	return block;
 }
 
-// factor ::= int | ("!" | "-") factor | "(" exp ")"  | ++id | --id | id++ | id--
+// factor ::= int | ("!" | "-") factor | "(" exp ")"  | "++"id | "--"id | id"++" | id"--" | id"("")"
 static AstExp* parse_factor(Parser* p) {
     Token* tok = current(p);
     switch (tok->kind) {
@@ -237,14 +237,30 @@ static AstExp* parse_factor(Parser* p) {
             }
             break;
 		case TOK_IDENTIFIER: {
-			AstExp* exp = ast_exp_var(current(p)->as.identifier);
+            char* identifier = strdup(current(p)->as.identifier);
 			advance(p);
 			if (current(p)->kind == TOK_OPERATOR && (current(p)->as.operator == TOK_INCR || current(p)->as.operator == TOK_DECR)) {
 				TokenOperator postfix = current(p)->as.operator;
 				advance(p);
-				return ast_exp_unary(postfix == TOK_INCR? UNOP_POSTINC : UNOP_POSTDEC, exp);
-			} else {
-				return exp;
+				return ast_exp_unary(postfix == TOK_INCR? UNOP_POSTINC : UNOP_POSTDEC, ast_exp_var(identifier));
+			} else if (current(p)->kind == TOK_SEPARATOR && current(p)->as.separator == TOK_LPAR) {
+                advance(p);
+                AstArgList args = {0};
+                if (!(current(p)->kind == TOK_SEPARATOR && current(p)->as.separator == TOK_RPAR)) {
+                    AstExp* exp = parse_expression(p, 0);
+                    list_push(&args, *exp);
+                    free(exp);
+                    while (current(p)->kind == TOK_SEPARATOR && current(p)->as.separator == TOK_COMMA) {
+                        advance(p);
+                        exp = parse_expression(p, 0);
+                        list_push(&args, *exp);
+                        free(exp);
+                    }
+                }
+                expect_separator(p, TOK_RPAR);
+                return ast_exp_function_call(identifier, args);
+            } else {
+				return ast_exp_var(identifier);
 			}
 		}
         default:
@@ -710,6 +726,10 @@ static AstExp* resolve_expression(AstExp* exp, VarMap* map) {
 			exp->as.conditional.mid = resolve_expression(exp->as.conditional.mid, map);
 			exp->as.conditional.rhs = resolve_expression(exp->as.conditional.rhs, map);
 			return exp;
+		case EXP_FUNCTION_CALL:
+			for (size_t i = 0; i < exp->as.funcall.args.count; i++)
+				resolve_expression(&exp->as.funcall.args.items[i], map);
+			return exp;
 	}
 	return exp;
 }
@@ -842,6 +862,18 @@ static void resolve_block(AstBlock* block, VarMap* map) {
 static void resolve_function(AstFunctionDeclaration* func) {
 	if (!func->body.present) return;
 	VarMap map = varmap_create(16);
+	for (size_t i = 0; i < func->params.count; i++) {
+		char* param = func->params.items[i];
+		if (varmap_get(&map, param) != NULL) {
+			fprintf(stderr, "error: duplicate parameter '%s' in function '%s'\n",
+					param, func->identifier);
+			exit(1);
+		}
+		char* unique = make_unique_name(param);
+		varmap_put(&map, (VarMapEntry){ .key=strdup(param), .val=strdup(unique), .is_cur_scope=true });
+		free(func->params.items[i]);
+		func->params.items[i] = unique;
+	}
 	resolve_block(&func->body.value, &map);
 	varmap_destroy(&map);
 }

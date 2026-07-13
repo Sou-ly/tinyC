@@ -3,6 +3,14 @@
 
 // --- Expressions ---
 
+AstExp* ast_exp_function_call(char* identifier, AstArgList args) {
+    AstExp* e = malloc(sizeof(AstExp));
+    e->kind = EXP_FUNCTION_CALL;
+    e->as.funcall.identifier = identifier;
+    e->as.funcall.args = args;
+    return e;
+}
+
 AstExp* ast_exp_int(int value) {
     AstExp* e = malloc(sizeof(AstExp));
     e->kind = EXP_INT;
@@ -112,8 +120,7 @@ void ast_block_destroy(AstBlock* block) {
 	list_free(block);
 }
 
-void ast_exp_destroy(AstExp* exp) {
-    if (!exp) return;
+static void ast_exp_cleanup(AstExp* exp) {
     switch (exp->kind) {
         case EXP_INT:
             break;
@@ -135,7 +142,19 @@ void ast_exp_destroy(AstExp* exp) {
 			ast_exp_destroy(exp->as.conditional.lhs);
 			ast_exp_destroy(exp->as.conditional.mid);
 			ast_exp_destroy(exp->as.conditional.rhs);
+			break;
+		case EXP_FUNCTION_CALL:
+			for (size_t i = 0; i < exp->as.funcall.args.count; i++)
+				ast_exp_cleanup(&exp->as.funcall.args.items[i]);
+			list_free(&exp->as.funcall.args);
+			free(exp->as.funcall.identifier);
+			break;
     }
+}
+
+void ast_exp_destroy(AstExp* exp) {
+    if (!exp) return;
+    ast_exp_cleanup(exp);
     free(exp);
 }
 
