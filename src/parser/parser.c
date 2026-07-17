@@ -941,6 +941,43 @@ void resolve_variables(AstProgram* program) {
 	varmap_destroy(&globals);
 }
 
+// --- Typechecking ---
+//
+// Runs after resolve_variables: variables carry program-unique names and
+// functions their source names, so one flat SymbolTable covers the whole
+// program — no per-scope copies like the VarMap needs.
+
+SymbolTable symtab_create(int capacity) {
+	return (SymbolTable){
+		.entries = malloc(sizeof(Symbol) * capacity),
+		.size = 0,
+		.capacity = capacity,
+	};
+}
+
+void symtab_destroy(SymbolTable* table) {
+	for (int i = 0; i < table->size; i++)
+		free(table->entries[i].key);
+	free(table->entries);
+}
+
+Symbol* symtab_get(SymbolTable* table, const char* key) {
+	for (int i = 0; i < table->size; i++) {
+		if (strcmp(table->entries[i].key, key) == 0)
+			return &table->entries[i];
+	}
+	return NULL;
+}
+
+void symtab_put(SymbolTable* table, Symbol symbol) {
+	if (table->size == table->capacity) {
+		table->capacity *= 2;
+		table->entries = realloc(table->entries, sizeof(Symbol) * table->capacity);
+	}
+	table->entries[table->size] = symbol;
+	table->size++;
+}
+
 static int LABEL_COUNTER = 0;
 
 static char* generate_label(void) {
@@ -1179,4 +1216,88 @@ void resolve_goto_labels(AstProgram* program) {
 		rewrite_gotos_block(&program->items[i].body.value, &labels);
 		varmap_destroy(&labels);
 	}
+}
+
+static void typecheck_exp(AstExp* exp, SymbolTable* symtab) {
+	if (exp == NULL) return;	// nullable expressions: decl init, for cond/post
+	switch (exp->kind) {
+		case EXP_FUNCTION_CALL: {
+			Symbol* symbol = symtab_get(symtab, exp->as.funcall.identifier);
+			if (symbol->kind == SYM_INT) {
+				fprintf(stderr, "Variable used as function name");
+				exit(1);
+			}
+			if (symbol->param_count != exp->as.funcall.args.count) {
+			   	fprintf(stderr, "Function called with the wrong number of arguments");
+				exit(1);
+			}
+			for (size_t i = 0; i < exp->as.funcall.args.count; i++)
+				typecheck_exp(&exp->as.funcall.args.items[i], symtab);
+			return;
+		}
+		case EXP_VAR: {
+			Symbol* symbol = symtab_get(symtab, exp->as.variable.identifier);
+			if (symbol->kind == SYM_FUNCTION) {
+				fprintf(stderr, "Function name used as a variable");
+				exit(1);
+			}
+			return;
+		}
+		case EXP_INT:
+			return;
+		case EXP_UNOP:
+			typecheck_exp(exp->as.unary.operand, symtab);
+			return;
+		case EXP_BINOP:
+			typecheck_exp(exp->as.binop.lhs, symtab);
+			typecheck_exp(exp->as.binop.rhs, symtab);
+			return;
+		case EXP_ASSIGN:
+			typecheck_exp(exp->as.assign.lhs, symtab);
+			typecheck_exp(exp->as.assign.rhs, symtab);
+			return;
+		case EXP_CONDITIONAL:
+			typecheck_exp(exp->as.conditional.lhs, symtab);
+			typecheck_exp(exp->as.conditional.mid, symtab);
+			typecheck_exp(exp->as.conditional.rhs, symtab);
+			return;
+	}
+}
+
+static void typecheck_block(AstBlock* block, SymbolTable* symtab) {
+	for (size_t i = 0; i < block->count; i++) {
+		switch (block->items[i].kind) {
+			case AST_DECLARATION:
+				break;
+			case AST_STATEMENT:
+				break;
+		}
+	}	
+}
+
+static void typecheck_function_declaration(AstFunctionDeclaration* decl, SymbolTable* symtab) {
+	Symbol* old_sym = symtab_get(symtab, decl->identifier);
+	bool already_defined = false;
+	if (old_sym != NULL) {
+		if (old_sym->kind != SYM_FUNCTION) exit(1);
+		already_defined = old_sym->defined;
+		if (already_defined) exit(1);	
+	}
+
+	symtab_put(symtab, (Symbol){.key=strdup(decl->identifier), .kind=SYM_FUNCTION, .param_count=decl->params.count, .defined=already_defined || decl->body.present});
+
+	if (decl->body.present) {
+		for (size_t i = 0; i < decl->params.count; i++) {
+			symtab_put(symtab, (Symbol){.key=strdup(decl->params.items[i]), .kind=SYM_INT});
+		}
+		typecheck_block(&decl->body.value, symtab);
+	}
+}
+
+void typecheck(AstProgram* program) {
+	SymbolTable symtab = symtab_create(16);
+	for (size_t i = 0; i < program->count; i++) {
+		typecheck_function_declaration(&program->items[i], &symtab);
+	}	
+	symtab_destroy(&symtab);
 }

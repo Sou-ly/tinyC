@@ -92,6 +92,7 @@ int main(int argc, char* argv[]) {
     Parser parser = parser_create(&tokens);
     AstProgram program = parse_program(&parser);
     resolve_variables(&program);
+    typecheck(&program);
     resolve_labels(&program);
     resolve_goto_labels(&program);
 
