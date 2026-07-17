@@ -71,6 +71,11 @@ IrInstruction ir_instr_label(char* identifier) {
 	return (IrInstruction){ IR_LABEL, .as.label = { identifier } };
 }
 
+// Adopts `args` (the list's backing array) along with the identifier.
+IrInstruction ir_instr_function_call(char* identifier, IrValList args, IrVal dst) {
+	return (IrInstruction){ IR_FUNCALL, .as.funcall = { identifier, args, dst } };
+}
+
 // A fresh variable value backed by a newly generated temp name.
 static IrVal new_temp(void) {
 	return ir_val_variable(generate_variable_name());
@@ -238,6 +243,9 @@ static IrVal emit_ir_expression(const AstExp* exp, IrFunction* ir_function) {
 			append_ir_instruction(ir_function, ir_instr_label(end_target));
 			return result;
 		}
+		case EXP_FUNCTION_CALL:
+			IrVal result = new_temp();
+			return result;
 		default:
 			break;
 	}
@@ -361,11 +369,6 @@ static void emit_ir_statement(IrFunction* ir_function, const AstStatement* stmt)
 			append_ir_instruction(ir_function, ir_instr_jump(loop_label(stmt->as.continue_stmt.label, "continue")));
 			return;
 		case STMT_SWITCH: {
-			// Dispatch: for each `case N`, compare cond == N and jump to that
-			// clause's label; then jump to `default` (or past the switch if none).
-			// Clause bodies are emitted contiguously in source order with no jumps
-			// between them, so control falls through from one into the next -- a
-			// `break` inside a body jumps to <base>_break, matching STMT_BREAK.
 			const AstStmtSwitch* sw = &stmt->as.switch_stmt;
 			IrVal cond = emit_ir_expression(sw->cond, ir_function);
 			size_t default_index = sw->clauses.count; // sentinel: no default
