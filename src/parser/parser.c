@@ -1223,13 +1223,15 @@ static void typecheck_exp(AstExp* exp, SymbolTable* symtab) {
 	switch (exp->kind) {
 		case EXP_FUNCTION_CALL: {
 			Symbol* symbol = symtab_get(symtab, exp->as.funcall.identifier);
-			if (symbol->kind == SYM_INT) {
-				fprintf(stderr, "Variable used as function name");
-				exit(1);
-			}
-			if (symbol->param_count != exp->as.funcall.args.count) {
-			   	fprintf(stderr, "Function called with the wrong number of arguments");
-				exit(1);
+			if (symbol != NULL) {
+				if (symbol->kind == SYM_INT) {
+					fprintf(stderr, "Variable used as function name\n");
+					exit(1);
+				}
+				if (symbol->param_count != exp->as.funcall.args.count) {
+					fprintf(stderr, "Function called with the wrong number of arguments\n");
+					exit(1);
+				}
 			}
 			for (size_t i = 0; i < exp->as.funcall.args.count; i++)
 				typecheck_exp(&exp->as.funcall.args.items[i], symtab);
@@ -1237,8 +1239,8 @@ static void typecheck_exp(AstExp* exp, SymbolTable* symtab) {
 		}
 		case EXP_VAR: {
 			Symbol* symbol = symtab_get(symtab, exp->as.variable.identifier);
-			if (symbol->kind == SYM_FUNCTION) {
-				fprintf(stderr, "Function name used as a variable");
+			if (symbol != NULL && symbol->kind == SYM_FUNCTION) {
+				fprintf(stderr, "Function name used as a variable\n");
 				exit(1);
 			}
 			return;
@@ -1264,29 +1266,92 @@ static void typecheck_exp(AstExp* exp, SymbolTable* symtab) {
 	}
 }
 
+static void typecheck_stmt(AstStatement* stmt, SymbolTable* symtab);
+
 static void typecheck_block(AstBlock* block, SymbolTable* symtab) {
 	for (size_t i = 0; i < block->count; i++) {
 		switch (block->items[i].kind) {
 			case AST_DECLARATION:
+				typecheck_exp(block->items[i].as.declaration.as.variable.init, symtab);
+				symtab_put(symtab, (Symbol){.key=strdup(block->items[i].as.declaration.as.variable.identifier), .kind=SYM_INT});
 				break;
 			case AST_STATEMENT:
+				typecheck_stmt(block->items[i].as.statement, symtab);
 				break;
 		}
-	}	
+	}
+}
+
+static void typecheck_stmt(AstStatement* stmt, SymbolTable* symtab) {
+	if (stmt == NULL) return;
+	switch (stmt->kind) {
+		case STMT_RETURN:
+			typecheck_exp(stmt->as.ret.exp, symtab);
+			return;
+		case STMT_EXP:
+			typecheck_exp(stmt->as.exp_stmt.exp, symtab);
+			return;
+		case STMT_IF:
+			typecheck_exp(stmt->as.if_cond.cond, symtab);
+			typecheck_stmt(stmt->as.if_cond.then_br, symtab);
+			typecheck_stmt(stmt->as.if_cond.else_br, symtab);
+			return;
+		case STMT_COMPOUND:
+			typecheck_block(&stmt->as.compound, symtab);
+			return;
+		case STMT_FOR:
+			if (stmt->as.for_loop.init.kind == AST_INIT_EXP)
+				typecheck_exp(stmt->as.for_loop.init.as.exp, symtab);
+			else
+				typecheck_exp(stmt->as.for_loop.init.as.decl.init, symtab);
+			typecheck_exp(stmt->as.for_loop.cond, symtab);
+			typecheck_exp(stmt->as.for_loop.post, symtab);
+			typecheck_stmt(stmt->as.for_loop.body, symtab);
+			return;
+		case STMT_WHILE:
+			typecheck_exp(stmt->as.while_loop.cond, symtab);
+			typecheck_stmt(stmt->as.while_loop.body, symtab);
+			return;
+		case STMT_DO_WHILE:
+			typecheck_exp(stmt->as.do_while_loop.cond, symtab);
+			typecheck_stmt(stmt->as.do_while_loop.body, symtab);
+			return;
+		case STMT_SWITCH:
+			typecheck_exp(stmt->as.switch_stmt.cond, symtab);
+			for (size_t i = 0; i < stmt->as.switch_stmt.clauses.count; i++)
+				typecheck_block(&stmt->as.switch_stmt.clauses.items[i].body, symtab);
+			return;
+		case STMT_LABEL:
+		case STMT_GOTO:
+		case STMT_BREAK:
+		case STMT_CONTINUE:
+			return;
+	}
 }
 
 static void typecheck_function_declaration(AstFunctionDeclaration* decl, SymbolTable* symtab) {
+	bool has_body = decl->body.present;
 	Symbol* old_sym = symtab_get(symtab, decl->identifier);
-	bool already_defined = false;
 	if (old_sym != NULL) {
-		if (old_sym->kind != SYM_FUNCTION) exit(1);
-		already_defined = old_sym->defined;
-		if (already_defined) exit(1);	
+		if (old_sym->kind != SYM_FUNCTION) {
+			fprintf(stderr, "Function name conflicts with variable\n");
+			exit(1);
+		}
+		if (old_sym->param_count != decl->params.count) {
+			fprintf(stderr, "Conflicting arity for '%s'\n", decl->identifier);
+			exit(1);
+		}
+		if (has_body && old_sym->defined) {
+			fprintf(stderr, "Function '%s' defined twice\n", decl->identifier);
+			exit(1);
+		}
+		if (has_body)
+			old_sym->defined = true;
+	} else {
+		symtab_put(symtab, (Symbol){.key=strdup(decl->identifier), .kind=SYM_FUNCTION, .param_count=decl->params.count, .defined=has_body});
 	}
 
-	symtab_put(symtab, (Symbol){.key=strdup(decl->identifier), .kind=SYM_FUNCTION, .param_count=decl->params.count, .defined=already_defined || decl->body.present});
-
-	if (decl->body.present) {
+	if (has_body) {
 		for (size_t i = 0; i < decl->params.count; i++) {
 			symtab_put(symtab, (Symbol){.key=strdup(decl->params.items[i]), .kind=SYM_INT});
 		}
