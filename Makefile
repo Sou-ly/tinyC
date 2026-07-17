@@ -18,7 +18,7 @@ SRCS = src/main.c \
 
 OBJS = $(SRCS:src/%.c=$(BUILD_DIR)/%.o)
 
-TEST_TARGETS = tests/test_list tests/test_token tests/test_parser tests/test_str tests/test_codegen tests/test_ir tests/test_ast tests/test_scoping
+TEST_TARGETS = tests/test_list tests/test_token tests/test_parser tests/test_str tests/test_codegen tests/test_ir tests/test_ast tests/test_scoping tests/test_typecheck
 
 all: $(TARGET)
 
@@ -38,6 +38,7 @@ test: build_tests
 	@./tests/test_ir
 	@./tests/test_ast
 	@./tests/test_scoping
+	@./tests/test_typecheck
 	@echo "test_str skipped: str_split not yet implemented"
 
 # End-to-end: compile each tests/e2e/cases/*.c with tinyc, link, run, and check
@@ -46,7 +47,7 @@ test-e2e: $(TARGET)
 	@echo "Running e2e tests..."
 	@bash tests/e2e/run_e2e.sh $(abspath $(TARGET))
 
-build_tests: tests/test_list tests/test_token tests/test_parser tests/test_codegen tests/test_ir tests/test_ast tests/test_scoping
+build_tests: tests/test_list tests/test_token tests/test_parser tests/test_codegen tests/test_ir tests/test_ast tests/test_scoping tests/test_typecheck
 
 tests/test_list: tests/test_list.c $(BUILD_DIR)/lexer/token.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
@@ -67,6 +68,9 @@ tests/test_ast: tests/test_ast.c $(BUILD_DIR)/parser/ast.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 tests/test_scoping: tests/test_scoping.c $(BUILD_DIR)/parser/ast.o $(BUILD_DIR)/parser/parser.o $(BUILD_DIR)/lexer/token.o $(BUILD_DIR)/strlib/str.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+tests/test_typecheck: tests/test_typecheck.c $(BUILD_DIR)/parser/ast.o $(BUILD_DIR)/parser/parser.o $(BUILD_DIR)/lexer/token.o $(BUILD_DIR)/strlib/str.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 tests/test_str:
