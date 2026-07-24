@@ -13,6 +13,30 @@ static AstFunctionDeclaration function_of(const char* identifier, AstBlock body)
                                     SOME(OptionalBlock, body));
 }
 
+// A function definition named `identifier` with the given parameter names and
+// body. Copies each name so the caller keeps ownership of `names`.
+static AstFunctionDeclaration function_with_params(const char* identifier,
+                                                   const char** names, int num_names,
+                                                   AstBlock body) {
+    AstParamList params = {0};
+    for (int i = 0; i < num_names; i++) {
+        list_push(&params, strdup(names[i]));
+    }
+    return ast_function_declaration(strdup(identifier), params,
+                                    SOME(OptionalBlock, body));
+}
+
+// Build an argument list from heap-allocated expressions. Mirrors the parser:
+// each AstExp is copied into the list by value and its wrapper freed.
+static AstArgList arg_list_of(AstExp** exps, int num_exps) {
+    AstArgList args = {0};
+    for (int i = 0; i < num_exps; i++) {
+        list_push(&args, *exps[i]);
+        free(exps[i]);
+    }
+    return args;
+}
+
 static AstBlockItem statement_item(AstStatement* stmt) {
     return (AstBlockItem){ .kind = AST_STATEMENT, .as.statement = stmt };
 }
@@ -58,6 +82,9 @@ static void free_ir_program(IrProgram* program) {
                 case IR_COPY:
                     if (ins->as.copy.dst.kind == IR_VARIABLE) name = ins->as.copy.dst.as.identifier;
                     break;
+                case IR_FUNCALL:
+                    if (ins->as.funcall.dst.kind == IR_VARIABLE) name = ins->as.funcall.dst.as.identifier;
+                    break;
                 case IR_LABEL:
                     name = ins->as.label.identifier;
                     break;
@@ -74,7 +101,20 @@ static void free_ir_program(IrProgram* program) {
             free(owned[o]);
         }
         free(owned);
+        // A call instruction separately owns its callee-name copy and the
+        // backing array of its argument list.
+        for (int i = 0; i < fn->instructions.count; i++) {
+            IrInstruction* ins = &fn->instructions.items[i];
+            if (ins->kind == IR_FUNCALL) {
+                free(ins->as.funcall.identifier);
+                list_free(&ins->as.funcall.args);
+            }
+        }
         list_free(&fn->instructions);
+        for (size_t p = 0; p < fn->params.count; p++) {
+            free(fn->params.items[p]);
+        }
+        list_free(&fn->params);
         free(fn->identifier);
     }
     list_free(program);
@@ -953,6 +993,204 @@ void test_emit_if_nested() {
     printf("  PASS: test_emit_if_nested\n");
 }
 
+// --- function call lowering ---
+
+// int main() { foo(); }  ->  a call with no arguments into a fresh temp.
+void test_emit_function_call_no_args() {
+    AstProgram ast = program_of_stmt(ast_stmt_exp(
+        ast_exp_function_call(strdup("foo"), (AstArgList){0})));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.items[0];
+    assert(fn->instructions.count == 1);
+
+    IrInstruction* call = &fn->instructions.items[0];
+    assert(call->kind == IR_FUNCALL);
+    assert(strcmp(call->as.funcall.identifier, "foo") == 0);
+    assert(call->as.funcall.args.count == 0);
+    assert(call->as.funcall.dst.kind == IR_VARIABLE);
+
+    free_ir_program(&ir);
+    ast_program_destroy(&ast);
+    printf("  PASS: test_emit_function_call_no_args\n");
+}
+
+// The IR callee name must be an independent copy of the AST name, just like
+// the function-definition identifier.
+void test_emit_function_call_identifier_is_owned_copy() {
+    AstExp* ast_call = ast_exp_function_call(strdup("foo"), (AstArgList){0});
+    char* ast_identifier = ast_call->as.funcall.identifier;
+    AstProgram ast = program_of_stmt(ast_stmt_exp(ast_call));
+    IrProgram ir = emit_ir(&ast);
+
+    IrInstruction* call = &ir.items[0].instructions.items[0];
+    assert(call->as.funcall.identifier != ast_identifier);
+    assert(strcmp(call->as.funcall.identifier, "foo") == 0);
+
+    free_ir_program(&ir);
+    ast_program_destroy(&ast);
+    printf("  PASS: test_emit_function_call_identifier_is_owned_copy\n");
+}
+
+// int main() { foo(1, 2); }  ->  constant arguments are carried through in
+// order as the call's operands.
+void test_emit_function_call_constant_args() {
+    AstExp* exps[] = { ast_exp_int(1), ast_exp_int(2) };
+    AstProgram ast = program_of_stmt(ast_stmt_exp(
+        ast_exp_function_call(strdup("foo"), arg_list_of(exps, 2))));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.items[0];
+    assert(fn->instructions.count == 1);
+
+    IrInstruction* call = &fn->instructions.items[0];
+    assert(call->kind == IR_FUNCALL);
+    assert(call->as.funcall.args.count == 2);
+    assert(call->as.funcall.args.items[0].kind == IR_CONSTANT);
+    assert(call->as.funcall.args.items[0].as.int_val == 1);
+    assert(call->as.funcall.args.items[1].kind == IR_CONSTANT);
+    assert(call->as.funcall.args.items[1].as.int_val == 2);
+
+    free_ir_program(&ir);
+    ast_program_destroy(&ast);
+    printf("  PASS: test_emit_function_call_constant_args\n");
+}
+
+// int main() { foo(1 + 2); }  ->  a non-trivial argument is lowered into a temp
+// first, and the call consumes that temp (not a constant) as its argument.
+void test_emit_function_call_expression_arg() {
+    AstExp* exps[] = { ast_exp_binop(BINOP_ADD, ast_exp_int(1), ast_exp_int(2)) };
+    AstProgram ast = program_of_stmt(ast_stmt_exp(
+        ast_exp_function_call(strdup("foo"), arg_list_of(exps, 1))));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.items[0];
+    assert(fn->instructions.count == 2);
+
+    IrInstruction* add  = &fn->instructions.items[0];  // 1 + 2 -> t0
+    IrInstruction* call = &fn->instructions.items[1];  // foo(t0)
+
+    assert(add->kind == IR_BINOP && add->as.binop.op == IR_ADD);
+    assert(call->kind == IR_FUNCALL);
+    assert(call->as.funcall.args.count == 1);
+    assert(call->as.funcall.args.items[0].kind == IR_VARIABLE);
+    assert(strcmp(call->as.funcall.args.items[0].as.identifier,
+                  add->as.binop.dst.as.identifier) == 0);
+
+    free_ir_program(&ir);
+    ast_program_destroy(&ast);
+    printf("  PASS: test_emit_function_call_expression_arg\n");
+}
+
+// int main() { return foo(); }  ->  the call's result temp is what the enclosing
+// expression (here, the return) uses.
+void test_emit_function_call_result_used() {
+    AstProgram ast = program_of_stmt(ast_stmt_return(
+        ast_exp_function_call(strdup("foo"), (AstArgList){0})));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.items[0];
+    assert(fn->instructions.count == 2);
+
+    IrInstruction* call = &fn->instructions.items[0];
+    IrInstruction* ret  = &fn->instructions.items[1];
+    assert(call->kind == IR_FUNCALL);
+    assert(ret->kind == IR_RETURN);
+    assert(ret->as.ret.val.kind == IR_VARIABLE);
+    assert(strcmp(ret->as.ret.val.as.identifier,
+                  call->as.funcall.dst.as.identifier) == 0);
+
+    free_ir_program(&ir);
+    ast_program_destroy(&ast);
+    printf("  PASS: test_emit_function_call_result_used\n");
+}
+
+// Arguments are evaluated left to right, so nested calls are lowered in argument
+// order before the outer call: bar() then baz(), then foo(t_bar, t_baz).
+void test_emit_function_call_nested_arg_order() {
+    AstExp* exps[] = {
+        ast_exp_function_call(strdup("bar"), (AstArgList){0}),
+        ast_exp_function_call(strdup("baz"), (AstArgList){0}),
+    };
+    AstProgram ast = program_of_stmt(ast_stmt_exp(
+        ast_exp_function_call(strdup("foo"), arg_list_of(exps, 2))));
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.items[0];
+    assert(fn->instructions.count == 3);
+
+    IrInstruction* bar = &fn->instructions.items[0];
+    IrInstruction* baz = &fn->instructions.items[1];
+    IrInstruction* foo = &fn->instructions.items[2];
+
+    assert(bar->kind == IR_FUNCALL && strcmp(bar->as.funcall.identifier, "bar") == 0);
+    assert(baz->kind == IR_FUNCALL && strcmp(baz->as.funcall.identifier, "baz") == 0);
+    assert(foo->kind == IR_FUNCALL && strcmp(foo->as.funcall.identifier, "foo") == 0);
+    // foo's arguments are exactly the result temps of bar and baz, in order.
+    assert(foo->as.funcall.args.count == 2);
+    assert(strcmp(foo->as.funcall.args.items[0].as.identifier,
+                  bar->as.funcall.dst.as.identifier) == 0);
+    assert(strcmp(foo->as.funcall.args.items[1].as.identifier,
+                  baz->as.funcall.dst.as.identifier) == 0);
+
+    free_ir_program(&ir);
+    ast_program_destroy(&ast);
+    printf("  PASS: test_emit_function_call_nested_arg_order\n");
+}
+
+// --- function parameter lowering ---
+
+// int foo(a, b) { return 0; }  ->  the IR function carries the parameter names
+// in order.
+void test_emit_function_params() {
+    const char* names[] = { "a", "b" };
+    AstBlock body = {0};
+    ast_block_append(&body, statement_item(ast_stmt_return(ast_exp_int(0))));
+    AstFunctionDeclaration* functions = malloc(sizeof(AstFunctionDeclaration));
+    functions[0] = function_with_params("foo", names, 2, body);
+    AstProgram ast = ast_program_create(functions, 1);
+    IrProgram ir = emit_ir(&ast);
+
+    IrFunction* fn = &ir.items[0];
+    assert(fn->params.count == 2);
+    assert(strcmp(fn->params.items[0], "a") == 0);
+    assert(strcmp(fn->params.items[1], "b") == 0);
+
+    free_ir_program(&ir);
+    ast_program_destroy(&ast);
+    printf("  PASS: test_emit_function_params\n");
+}
+
+// Each IR parameter name must be an independent copy of the AST parameter name.
+void test_emit_function_params_are_owned_copies() {
+    const char* names[] = { "a" };
+    AstBlock body = {0};
+    ast_block_append(&body, statement_item(ast_stmt_return(ast_exp_int(0))));
+    AstFunctionDeclaration* functions = malloc(sizeof(AstFunctionDeclaration));
+    functions[0] = function_with_params("foo", names, 1, body);
+    AstProgram ast = ast_program_create(functions, 1);
+    IrProgram ir = emit_ir(&ast);
+
+    assert(ir.items[0].params.items[0] != ast.items[0].params.items[0]);
+    assert(strcmp(ir.items[0].params.items[0], "a") == 0);
+
+    free_ir_program(&ir);
+    ast_program_destroy(&ast);
+    printf("  PASS: test_emit_function_params_are_owned_copies\n");
+}
+
+// A function with no parameters lowers to an empty parameter list.
+void test_emit_function_no_params() {
+    AstProgram ast = program_of_stmt(ast_stmt_return(ast_exp_int(0)));
+    IrProgram ir = emit_ir(&ast);
+
+    assert(ir.items[0].params.count == 0);
+
+    free_ir_program(&ir);
+    ast_program_destroy(&ast);
+    printf("  PASS: test_emit_function_no_params\n");
+}
+
 int main(void) {
     printf("Running IR tests...\n");
     test_emit_return_constant();
@@ -985,6 +1223,15 @@ int main(void) {
     test_emit_if_with_else();
     test_emit_if_cond_is_expression();
     test_emit_if_nested();
+    test_emit_function_call_no_args();
+    test_emit_function_call_identifier_is_owned_copy();
+    test_emit_function_call_constant_args();
+    test_emit_function_call_expression_arg();
+    test_emit_function_call_result_used();
+    test_emit_function_call_nested_arg_order();
+    test_emit_function_params();
+    test_emit_function_params_are_owned_copies();
+    test_emit_function_no_params();
     printf("All IR tests passed!\n");
     return 0;
 }

@@ -122,9 +122,6 @@ static IrBinopType convert_ir_binop(AstBinopType ast_op) {
 	ICE("ir: unsupported binary operator");
 }
 
-// Maps a compound-assignment operator (`+=`, `<<=`, ...) to the IR binary op
-// used to combine the variable with the right-hand side. ASSIGN_NOP is a plain
-// copy and is handled by the caller, not here.
 static IrBinopType compound_assign_op(AstAssignOp op) {
 	switch (op) {
 		case ASSIGN_ADD:	return IR_ADD;
@@ -144,9 +141,6 @@ static IrBinopType compound_assign_op(AstAssignOp op) {
 
 static IrVal emit_ir_expression(const AstExp* exp, IrFunction* ir_function);
 
-// emits && and ||: both evaluate operands left to right and jump to a
-// short-circuit label as soon as one operand decides the result.
-// && short-circuits to 0 when an operand is zero, || to 1 when non-zero.
 static IrVal emit_ir_short_circuit(const AstExp* exp, IrFunction* ir_function) {
 	bool is_and = exp->as.binop.op_type == BINOP_LAND;
 	int short_circuit_value = is_and ? 0 : 1;
@@ -243,9 +237,16 @@ static IrVal emit_ir_expression(const AstExp* exp, IrFunction* ir_function) {
 			append_ir_instruction(ir_function, ir_instr_label(end_target));
 			return result;
 		}
-		case EXP_FUNCTION_CALL:
-			IrVal result = new_temp();
-			return result;
+		case EXP_FUNCTION_CALL: {
+			const AstExpFunctionCall* call = &exp->as.funcall;
+			IrValList args = {0};
+			for (size_t i = 0; i < call->args.count; i++) {
+				list_push(&args, emit_ir_expression(&call->args.items[i], ir_function));
+			}
+			IrVal dst = new_temp();
+			append_ir_instruction(ir_function, ir_instr_function_call(strdup(call->identifier), args, dst));
+			return dst;
+		}
 		default:
 			break;
 	}
@@ -254,10 +255,6 @@ static IrVal emit_ir_expression(const AstExp* exp, IrFunction* ir_function) {
 
 static void emit_ir_block(IrFunction* ir_function, const AstBlock block);
 
-// Loops lower to labels derived from the base label the labelling pass assigns
-// to each loop: "<base>_start", "<base>_continue", "<base>_break". break and
-// continue statements carry the same base label, so they rebuild the matching
-// target names here without any shared state.
 static char* loop_label(const char* base, const char* suffix) {
 	int len = snprintf(NULL, 0, "%s_%s", base, suffix);
 	char* name = malloc(len + 1);
@@ -265,9 +262,6 @@ static char* loop_label(const char* base, const char* suffix) {
 	return name;
 }
 
-// A switch's i-th clause gets label "<base>_clause_<i>". Each call allocates a
-// fresh string so the label instruction and the jumps targeting it own separate
-// copies (matching how loop_label is used).
 static char* switch_clause_label(const char* base, size_t index) {
 	int len = snprintf(NULL, 0, "%s_clause_%zu", base, index);
 	char* name = malloc(len + 1);
@@ -275,8 +269,6 @@ static char* switch_clause_label(const char* base, size_t index) {
 	return name;
 }
 
-// A declaration with an initializer lowers to a copy of the initializer into a
-// variable named after the declared identifier; a bare declaration emits nothing.
 static void emit_ir_declaration(IrFunction* ir_function, const AstVariableDeclaration* decl) {
 	if (!decl->init) return;
 	IrVal result = emit_ir_expression(decl->init, ir_function);
@@ -421,8 +413,11 @@ static void append_ir_function(IrProgram* program, IrFunction function) {
 }
 
 static IrFunction emit_ir_function(const AstFunctionDeclaration* ast_function) {
-	IrFunction ir_function = { .identifier = NULL, .instructions = {0} };
+	IrFunction ir_function = { .identifier = NULL, .params = {0}, .instructions = {0} };
 	ir_function.identifier = strdup(ast_function->identifier);
+	for (size_t i = 0; i < ast_function->params.count; i++) {
+		list_push(&ir_function.params, strdup(ast_function->params.items[i]));
+	}
 	emit_ir_block(&ir_function, ast_function->body.value);
 	return ir_function;
 }
