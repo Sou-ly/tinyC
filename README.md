@@ -38,9 +38,9 @@ itself yet?" is a very concrete way to track progress.
 Standard compiler pipeline, one stage per directory:
 
 ```
-  source.c                                                out.s
-     │                                                      ▲
-     ▼                                                      │
+  source.c                                                            out.s
+     │                                                                  ▲
+     ▼                                                                  │
   ┌────────┐   ┌────────┐   ┌──────────┐   ┌──────┐   ┌─────────┐   ┌──────┐
   │ lexer  │──▶│ parser │──▶│ semantic │──▶│  IR  │──▶│ codegen │──▶│ emit │
   │ tokens │   │  AST   │   │ analysis │   │      │   │ x86 AST │   │  .s  │
