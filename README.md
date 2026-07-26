@@ -2,8 +2,8 @@
 
 # tinyC
 
-**A small C compiler written in C. It lexes, parses, builds an IR, and emits
-real x86-64 assembly. The goal is to make it compile itself.**
+**A small C compiler written in C. It lexes, parses, typechecks, builds an IR,
+and emits real x86-64 assembly. The goal is to make it compile itself.**
 
 [![Language](https://img.shields.io/badge/written%20in-C-555555?logo=c)](src/)
 [![Build](https://img.shields.io/badge/build-make-1F6FEB)](Makefile)
@@ -41,19 +41,23 @@ Standard compiler pipeline, one stage per directory:
   source.c                                                out.s
      │                                                      ▲
      ▼                                                      │
-  ┌────────┐   ┌────────┐   ┌──────┐   ┌─────────┐   ┌──────┐
-  │ lexer  │──▶│ parser │──▶│  IR  │──▶│ codegen │──▶│ emit │
-  │ tokens │   │  AST   │   │      │   │ x86 AST │   │  .s  │
-  └────────┘   └────────┘   └──────┘   └─────────┘   └──────┘
-   token.c      parser.c     ir.c       codegen.c     emit.c
+  ┌────────┐   ┌────────┐   ┌──────────┐   ┌──────┐   ┌─────────┐   ┌──────┐
+  │ lexer  │──▶│ parser │──▶│ semantic │──▶│  IR  │──▶│ codegen │──▶│ emit │
+  │ tokens │   │  AST   │   │ analysis │   │      │   │ x86 AST │   │  .s  │
+  └────────┘   └────────┘   └──────────┘   └──────┘   └─────────┘   └──────┘
+   token.c      parser.c    resolve +       ir.c       codegen.c     emit.c
+                             typecheck
 ```
 
 1. **Lexer** turns the source text into a stream of tokens.
 2. **Parser** builds an AST with the usual operator precedence and associativity.
-3. **IR** lowers the AST to a flat, temp-based intermediate form. This is where
+3. **Semantic analysis** resolves variables to unique identifiers (catching
+   redeclarations), validates function calls and parameter counts, and resolves
+   labels for `goto` and loops.
+4. **IR** lowers the AST to a flat, temp-based intermediate form. This is where
    short-circuit logic and the like get turned into explicit branches.
-4. **Codegen** turns the IR into an x86 AST, picking stack slots and registers.
-5. **Emit** prints that as AT&T-syntax `.s` you can hand to an assembler.
+5. **Codegen** turns the IR into an x86 AST, picking stack slots and registers.
+6. **Emit** prints that as AT&T-syntax `.s` you can hand to an assembler.
 
 You can stop after any stage to see what it produced (see [Build and run](#build-and-run)).
 
@@ -64,12 +68,15 @@ You can stop after any stage to see what it produced (see [Build and run](#build
 |------|-----------|
 | `src/main.c` | Driver: arg parsing and stage selection |
 | `src/lexer/token.{c,h}` | Tokenizer |
-| `src/parser/{parser,ast}.{c,h}` | Recursive-descent parser and AST |
+| `src/parser/{parser,ast}.{c,h}` | Recursive-descent parser, semantic passes, and AST |
 | `src/ir/ir.{c,h}` | AST to IR lowering |
 | `src/codegen/codegen.{c,h}` | IR to x86 AST |
 | `src/codegen/x86/x86_ast.{c,h}` | x86 instruction model |
 | `src/codegen/emit.{c,h}` | x86 AST to AT&T assembly text |
-| `src/list.{c,h}`, `src/map.h`, `src/strlib/str.{c,h}` | Support data structures |
+| `src/strlib/str.{c,h}` | String utilities |
+| `src/common/list.h` | Generic dynamic array (macro-based) |
+| `src/common/optional.h` | Optional type wrapper |
+| `src/common/ice.h` | Internal compiler error macro |
 
 </details>
 
@@ -80,15 +87,23 @@ You can stop after any stage to see what it produced (see [Build and run](#build
 It is a subset of C, not the whole language yet. Right now that covers:
 
 - `int` variables, assignment, and `return`
-- Functions (the driver and tests exercise multiple functions)
-- `if`, and `void`
+- `void` as a return type
+- Functions: declarations, definitions with parameters, and calls
+- Control flow: `if`/`else`, `for`, `while`, `do`/`while`, `break`, `continue`
+- `switch`/`case`/`default` with fallthrough
+- `goto` and labels
+- Ternary conditional (`? :`)
 - Full expression support: arithmetic (`+ - * / %`), bitwise (`& | ^ ~ << >>`),
   comparison (`== != < > <= >=`), logical (`&& || !`) with short-circuit
-  evaluation, unary minus and complement, and increment/decrement tokens
+  evaluation, unary minus and complement, and prefix/postfix increment/decrement
+- Compound assignment (`+= -= *= /= %= &= |= ^= <<= >>=`)
 - Correct precedence, associativity, and unique labels for nested short-circuits
+- Semantic analysis: variable resolution, typechecking (function arity), label
+  resolution for `goto` and loop `break`/`continue`
 
-What is missing is most of the rest of the language. Closing that gap is the
-road to self-hosting.
+What is missing is most of the rest of the language: pointers, arrays, structs,
+strings, multiple types, and the preprocessor. Closing that gap is the road to
+self-hosting.
 
 ---
 
@@ -148,11 +163,14 @@ The input file has to end in `.c`.
 ## Tests
 
 ```bash
-make test
+make test        # unit tests
+make test-e2e    # end-to-end tests (compile, assemble, run, check exit code)
 ```
 
-There are unit tests for the list structure, the lexer, the parser, IR
-generation, and codegen. Sample of the codegen and IR suite:
+Unit tests cover the list structure, lexer, parser, AST, IR generation, codegen,
+variable scoping, and typechecking. End-to-end tests compile small C programs
+through the full pipeline, run the resulting binary, and verify the exit code
+against the system compiler.
 
 ```
 PASS: test_emit_binop_all_ops
