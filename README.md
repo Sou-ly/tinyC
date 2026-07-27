@@ -2,13 +2,8 @@
 
 # tinyC
 
-<<<<<<< HEAD
-**A small C compiler written in C. It lexes, parses, builds an IR, and emits
-real x86-64 assembly. The goal is to make it compile itself.**
-=======
 **A small C compiler written in C. It lexes, parses, typechecks, builds an IR,
 and emits real x86-64 assembly. The goal is to make it compile itself.**
->>>>>>> 02ded9991889ec6ab2366ab405ba6e18c2de6f2c
 
 [![Language](https://img.shields.io/badge/written%20in-C-555555?logo=c)](src/)
 [![Build](https://img.shields.io/badge/build-make-1F6FEB)](Makefile)
