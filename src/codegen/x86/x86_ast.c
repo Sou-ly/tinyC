@@ -69,6 +69,18 @@ x86_Instr x86_instr_label(char* identifier) {
     return (x86_Instr){ .kind = x86_LABEL, .as.label = { .identifier = identifier } };
 }
 
+x86_Instr x86_instr_deallocate(int val) {
+	return (x86_Instr){ .kind = x86_DEALLOCATE, .as.deallocate = { .val = val } };
+}
+
+x86_Instr x86_instr_push(x86_Operand operand) {
+	return (x86_Instr){ .kind = x86_PUSH, .as.push = { .operand = operand }	};
+}
+
+x86_Instr x86_instr_call(char* identifier) {
+	return (x86_Instr){ .kind = x86_CALL, .as.call = { .identifier = identifier } };
+}
+
 // --- Instruction List ---
 
 x86_InstrList x86_instr_list_create(void) {
@@ -127,8 +139,7 @@ x86_Program x86_program_create(x86_Function* functions, int num_functions) {
 }
 
 void x86_program_destroy(x86_Program* prog) {
-    for (int i = 0; i < prog->num_functions; i++) {
-        x86_function_destroy(&prog->functions[i]);
-    }
+    for (int i = 0; i < prog->num_functions; i++) 
+		x86_function_destroy(&prog->functions[i]);
     free(prog->functions);
 }

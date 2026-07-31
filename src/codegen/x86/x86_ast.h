@@ -6,16 +6,32 @@
 
 typedef enum {
     x86_AX,
+	// function args
+	x86_DI,
+	x86_SI,
 	x86_DX,
-    x86_R10,
-    x86_R11
+	x86_CX,
+	x86_R8,
+    x86_R9,
+	// function args end
+	x86_R10,
+    x86_R11,
+	x86_REG_COUNT	// keep last: sizes the register name table in emit.c
 } x86_Reg;
+
+// operand register size
+typedef enum {
+	x86_SZ_1,
+	x86_SZ_4,
+	x86_SZ_8,
+	x86_SZ_COUNT,
+} x86_Size;
 
 typedef enum {
     x86_REG,
     x86_IMM,
     x86_ID,
-    x86_STACK
+    x86_STACK,
 } x86_OperandKind;
 
 typedef struct {
@@ -76,7 +92,10 @@ typedef enum {
     x86_JMP,
     x86_JMPCC,
     x86_SETCC,
-    x86_LABEL
+    x86_LABEL,
+	x86_DEALLOCATE,
+	x86_PUSH,
+	x86_CALL,
 } x86_InstrKind;
 
 typedef struct { x86_Operand dst; x86_Operand src; }				x86_Mov;
@@ -90,6 +109,9 @@ typedef struct { char* identifier; }								x86_Jmp;
 typedef struct { x86_ConditionCode cond; x86_Operand op; }			x86_Setcc;
 typedef struct { x86_ConditionCode cond; char* identifier; }		x86_Jmpcc;
 typedef struct { char* identifier; }								x86_Label;
+typedef struct { int val; }											x86_Deallocate;
+typedef struct { x86_Operand operand; }								x86_Push;
+typedef struct { char* identifier; }								x86_Call;
 
 typedef struct x86_Instr {
     x86_InstrKind kind;
@@ -106,6 +128,9 @@ typedef struct x86_Instr {
         x86_Setcc		setcc;
         x86_Jmpcc		jmpcc;
         x86_Label		label;
+        x86_Deallocate	deallocate;
+        x86_Push		push;
+        x86_Call		call;
     } as;
     struct x86_Instr* next;
 } x86_Instr;
@@ -122,6 +147,9 @@ x86_Instr x86_instr_jmp(char* identifier);
 x86_Instr x86_instr_jmpcc(x86_ConditionCode cond, char* identifier);
 x86_Instr x86_instr_setcc(x86_ConditionCode cond, x86_Operand op);
 x86_Instr x86_instr_label(char* identifier);
+x86_Instr x86_instr_deallocate(int val);
+x86_Instr x86_instr_push(x86_Operand operand);
+x86_Instr x86_instr_call(char* identifier);
 
 // --- Instruction list ---
 

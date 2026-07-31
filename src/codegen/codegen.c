@@ -50,6 +50,8 @@ static x86_ConditionCode codegen_cond(IrBinopType op) {
     ICE("codegen: unsupported unary relational operator");
 }
 
+static const x86_Reg x86_arg_registers[6] = {x86_DI, x86_SI, x86_DX, x86_CX, x86_R8, x86_R9};
+
 static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
     switch (ir_instr->kind) {
         case IR_RETURN: {
@@ -146,18 +148,58 @@ static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
         case IR_LABEL:
             x86_instr_list_append(list, x86_instr_label(ir_instr->as.label.identifier));
             return;
-		default:
-			break;
+		case IR_FUNCALL:
+			IrFunctionCall funcall = ir_instr->as.funcall;
+			int reg_args = (6 < funcall.args.count)? 6 : funcall.args.count;
+			int padding = (reg_args % 2 == 0)? 0 : 8;
+			if (padding != 0) x86_instr_list_append(list, x86_instr_alloc(padding));
+			for (int i = 0; i < reg_args; i++) {
+				x86_Operand src = codegen_val(funcall.args.items[i]);
+				x86_Operand dst = x86_operand_reg(x86_arg_registers[i]);
+				x86_instr_list_append(list, x86_instr_mov(dst, src));
+			}
+			for (int i = reg_args - 1; i >= 6; i++) {
+				x86_Operand op = codegen_val(funcall.args.items[i]);
+				if (op.kind == x86_REG || op.kind == x86_IMM) {
+					x86_instr_list_append(list, x86_instr_push(codegen_val(funcall.args.items[i])));
+				} else {
+					x86_instr_list_append(list, x86_instr_mov(x86_operand_reg(x86_AX), op));
+					x86_instr_list_append(list, x86_instr_push(x86_operand_reg(x86_AX)));
+				}
+			}
+			x86_instr_list_append(list, x86_instr_call(funcall.identifier));
+			int stack_args = (reg_args < 6)? 0 : funcall.args.count - reg_args;
+			int bytes_to_remove = 8 * stack_args + padding;
+			if (bytes_to_remove) x86_instr_list_append(list, x86_instr_deallocate(bytes_to_remove));
+			// The callee left its result in %eax; copy it out into the
+			// destination, not the other way round.
+			x86_instr_list_append(list, x86_instr_mov(codegen_val(funcall.dst), x86_operand_reg(x86_AX)));
+			return;
+		// no default case so that compiler warning catches unsupported ops
     }
     ICE("codegen: unsupported IR instruction type");
 }
 
 static x86_Function codegen_function(IrFunction* ir_fn) {
-    x86_InstrList instrs = x86_instr_list_create();
+    x86_InstrList list = x86_instr_list_create();
+
+	size_t reg_params = (6 < ir_fn->params.count)? 6 : ir_fn->params.count;
+	for (size_t i = 0; i < reg_params; i++) {
+		x86_instr_list_append(&list, x86_instr_mov(
+			x86_operand_id(strdup(ir_fn->params.items[i])),
+			x86_operand_reg(x86_arg_registers[i])));
+	}
+
+	for (size_t i = reg_params; i < ir_fn->params.count; i++) {
+		x86_instr_list_append(&list, x86_instr_mov(
+			x86_operand_id(strdup(ir_fn->params.items[i])),
+			x86_operand_stack(16 + 8 * (int)(i - reg_params))));
+	}
+
     for (size_t i = 0; i < ir_fn->instructions.count; i++) {
-        codegen_instr(&ir_fn->instructions.items[i], &instrs);
+        codegen_instr(&ir_fn->instructions.items[i], &list);
     }
-    return x86_function_create(ir_fn->identifier, instrs);
+    return x86_function_create(ir_fn->identifier, list);
 }
 
 x86_Program codegen(IrProgram* program) {
@@ -247,8 +289,14 @@ int rename_registers(x86_Function* function) {
             case x86_SETCC:
                 instr->as.setcc.op = operand_map_put(&opmap, instr->as.setcc.op);
                 break;
-            default:
-                break;
+			case x86_DEALLOCATE:
+				break;
+			case x86_PUSH:
+				instr->as.push.operand = operand_map_put(&opmap, instr->as.push.operand);
+				break;
+			case x86_CALL:
+				break;
+			// no default to catch missing ones with the compiler
         }
     }
     int stack_offset = opmap.stack_offset;

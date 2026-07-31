@@ -15,20 +15,39 @@ static char* emit_cond_code(x86_ConditionCode cond) {
 	return "???";
 }
 
-static char* reg_name(x86_Reg reg, bool one_byte) {
-    switch (reg) {
-		case x86_AX:  return one_byte? "al" : "eax";
-        case x86_DX:  return one_byte? "dl" : "edx";
-        case x86_R10: return one_byte? "r10l" : "r10d";
-        case x86_R11: return one_byte? "r11l" : "r11d";
-    }
-	return "???";
+// x86-64 register names are irregular across widths: the legacy accumulators
+// drop their prefix letter at one byte (%rax/%eax/%al), the index registers
+// append one instead (%rdi/%edi/%dil), and the numbered registers use suffixes
+// with none at eight bytes (%r8/%r8d/%r8b). Three rules, so this is a table
+// rather than something computed.
+static const char* const reg_names[][x86_SZ_COUNT] = {
+	//              1-byte  4-byte  8-byte
+	[x86_AX]  = {	"al",	"eax",	"rax"	},
+	[x86_DI]  = {	"dil",	"edi",	"rdi"	},
+	[x86_SI]  = {	"sil",	"esi",	"rsi"	},
+	[x86_DX]  = {	"dl",	"edx",	"rdx"	},
+	[x86_CX]  = {	"cl",	"ecx",	"rcx"	},
+	[x86_R8]  = {	"r8b",	"r8d",	"r8"	},
+	[x86_R9]  = {	"r9b",	"r9d",	"r9"	},
+	[x86_R10] = {	"r10b",	"r10d",	"r10"	},
+	[x86_R11] = {	"r11b",	"r11d",	"r11"	},
+};
+
+// Adding a register to x86_Reg without giving it names is a build failure here,
+// rather than invalid assembly discovered by the assembler later.
+_Static_assert(sizeof reg_names / sizeof reg_names[0] == x86_REG_COUNT,
+               "reg_names is missing an entry for a register in x86_Reg");
+
+static const char* reg_name(x86_Reg reg, x86_Size size) {
+    if (reg < 0 || reg >= x86_REG_COUNT) ICE("emit: register out of range: %d", reg);
+    if (size < 0 || size >= x86_SZ_COUNT) ICE("emit: operand size out of range: %d", size);
+    return reg_names[reg][size];
 }
 
-static void emit_operand(x86_Operand* op, FILE* out) {
+static void emit_operand(x86_Operand* op, x86_Size size, FILE* out) {
     switch (op->kind) {
         case x86_REG:
-            fprintf(out, "%%%s", reg_name(op->as.reg, false));
+            fprintf(out, "%%%s", reg_name(op->as.reg, size));
             break;
         case x86_IMM:
             fprintf(out, "$%d", op->as.imm);
@@ -70,26 +89,26 @@ static void emit_instr(x86_Instr* instr, FILE* out) {
     switch (instr->kind) {
         case x86_MOV:
             fprintf(out, "    movl ");
-            emit_operand(&instr->as.mov.src, out);
+            emit_operand(&instr->as.mov.src, x86_SZ_4, out);
             fprintf(out, ", ");
-            emit_operand(&instr->as.mov.dst, out);
+            emit_operand(&instr->as.mov.dst, x86_SZ_4, out);
             fprintf(out, "\n");
             break;
         case x86_UNOP:
             fprintf(out, "    %s ", unop_name(instr->as.unop.unop));
-            emit_operand(&instr->as.unop.operand, out);
+            emit_operand(&instr->as.unop.operand, x86_SZ_4, out);
             fprintf(out, "\n");
             break;
         case x86_BINOP:
             fprintf(out, "    %s ", binop_name(instr->as.binop.optype));
-            emit_operand(&instr->as.binop.rhs, out);
+            emit_operand(&instr->as.binop.rhs, x86_SZ_4, out);
             fprintf(out, ", ");
-            emit_operand(&instr->as.binop.dst, out);
+            emit_operand(&instr->as.binop.dst, x86_SZ_4, out);
             fprintf(out, "\n");
             break;
         case x86_IDIV:
             fprintf(out, "    idivl ");
-            emit_operand(&instr->as.idiv.operand, out);
+            emit_operand(&instr->as.idiv.operand, x86_SZ_4, out);
             fprintf(out, "\n");
             break;
         case x86_CDQ:
@@ -105,9 +124,9 @@ static void emit_instr(x86_Instr* instr, FILE* out) {
             break;
         case x86_CMP:
             fprintf(out, "    cmpl ");
-            emit_operand(&instr->as.cmp.lhs, out);
+            emit_operand(&instr->as.cmp.lhs, x86_SZ_4, out);
             fprintf(out, ", ");
-            emit_operand(&instr->as.cmp.rhs, out);
+            emit_operand(&instr->as.cmp.rhs, x86_SZ_4, out);
             fprintf(out, "\n");
             break;
         case x86_JMP:
@@ -117,17 +136,27 @@ static void emit_instr(x86_Instr* instr, FILE* out) {
             fprintf(out, "    j%s .L%s\n", emit_cond_code(instr->as.jmpcc.cond), instr->as.jmpcc.identifier);
             break;
         case x86_SETCC:
+            // setcc writes a single byte, so a register operand needs its
+            // 1-byte name; emit_operand handles that now, and memory and
+            // immediate operands are formatted the same at any width.
             fprintf(out, "    set%s ", emit_cond_code(instr->as.setcc.cond));
-            if (instr->as.setcc.op.kind == x86_REG) {
-                fprintf(out, "%%%s", reg_name(instr->as.setcc.op.as.reg, true));
-            } else {
-                emit_operand(&instr->as.setcc.op, out);
-            }
+            emit_operand(&instr->as.setcc.op, x86_SZ_1, out);
             fprintf(out, "\n");
             break;
         case x86_LABEL:
             fprintf(out, ".L%s:\n", instr->as.label.identifier);
             break;
+		case x86_DEALLOCATE:
+			fprintf(out, "    addq $%d, %%rsp\n", instr->as.deallocate.val);
+			break;
+		case x86_PUSH:
+			fprintf(out, "    pushq ");
+			emit_operand(&instr->as.push.operand, x86_SZ_8, out);
+			fprintf(out, "\n");
+			break;
+		case x86_CALL:
+			fprintf(out, "    call %s\n", instr->as.call.identifier);
+			break;
     }
 }
 

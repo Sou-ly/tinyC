@@ -47,6 +47,23 @@ test-e2e: $(TARGET)
 	@echo "Running e2e tests..."
 	@bash tests/e2e/run_e2e.sh $(abspath $(TARGET))
 
+# Static System V ABI checks on the assembly generated for the call_*.c cases:
+# stack alignment at each call, no pushq of a 4-byte memory slot, pushed
+# argument bytes reclaimed. These catch misalignment that a runtime test only
+# finds by luck.
+# System V AMD64 conformance: pins the argument registers, stack argument
+# offsets, return register, pushq width and call alignment that src/codegen
+# assumes, using hand-written reference assembly rather than tinyc output.
+test-abi: tests/abi/test_abi
+	@./tests/abi/test_abi
+
+tests/abi/test_abi: tests/abi/test_abi.c tests/abi/abi_reference.s
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+test-asm: $(TARGET)
+	@echo "Running asm ABI checks..."
+	@bash tests/e2e/check_call_asm.sh $(abspath $(TARGET))
+
 build_tests: tests/test_list tests/test_token tests/test_parser tests/test_codegen tests/test_ir tests/test_ast tests/test_scoping tests/test_typecheck
 
 tests/test_list: tests/test_list.c $(BUILD_DIR)/lexer/token.o
@@ -81,9 +98,9 @@ tests/test_str:
 clean:
 	rm -rf $(BUILD_DIR)
 	find . -name "*.o" -delete
-	rm -f $(TARGET) $(TEST_TARGETS)
+	rm -f $(TARGET) $(TEST_TARGETS) tests/abi/test_abi
 	find . -name "*.dSYM" -type d -exec rm -rf {} +
 	@# stray e2e artifacts (the runner cleans up, but guard against interrupted runs)
 	find tests/e2e/cases -type f ! -name '*.c' ! -name '*.expect' -delete 2>/dev/null || true
 
-.PHONY: all test test-e2e clean
+.PHONY: all test test-e2e test-asm test-abi clean
