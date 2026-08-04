@@ -82,9 +82,6 @@ static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
 			x86_Operand dst = codegen_val(ir_instr->as.binop.dst);
 			switch (ir_instr->as.binop.op) {
 				case IR_DIV: {
-					// lhs / rhs: load the dividend (lhs) into eax, sign-extend
-					// into edx:eax with cdq, then divide by the divisor (rhs).
-					// The quotient ends up in eax.
 					x86_Operand eax = x86_operand_reg(x86_AX);
 					x86_instr_list_append(list, x86_instr_mov(eax, lhs));
 					x86_instr_list_append(list, x86_instr_cdq());
@@ -93,8 +90,6 @@ static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
 					return;
                 }
 				case IR_MOD: {
-					// lhs % rhs: same setup as division, but the remainder is
-					// left in edx.
 					x86_Operand eax = x86_operand_reg(x86_AX);
 					x86_Operand edx = x86_operand_reg(x86_DX);
 					x86_instr_list_append(list, x86_instr_mov(eax, lhs));
@@ -109,10 +104,6 @@ static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
                 case IR_GREATER:
                 case IR_LEQ:
                 case IR_GEQ:
-                    // emit renders x86_Cmp{a, b} as `cmpl a, b`, and AT&T cmp sets
-                    // flags for (second - first) = (b - a). We want flags for
-                    // (lhs - rhs) so the condition codes read naturally (setl ==
-                    // lhs < rhs), so build the operands as (rhs, lhs).
                     x86_instr_list_append(list, x86_instr_cmp(rhs, lhs));
                     x86_instr_list_append(list, x86_instr_mov(dst, x86_operand_imm(0)));
                     x86_instr_list_append(list, x86_instr_setcc(codegen_cond(ir_instr->as.binop.op), dst));
@@ -151,14 +142,15 @@ static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
 		case IR_FUNCALL:
 			IrFunctionCall funcall = ir_instr->as.funcall;
 			int reg_args = (6 < funcall.args.count)? 6 : funcall.args.count;
-			int padding = (reg_args % 2 == 0)? 0 : 8;
+			int stack_args = funcall.args.count - reg_args;
+			int padding = (stack_args % 2 == 0)? 0 : 8;
 			if (padding != 0) x86_instr_list_append(list, x86_instr_alloc(padding));
 			for (int i = 0; i < reg_args; i++) {
 				x86_Operand src = codegen_val(funcall.args.items[i]);
 				x86_Operand dst = x86_operand_reg(x86_arg_registers[i]);
 				x86_instr_list_append(list, x86_instr_mov(dst, src));
 			}
-			for (int i = reg_args - 1; i >= 6; i++) {
+			for (int i = funcall.args.count - 1; i >= 6; i--) {
 				x86_Operand op = codegen_val(funcall.args.items[i]);
 				if (op.kind == x86_REG || op.kind == x86_IMM) {
 					x86_instr_list_append(list, x86_instr_push(codegen_val(funcall.args.items[i])));
@@ -168,7 +160,6 @@ static void codegen_instr(IrInstruction* ir_instr, x86_InstrList* list) {
 				}
 			}
 			x86_instr_list_append(list, x86_instr_call(funcall.identifier));
-			int stack_args = (reg_args < 6)? 0 : funcall.args.count - reg_args;
 			int bytes_to_remove = 8 * stack_args + padding;
 			if (bytes_to_remove) x86_instr_list_append(list, x86_instr_deallocate(bytes_to_remove));
 			// The callee left its result in %eax; copy it out into the
@@ -289,11 +280,18 @@ int rename_registers(x86_Function* function) {
             case x86_SETCC:
                 instr->as.setcc.op = operand_map_put(&opmap, instr->as.setcc.op);
                 break;
-			case x86_DEALLOCATE:
-				break;
 			case x86_PUSH:
 				instr->as.push.operand = operand_map_put(&opmap, instr->as.push.operand);
 				break;
+			// No operands that can be a pseudo-register: these either carry no
+			// operand at all, name a label or symbol, or use a fixed register.
+			case x86_RET:
+			case x86_ALLOC:
+			case x86_CDQ:
+			case x86_JMP:
+			case x86_JMPCC:
+			case x86_LABEL:
+			case x86_DEALLOCATE:
 			case x86_CALL:
 				break;
 			// no default to catch missing ones with the compiler
@@ -304,69 +302,67 @@ int rename_registers(x86_Function* function) {
     return stack_offset;
 }
 
-// stack_offset can be negative
 int allocate_stack(x86_Function* function, int stack_offset) {
-    x86_Instr* instr = function->instrs.head;
-    while (instr != NULL){
+	x86_Operand r10 = x86_operand_reg(x86_R10);
+	x86_Operand r11 = x86_operand_reg(x86_R11);
+	x86_InstrList fixed = x86_instr_list_create();
+
+    for (x86_Instr* instr = function->instrs.head; instr != NULL; instr = instr->next) {
 		switch (instr->kind){
 			case x86_MOV:
+				// mov cannot address memory twice; stage through %r10d.
 				if (instr->as.mov.src.kind == x86_STACK && instr->as.mov.dst.kind == x86_STACK) {
-					x86_Instr* next_instr = malloc(sizeof(x86_Instr));
-        	    	next_instr->kind = x86_MOV;
-        	    	next_instr->as.mov.dst = instr->as.mov.dst;
-        	    	next_instr->as.mov.src = (x86_Operand){.kind=x86_REG, .as.reg=x86_R10};
-        	    	next_instr->next = instr->next;
-        	    	instr->as.mov.dst = (x86_Operand){.kind=x86_REG, .as.reg=x86_R10}; 
-        	    	instr->next = next_instr;
+					x86_instr_list_append(&fixed, x86_instr_mov(r10, instr->as.mov.src));
+					x86_instr_list_append(&fixed, x86_instr_mov(instr->as.mov.dst, r10));
+					continue;
 				}
 				break;
 			case x86_BINOP:
+				if (instr->as.binop.optype == x86_MUL && instr->as.binop.dst.kind == x86_STACK) {
+					x86_instr_list_append(&fixed, x86_instr_mov(r11, instr->as.binop.dst));
+					x86_instr_list_append(&fixed, x86_instr_binary(x86_MUL, instr->as.binop.rhs, r11));
+					x86_instr_list_append(&fixed, x86_instr_mov(instr->as.binop.dst, r11));
+					continue;
+				}
 				if (instr->as.binop.dst.kind == x86_STACK && instr->as.binop.rhs.kind == x86_STACK) {
-					// x86 forbids mem,mem: load the rhs into %r10d, then apply the
-					// op with %r10d as the source so the result stays in dst.
-					x86_Instr* next_instr = malloc(sizeof(x86_Instr));
-        	    	next_instr->kind = instr->kind;
-					next_instr->as.binop.optype = instr->as.binop.optype;
-        	    	next_instr->as.binop.rhs = (x86_Operand){.kind=x86_REG, .as.reg=x86_R10};
-        	    	next_instr->as.binop.dst = instr->as.binop.dst;
-        	    	next_instr->next = instr->next;
-					x86_Operand src = instr->as.binop.rhs;
-        	    	instr->kind = x86_MOV;
-        	    	instr->as.mov.dst = (x86_Operand){.kind=x86_REG, .as.reg=x86_R10};
-        	    	instr->as.mov.src = src;
-        	    	instr->next = next_instr;
+					x86_instr_list_append(&fixed, x86_instr_mov(r10, instr->as.binop.rhs));
+					x86_instr_list_append(&fixed, x86_instr_binary(instr->as.binop.optype, r10, instr->as.binop.dst));
+					continue;
 				}
 				break;
 			case x86_CMP:
 				if (instr->as.cmp.lhs.kind == x86_STACK && instr->as.cmp.rhs.kind == x86_STACK) {
-					x86_Instr* next_instr = malloc(sizeof(x86_Instr));
-        	    	next_instr->kind = instr->kind;
-        	    	next_instr->as.cmp.rhs = instr->as.cmp.rhs;
-        	    	next_instr->as.cmp.lhs = (x86_Operand){.kind=x86_REG, .as.reg=x86_R10};
-        	    	next_instr->next = instr->next;
-					x86_Operand src = instr->as.cmp.lhs;
-        	    	instr->kind = x86_MOV; 
-        	    	instr->as.mov.dst = (x86_Operand){.kind=x86_REG, .as.reg=x86_R10}; 
-        	    	instr->as.mov.src = src; 
-        	    	instr->next = next_instr;
-				} else if (instr->as.cmp.rhs.kind == x86_IMM) {
-					x86_Instr* next_instr = malloc(sizeof(x86_Instr));
-        	    	next_instr->kind = instr->kind;
-        	    	next_instr->as.cmp.rhs = (x86_Operand){.kind=x86_REG, .as.reg=x86_R11};
-        	    	next_instr->as.cmp.lhs = instr->as.cmp.lhs;
-        	    	next_instr->next = instr->next;
-					x86_Operand src = instr->as.cmp.rhs;
-        	    	instr->kind = x86_MOV; 
-        	    	instr->as.mov.dst = (x86_Operand){.kind=x86_REG, .as.reg=x86_R11}; 
-        	    	instr->as.mov.src = src; 
-        	    	instr->next = next_instr;
+					x86_instr_list_append(&fixed, x86_instr_mov(r10, instr->as.cmp.lhs));
+					x86_instr_list_append(&fixed, x86_instr_cmp(r10, instr->as.cmp.rhs));
+					continue;
+				}
+				if (instr->as.cmp.rhs.kind == x86_IMM) {
+					x86_instr_list_append(&fixed, x86_instr_mov(r11, instr->as.cmp.rhs));
+					x86_instr_list_append(&fixed, x86_instr_cmp(instr->as.cmp.lhs, r11));
+					continue;
 				}
 				break;
-			default:
+			case x86_RET:
+			case x86_ALLOC:
+			case x86_UNOP:
+			case x86_IDIV:
+			case x86_CDQ:
+			case x86_JMP:
+			case x86_JMPCC:
+			case x86_SETCC:
+			case x86_LABEL:
+			case x86_DEALLOCATE:
+			case x86_PUSH:
+			case x86_CALL:
 				break;
+			// no default case so that the compiler warnings catches missing instructions support
 		}
-		instr = instr->next;
+		x86_instr_list_append(&fixed, *instr);
     }
-    x86_instr_list_prepend(&function->instrs, x86_instr_alloc(-stack_offset));
+
+	x86_instr_list_destroy(&function->instrs);
+	function->instrs = fixed;
+	int frame = (-stack_offset + 15) & ~15; // round to multiple of 16 as per System V ABI
+    if (frame != 0) x86_instr_list_prepend(&function->instrs, x86_instr_alloc(frame));
     return 0;
 }

@@ -828,7 +828,7 @@ static x86_Program one_instr_program(x86_Instr instr) {
 void test_allocate_stack_cmp_two_memory() {
     x86_Program prog = one_instr_program(
         x86_instr_cmp(x86_operand_stack(-4), x86_operand_stack(-8)));
-    allocate_stack(&prog.functions[0], 0);
+    allocate_stack(&prog.functions[0], -4);
 
     x86_Instr* i = prog.functions[0].instrs.head;
     assert(i->kind == x86_ALLOC); i = i->next;   // prepended frame setup
@@ -853,7 +853,7 @@ void test_allocate_stack_cmp_two_memory() {
 void test_allocate_stack_cmp_imm_rhs() {
     x86_Program prog = one_instr_program(
         x86_instr_cmp(x86_operand_stack(-4), x86_operand_imm(0)));
-    allocate_stack(&prog.functions[0], 0);
+    allocate_stack(&prog.functions[0], -4);
 
     x86_Instr* i = prog.functions[0].instrs.head;
     assert(i->kind == x86_ALLOC); i = i->next;
@@ -878,7 +878,7 @@ void test_allocate_stack_cmp_imm_rhs() {
 void test_allocate_stack_binop_two_memory() {
     x86_Program prog = one_instr_program(
         x86_instr_binary(x86_ADD, x86_operand_stack(-8), x86_operand_stack(-4)));
-    allocate_stack(&prog.functions[0], 0);
+    allocate_stack(&prog.functions[0], -4);
 
     x86_Instr* i = prog.functions[0].instrs.head;
     assert(i->kind == x86_ALLOC); i = i->next;
@@ -897,6 +897,53 @@ void test_allocate_stack_binop_two_memory() {
 
     x86_program_destroy(&prog);
     printf("  PASS: test_allocate_stack_binop_two_memory\n");
+}
+
+// System V requires %rsp to be 16-byte aligned at every call. On entry to the
+// body it already is -- the caller's call pushed 8 bytes and the prologue's
+// pushq %rbp pushed 8 more -- so the frame subq is the whole deviation and has
+// to be a multiple of 16 itself. rename_registers hands out slots 4 bytes at a
+// time, so the raw offset almost never is.
+void test_allocate_stack_rounds_frame_to_16() {
+    // { pseudo-registers worth of stack, expected frame size }
+    struct { int offset; int frame; } cases[] = {
+        { -4,  16 },
+        { -8,  16 },
+        { -12, 16 },
+        { -16, 16 },   // already aligned: must not be rounded up to 32
+        { -20, 32 },
+        { -44, 48 },
+    };
+
+    for (size_t c = 0; c < sizeof cases / sizeof cases[0]; c++) {
+        x86_Program prog = one_instr_program(
+            x86_instr_mov(x86_operand_stack(-4), x86_operand_imm(0)));
+        allocate_stack(&prog.functions[0], cases[c].offset);
+
+        x86_Instr* i = prog.functions[0].instrs.head;
+        assert(i->kind == x86_ALLOC);
+        assert(i->as.alloc_stack.size == cases[c].frame);
+        assert(i->as.alloc_stack.size % 16 == 0);
+        // Rounding up must never hand back less room than was asked for.
+        assert(i->as.alloc_stack.size >= -cases[c].offset);
+
+        x86_program_destroy(&prog);
+    }
+    printf("  PASS: test_allocate_stack_rounds_frame_to_16\n");
+}
+
+// A function that spilled nothing needs no frame at all; emitting subq $0, %rsp
+// is a no-op instruction in every leaf function.
+void test_allocate_stack_no_frame_when_nothing_spilled() {
+    x86_Program prog = one_instr_program(
+        x86_instr_mov(x86_operand_reg(x86_AX), x86_operand_imm(0)));
+    allocate_stack(&prog.functions[0], 0);
+
+    x86_Instr* i = prog.functions[0].instrs.head;
+    assert(i->kind == x86_MOV);   // not preceded by an x86_ALLOC
+
+    x86_program_destroy(&prog);
+    printf("  PASS: test_allocate_stack_no_frame_when_nothing_spilled\n");
 }
 
 // --- emit tests for the relational / control-flow instruction kinds ---
@@ -1163,6 +1210,8 @@ int main(void) {
     test_allocate_stack_cmp_two_memory();
     test_allocate_stack_cmp_imm_rhs();
     test_allocate_stack_binop_two_memory();
+    test_allocate_stack_rounds_frame_to_16();
+    test_allocate_stack_no_frame_when_nothing_spilled();
     test_emit_cmp_setcc_jmp_label();
     test_emit_relational_program();
     test_emit_short_circuit_program();
