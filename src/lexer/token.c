@@ -84,6 +84,8 @@ const char *keyword_name(TokenKeyword k) {
 		case TOK_SWITCH:	return "switch";
 		case TOK_CASE:		return "case";
 		case TOK_DEFAULT:	return "defaut";
+		case TOK_STATIC:	return "static";
+		case TOK_EXTERN:	return "extern";
 	}
 	return "<unknown>";
 }
@@ -104,6 +106,8 @@ static int keyword_lookup(const char *word, size_t len) {
 		{ "switch",		6, TOK_SWITCH	},
 		{ "case",		4, TOK_CASE		},
 		{ "default",	7, TOK_DEFAULT  },
+		{ "static",		6, TOK_STATIC	},
+		{ "extern",		6, TOK_EXTERN	},
 	};
 	for (size_t i = 0; i < sizeof table / sizeof table[0]; i++) {
 		if (table[i].len == len && strncmp(word, table[i].name, len) == 0)
