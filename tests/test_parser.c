@@ -109,7 +109,7 @@ void test_create_function_decl() {
         .as.statement = ast_stmt_return(ast_exp_int(0)),
     });
     AstFunctionDeclaration fn = ast_function_declaration(
-        strdup("main"), (AstParamList){0}, SOME(OptionalBlock, body));
+        strdup("main"), (AstParamList){0}, SOME(OptionalBlock, body), STORAGE_UNSPECIFIED);
 
     assert(strcmp(fn.identifier, "main") == 0);
     assert(fn.body.present);
@@ -140,12 +140,12 @@ void test_parse_return_2() {
     AstProgram prog = parse_program(&parser);
 
     assert(prog.count == 1);
-    assert(strcmp(prog.items[0].identifier, "main") == 0);
-    assert(prog.items[0].body.value.count == 1);
-    assert(prog.items[0].body.value.items[0].kind == AST_STATEMENT);
-    assert(prog.items[0].body.value.items[0].as.statement->kind == STMT_RETURN);
-    assert(prog.items[0].body.value.items[0].as.statement->as.ret.exp->kind == EXP_INT);
-    assert(prog.items[0].body.value.items[0].as.statement->as.ret.exp->as.int_lit.value == 2);
+    assert(strcmp(prog.items[0].as.function.identifier, "main") == 0);
+    assert(prog.items[0].as.function.body.value.count == 1);
+    assert(prog.items[0].as.function.body.value.items[0].kind == AST_STATEMENT);
+    assert(prog.items[0].as.function.body.value.items[0].as.statement->kind == STMT_RETURN);
+    assert(prog.items[0].as.function.body.value.items[0].as.statement->as.ret.exp->kind == EXP_INT);
+    assert(prog.items[0].as.function.body.value.items[0].as.statement->as.ret.exp->as.int_lit.value == 2);
 
     ast_program_destroy(&prog);
     free(tokens.items);
@@ -300,7 +300,7 @@ static void check_return_exp(const char* description, const Token* exp_tokens,
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstExp* actual = prog.items[0].body.value.items[0].as.statement->as.ret.exp;
+    AstExp* actual = prog.items[0].as.function.body.value.items[0].as.statement->as.ret.exp;
     if (!exp_equals(actual, expected)) {
         printf("  FAIL: %s\n    expected: ", description);
         print_exp(expected);
@@ -483,7 +483,7 @@ static void check_assign_op(const char* description, TokenOperator tok_op,
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstBlockItem item = prog.items[0].body.value.items[0];
+    AstBlockItem item = prog.items[0].as.function.body.value.items[0];
     assert(item.kind == AST_STATEMENT);
     assert(item.as.statement->kind == STMT_EXP);
     AstExp* exp = item.as.statement->as.exp_stmt.exp;
@@ -537,7 +537,7 @@ void test_parse_compound_assign_right_assoc() {
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstExp* outer = prog.items[0].body.value.items[0].as.statement->as.exp_stmt.exp;
+    AstExp* outer = prog.items[0].as.function.body.value.items[0].as.statement->as.exp_stmt.exp;
     assert(outer->kind == EXP_ASSIGN && outer->as.assign.op == ASSIGN_ADD);
     assert(outer->as.assign.lhs->kind == EXP_VAR);
     assert(strcmp(outer->as.assign.lhs->as.variable.identifier, "x") == 0);
@@ -670,7 +670,7 @@ void test_parse_while_loop() {
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstStatement* stmt = prog.items[0].body.value.items[0].as.statement;
+    AstStatement* stmt = prog.items[0].as.function.body.value.items[0].as.statement;
     assert(stmt->kind == STMT_WHILE);
     assert(stmt->as.while_loop.label == NULL);
     assert(stmt->as.while_loop.cond->as.int_lit.value == 1);
@@ -704,7 +704,7 @@ void test_parse_do_while_loop() {
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstStatement* stmt = prog.items[0].body.value.items[0].as.statement;
+    AstStatement* stmt = prog.items[0].as.function.body.value.items[0].as.statement;
     assert(stmt->kind == STMT_DO_WHILE);
     assert(stmt->as.do_while_loop.label == NULL);
     assert(stmt->as.do_while_loop.cond->as.int_lit.value == 2);
@@ -739,7 +739,7 @@ void test_parse_for_loop() {
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstStatement* stmt = prog.items[0].body.value.items[0].as.statement;
+    AstStatement* stmt = prog.items[0].as.function.body.value.items[0].as.statement;
     assert(stmt->kind == STMT_FOR);
     assert(stmt->as.for_loop.label == NULL);
     assert(stmt->as.for_loop.cond);
@@ -773,7 +773,7 @@ void test_parse_break_in_loop() {
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstStatement* stmt = prog.items[0].body.value.items[0].as.statement;
+    AstStatement* stmt = prog.items[0].as.function.body.value.items[0].as.statement;
     assert(stmt->kind == STMT_WHILE);
     assert(stmt->as.while_loop.body->kind == STMT_BREAK);
     assert(stmt->as.while_loop.body->as.break_stmt.label == NULL);
@@ -803,7 +803,7 @@ void test_parse_continue_in_loop() {
     Parser parser = parser_create(&tokens);
     AstProgram prog = parse_program(&parser);
 
-    AstStatement* stmt = prog.items[0].body.value.items[0].as.statement;
+    AstStatement* stmt = prog.items[0].as.function.body.value.items[0].as.statement;
     assert(stmt->kind == STMT_WHILE);
     assert(stmt->as.while_loop.body->kind == STMT_CONTINUE);
     assert(stmt->as.while_loop.body->as.continue_stmt.label == NULL);
@@ -822,8 +822,8 @@ void test_parse_continue_in_loop() {
 static AstProgram make_test_program(AstStatement* stmt) {
     AstBlock body = (AstBlock){0};
     ast_block_append(&body, (AstBlockItem){ .kind = AST_STATEMENT, .as.statement = stmt });
-    AstFunctionDeclaration* fn = malloc(sizeof(AstFunctionDeclaration));
-    *fn = ast_function_declaration(strdup("main"), (AstParamList){0}, SOME(OptionalBlock, body));
+    AstDeclaration* fn = malloc(sizeof(AstDeclaration));
+    *fn = ast_declaration_function(ast_function_declaration(strdup("main"), (AstParamList){0}, SOME(OptionalBlock, body), STORAGE_UNSPECIFIED));
     return ast_program_create(fn, 1);
 }
 
@@ -834,7 +834,7 @@ void test_resolve_labels_while_break() {
 
     resolve_labels(&prog);
 
-    AstStatement* resolved = prog.items[0].body.value.items[0].as.statement;
+    AstStatement* resolved = prog.items[0].as.function.body.value.items[0].as.statement;
     assert(resolved->kind == STMT_WHILE);
     assert(resolved->as.while_loop.label != NULL);
     char* loop_label = resolved->as.while_loop.label;
@@ -852,7 +852,7 @@ void test_resolve_labels_while_continue() {
 
     resolve_labels(&prog);
 
-    AstStatement* resolved = prog.items[0].body.value.items[0].as.statement;
+    AstStatement* resolved = prog.items[0].as.function.body.value.items[0].as.statement;
     assert(resolved->as.while_loop.label != NULL);
     assert(strcmp(resolved->as.while_loop.body->as.continue_stmt.label,
                  resolved->as.while_loop.label) == 0);
@@ -878,7 +878,7 @@ void test_resolve_labels_nested_loops() {
 
     resolve_labels(&prog);
 
-    AstStatement* r_outer = prog.items[0].body.value.items[0].as.statement;
+    AstStatement* r_outer = prog.items[0].as.function.body.value.items[0].as.statement;
     assert(r_outer->kind == STMT_WHILE);
     char* outer_label = r_outer->as.while_loop.label;
     assert(outer_label != NULL);
@@ -916,7 +916,7 @@ void test_resolve_labels_through_if() {
 
     resolve_labels(&prog);
 
-    AstStatement* resolved = prog.items[0].body.value.items[0].as.statement;
+    AstStatement* resolved = prog.items[0].as.function.body.value.items[0].as.statement;
     char* label = resolved->as.while_loop.label;
     assert(label != NULL);
 
@@ -936,7 +936,7 @@ void test_resolve_labels_do_while() {
 
     resolve_labels(&prog);
 
-    AstStatement* resolved = prog.items[0].body.value.items[0].as.statement;
+    AstStatement* resolved = prog.items[0].as.function.body.value.items[0].as.statement;
     assert(resolved->kind == STMT_DO_WHILE);
     assert(resolved->as.do_while_loop.label != NULL);
     assert(strcmp(resolved->as.do_while_loop.body->as.break_stmt.label,
@@ -963,8 +963,8 @@ static AstProgram parse_src(const char* src) {
 
 static AstStatement* nth_stmt(AstProgram* prog, size_t i) {
     assert(prog->count == 1);
-    assert(i < prog->items[0].body.value.count);
-    AstBlockItem item = prog->items[0].body.value.items[i];
+    assert(i < prog->items[0].as.function.body.value.count);
+    AstBlockItem item = prog->items[0].as.function.body.value.items[i];
     assert(item.kind == AST_STATEMENT);
     return item.as.statement;
 }
@@ -973,7 +973,7 @@ static AstStatement* nth_stmt(AstProgram* prog, size_t i) {
 // statement, so the body holds two items.
 void test_parse_label() {
     AstProgram prog = parse_src("int main() { start: return 1; }");
-    assert(prog.items[0].body.value.count == 2);
+    assert(prog.items[0].as.function.body.value.count == 2);
     AstStatement* label = nth_stmt(&prog, 0);
     assert(label->kind == STMT_LABEL);
     assert(strcmp(label->as.label.identifier, "start") == 0);
@@ -985,7 +985,7 @@ void test_parse_label() {
 // `goto end;` parses to STMT_GOTO carrying the target name.
 void test_parse_goto() {
     AstProgram prog = parse_src("int main() { goto end; }");
-    assert(prog.items[0].body.value.count == 1);
+    assert(prog.items[0].as.function.body.value.count == 1);
     AstStatement* g = nth_stmt(&prog, 0);
     assert(g->kind == STMT_GOTO);
     assert(strcmp(g->as.goto_stmt.target, "end") == 0);
@@ -1007,7 +1007,7 @@ void test_parse_assignment_not_label() {
 // label followed by a goto back to it: two statements, matching names.
 void test_parse_label_and_goto() {
     AstProgram prog = parse_src("int main() { loop: goto loop; }");
-    assert(prog.items[0].body.value.count == 2);
+    assert(prog.items[0].as.function.body.value.count == 2);
     AstStatement* label = nth_stmt(&prog, 0);
     AstStatement* g = nth_stmt(&prog, 1);
     assert(label->kind == STMT_LABEL && strcmp(label->as.label.identifier, "loop") == 0);
@@ -1119,6 +1119,155 @@ void test_resolve_labels_switch_break() {
 
 // Malformed switches are rejected by the parser (checked in a forked child, as
 // parse errors call exit(1)).
+// --- storage class specifier tests ---
+//
+// `static` and `extern` may appear on a file-scope or block-scope declaration,
+// of either a variable or a function, in any order relative to the type
+// specifier. The parser records which one was seen on the declaration.
+
+// The nth block item of the single function, asserted to be a declaration.
+static AstDeclaration* nth_decl(AstProgram* prog, size_t i) {
+    assert(prog->count == 1);
+    assert(i < prog->items[0].as.function.body.value.count);
+    AstBlockItem* item = &prog->items[0].as.function.body.value.items[i];
+    assert(item->kind == AST_DECLARATION);
+    return &item->as.declaration;
+}
+
+// A declaration with no storage class specifier records STORAGE_UNSPECIFIED,
+// rather than defaulting to either keyword.
+void test_parse_storage_unspecified() {
+    AstProgram prog = parse_src("int main(void) { int x = 1; return x; }");
+    assert(prog.items[0].as.function.storage_class == STORAGE_UNSPECIFIED);
+    AstDeclaration* d = nth_decl(&prog, 0);
+    assert(d->kind == DECL_VAR);
+    assert(d->as.variable.storage_class == STORAGE_UNSPECIFIED);
+    ast_program_destroy(&prog);
+    printf("  PASS: test_parse_storage_unspecified\n");
+}
+
+// `static` and `extern` on a function definition and on a prototype.
+void test_parse_storage_on_function() {
+    AstProgram prog = parse_src("static int f(void) { return 1; }");
+    assert(prog.items[0].as.function.storage_class == STORAGE_STATIC);
+    ast_program_destroy(&prog);
+
+    prog = parse_src("extern int g(void);");
+    assert(prog.items[0].as.function.storage_class == STORAGE_EXTERN);
+    assert(!prog.items[0].as.function.body.present);          // a prototype, not a definition
+    ast_program_destroy(&prog);
+    printf("  PASS: test_parse_storage_on_function\n");
+}
+
+// A storage class on a block-scope variable declaration. This is the case that
+// regressed: the block-item dispatcher keyed on `int` alone, so a declaration
+// opening with `static` was routed to the statement parser and rejected.
+void test_parse_storage_on_block_variable() {
+    AstProgram prog = parse_src("int main(void) { static int x = 1; extern int y; return x; }");
+    assert(prog.items[0].as.function.body.value.count == 3);
+
+    AstDeclaration* d0 = nth_decl(&prog, 0);
+    assert(d0->kind == DECL_VAR);
+    assert(d0->as.variable.storage_class == STORAGE_STATIC);
+    assert(strcmp(d0->as.variable.identifier, "x") == 0);
+    assert(d0->as.variable.init != NULL);
+
+    AstDeclaration* d1 = nth_decl(&prog, 1);
+    assert(d1->kind == DECL_VAR);
+    assert(d1->as.variable.storage_class == STORAGE_EXTERN);
+    assert(d1->as.variable.init == NULL);
+
+    ast_program_destroy(&prog);
+    printf("  PASS: test_parse_storage_on_block_variable\n");
+}
+
+// A block-scope function declaration may also carry a storage class.
+void test_parse_storage_on_block_function() {
+    AstProgram prog = parse_src("int main(void) { extern int helper(void); return 0; }");
+    AstDeclaration* d = nth_decl(&prog, 0);
+    assert(d->kind == DECL_FUNC);
+    assert(d->as.function.storage_class == STORAGE_EXTERN);
+    assert(!d->as.function.body.present);
+    ast_program_destroy(&prog);
+    printf("  PASS: test_parse_storage_on_block_function\n");
+}
+
+// Specifiers commute: `int static x` declares exactly what `static int x` does.
+// C allows any order within the specifier run, and the parser loops rather than
+// insisting the storage class comes first.
+void test_parse_storage_specifier_order() {
+    AstProgram prog = parse_src("int main(void) { int static x = 1; return x; }");
+    assert(nth_decl(&prog, 0)->as.variable.storage_class == STORAGE_STATIC);
+    ast_program_destroy(&prog);
+
+    prog = parse_src("int static f(void) { return 1; }");
+    assert(prog.items[0].as.function.storage_class == STORAGE_STATIC);
+    ast_program_destroy(&prog);
+    printf("  PASS: test_parse_storage_specifier_order\n");
+}
+
+// A translation unit is a list of declarations, not of functions: a file-scope
+// variable is a top-level item in its own right and keeps its source order
+// relative to the functions around it.
+void test_parse_file_scope_variables() {
+    AstProgram prog = parse_src("int counter = 3; int main(void) { return counter; } static int flag;");
+    assert(prog.count == 3);
+
+    assert(prog.items[0].kind == DECL_VAR);
+    assert(strcmp(prog.items[0].as.variable.identifier, "counter") == 0);
+    assert(prog.items[0].as.variable.storage_class == STORAGE_UNSPECIFIED);
+    assert(prog.items[0].as.variable.init != NULL);
+    assert(prog.items[0].as.variable.init->kind == EXP_INT);
+
+    assert(prog.items[1].kind == DECL_FUNC);
+    assert(strcmp(prog.items[1].as.function.identifier, "main") == 0);
+
+    // A declaration with no initialiser, carrying a storage class, still lands
+    // as its own top-level item.
+    assert(prog.items[2].kind == DECL_VAR);
+    assert(strcmp(prog.items[2].as.variable.identifier, "flag") == 0);
+    assert(prog.items[2].as.variable.storage_class == STORAGE_STATIC);
+    assert(prog.items[2].as.variable.init == NULL);
+
+    ast_program_destroy(&prog);
+    printf("  PASS: test_parse_file_scope_variables\n");
+}
+
+// A file-scope variable is visible to the passes that walk the program: name
+// resolution must accept a reference to one from inside a function body rather
+// than rejecting it as undeclared.
+void test_resolve_file_scope_variable_reference() {
+    AstProgram prog = parse_src("int g = 1; int main(void) { return g; }");
+    resolve_variables(&prog);
+    assert(prog.count == 2);
+    // The variable keeps its source name: file-scope names have external
+    // linkage and are not renamed the way block-scope locals are.
+    assert(strcmp(prog.items[0].as.variable.identifier, "g") == 0);
+    AstBlockItem* item = &prog.items[1].as.function.body.value.items[0];
+    assert(item->kind == AST_STATEMENT);
+    AstExp* ret = item->as.statement->as.ret.exp;
+    assert(ret->kind == EXP_VAR);
+    assert(strcmp(ret->as.variable.identifier, "g") == 0);
+    ast_program_destroy(&prog);
+    printf("  PASS: test_resolve_file_scope_variable_reference\n");
+}
+
+void test_parse_storage_errors() {
+    // Two storage class specifiers on one declaration, in every combination.
+    expect_parse_error("static static",  "static static int x;");
+    expect_parse_error("extern extern",  "extern extern int x;");
+    expect_parse_error("static extern",  "static extern int x;");
+    expect_parse_error("extern static",  "extern static int x;");
+    // Duplicate type specifier.
+    expect_parse_error("int int",        "int int x;");
+    // C99 removed implicit int: a storage class alone does not declare a type.
+    expect_parse_error("static no type", "static x;");
+    expect_parse_error("extern no type", "extern f(void);");
+    // Same rules inside a block.
+    expect_parse_error("block static static", "int main(void) { static static int x; }");
+    expect_parse_error("block no type",       "int main(void) { static x; }");
+}
+
 void test_parse_switch_errors() {
     expect_parse_error("case without colon",   "int main() { switch (x) { case 1 y = 1; } }");
     expect_parse_error("non-integer case",      "int main() { switch (x) { case y: y = 1; } }");
@@ -1181,8 +1330,8 @@ void test_resolve_labels_unique_across_functions() {
     AstProgram prog = parse_src("int f() { done: return 0; } int g() { done: return 1; }");
     resolve_goto_labels(&prog);
     assert(prog.count == 2);
-    AstStatement* l0 = prog.items[0].body.value.items[0].as.statement;
-    AstStatement* l1 = prog.items[1].body.value.items[0].as.statement;
+    AstStatement* l0 = prog.items[0].as.function.body.value.items[0].as.statement;
+    AstStatement* l1 = prog.items[1].as.function.body.value.items[0].as.statement;
     assert(l0->kind == STMT_LABEL && l1->kind == STMT_LABEL);
     assert(strcmp(l0->as.label.identifier, l1->as.label.identifier) != 0);
     ast_program_destroy(&prog);
@@ -1267,6 +1416,15 @@ int main(void) {
     test_parse_switch_default_in_middle();
     test_resolve_labels_switch_break();
     test_parse_switch_errors();
+    printf("Running storage class tests...\n");
+    test_parse_storage_unspecified();
+    test_parse_storage_on_function();
+    test_parse_storage_on_block_variable();
+    test_parse_storage_on_block_function();
+    test_parse_storage_specifier_order();
+    test_parse_file_scope_variables();
+    test_resolve_file_scope_variable_reference();
+    test_parse_storage_errors();
     printf("Running goto/label resolution tests...\n");
     test_resolve_goto_label_basic();
     test_resolve_goto_forward_reference();

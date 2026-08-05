@@ -65,11 +65,11 @@ void test_block_holds_declarations() {
     AstBlock block = (AstBlock){0};
     ast_block_append(&block, (AstBlockItem){
         .kind = AST_DECLARATION,
-        .as.declaration = ast_declaration_variable(ast_variable_declaration(strdup("x"), ast_exp_int(7))),
+        .as.declaration = ast_declaration_variable(ast_variable_declaration(strdup("x"), ast_exp_int(7), STORAGE_UNSPECIFIED)),
     });
     ast_block_append(&block, (AstBlockItem){
         .kind = AST_DECLARATION,
-        .as.declaration = ast_declaration_variable(ast_variable_declaration(strdup("y"), NULL)),
+        .as.declaration = ast_declaration_variable(ast_variable_declaration(strdup("y"), NULL, STORAGE_UNSPECIFIED)),
     });
 
     assert(block.count == 2);
@@ -131,7 +131,7 @@ void test_function_holds_block() {
         .as.statement = ast_stmt_return(ast_exp_int(0)),
     });
     AstFunctionDeclaration fn = ast_function_declaration(
-        strdup("main"), (AstParamList){0}, SOME(OptionalBlock, body));
+        strdup("main"), (AstParamList){0}, SOME(OptionalBlock, body), STORAGE_UNSPECIFIED);
 
     assert(strcmp(fn.identifier, "main") == 0);
     assert(fn.body.present);
@@ -145,7 +145,7 @@ void test_function_holds_block() {
 // A prototype has no body; destroying it must not touch body.value.
 void test_function_prototype_has_no_body() {
     AstFunctionDeclaration fn = ast_function_declaration(
-        strdup("puts"), (AstParamList){0}, NONE(OptionalBlock));
+        strdup("puts"), (AstParamList){0}, NONE(OptionalBlock), STORAGE_UNSPECIFIED);
     assert(!fn.body.present);
     ast_function_declaration_destroy(&fn);
     printf("  PASS: test_function_prototype_has_no_body\n");
@@ -351,7 +351,7 @@ void test_function_decl_with_params() {
     list_push(&params, strdup("a"));
     list_push(&params, strdup("b"));
     AstFunctionDeclaration fn =
-        ast_function_declaration(strdup("f"), params, NONE(OptionalBlock));
+        ast_function_declaration(strdup("f"), params, NONE(OptionalBlock), STORAGE_UNSPECIFIED);
 
     assert(strcmp(fn.identifier, "f") == 0);
     assert(fn.params.count == 2);
@@ -367,7 +367,7 @@ void test_function_decl_unnamed_param() {
     AstParamList params = (AstParamList){0};
     list_push(&params, NULL);   // `int f(int);`
     AstFunctionDeclaration fn =
-        ast_function_declaration(strdup("f"), params, NONE(OptionalBlock));
+        ast_function_declaration(strdup("f"), params, NONE(OptionalBlock), STORAGE_UNSPECIFIED);
 
     assert(fn.params.count == 1);
     assert(fn.params.items[0] == NULL);

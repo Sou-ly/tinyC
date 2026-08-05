@@ -10,7 +10,7 @@
 // A function definition named `identifier` whose body is `body`.
 static AstFunctionDeclaration function_of(const char* identifier, AstBlock body) {
     return ast_function_declaration(strdup(identifier), (AstParamList){0},
-                                    SOME(OptionalBlock, body));
+                                    SOME(OptionalBlock, body), STORAGE_UNSPECIFIED);
 }
 
 // A function definition named `identifier` with the given parameter names and
@@ -23,7 +23,7 @@ static AstFunctionDeclaration function_with_params(const char* identifier,
         list_push(&params, strdup(names[i]));
     }
     return ast_function_declaration(strdup(identifier), params,
-                                    SOME(OptionalBlock, body));
+                                    SOME(OptionalBlock, body), STORAGE_UNSPECIFIED);
 }
 
 // Build an argument list from heap-allocated expressions. Mirrors the parser:
@@ -49,8 +49,8 @@ static AstProgram program_of(AstStatement** stmts, int num_stmts) {
         ast_block_append(&body, statement_item(stmts[i]));
     }
     free(stmts);
-    AstFunctionDeclaration* functions = malloc(sizeof(AstFunctionDeclaration));
-    functions[0] = function_of("main", body);
+    AstDeclaration* functions = malloc(sizeof(AstDeclaration));
+    functions[0] = ast_declaration_function(function_of("main", body));
     return ast_program_create(functions, 1);
 }
 
@@ -157,7 +157,7 @@ void test_emit_name_is_owned_copy() {
     AstProgram ast = program_of_stmt(ast_stmt_return(ast_exp_int(0)));
     IrProgram ir = emit_ir(&ast);
 
-    assert(ir.items[0].identifier != ast.items[0].identifier);
+    assert(ir.items[0].identifier != ast.items[0].as.function.identifier);
     assert(strcmp(ir.items[0].identifier, "main") == 0);
 
     free_ir_program(&ir);
@@ -264,9 +264,9 @@ void test_emit_multiple_functions() {
     AstBlock bar_body = {0};
     ast_block_append(&bar_body, statement_item(ast_stmt_return(ast_exp_int(2))));
 
-    AstFunctionDeclaration* functions = malloc(2 * sizeof(AstFunctionDeclaration));
-    functions[0] = function_of("foo", foo_body);
-    functions[1] = function_of("bar", bar_body);
+    AstDeclaration* functions = malloc(2 * sizeof(AstDeclaration));
+    functions[0] = ast_declaration_function(function_of("foo", foo_body));
+    functions[1] = ast_declaration_function(function_of("bar", bar_body));
     AstProgram ast = ast_program_create(functions, 2);
     IrProgram ir = emit_ir(&ast);
 
@@ -1146,8 +1146,8 @@ void test_emit_function_params() {
     const char* names[] = { "a", "b" };
     AstBlock body = {0};
     ast_block_append(&body, statement_item(ast_stmt_return(ast_exp_int(0))));
-    AstFunctionDeclaration* functions = malloc(sizeof(AstFunctionDeclaration));
-    functions[0] = function_with_params("foo", names, 2, body);
+    AstDeclaration* functions = malloc(sizeof(AstDeclaration));
+    functions[0] = ast_declaration_function(function_with_params("foo", names, 2, body));
     AstProgram ast = ast_program_create(functions, 1);
     IrProgram ir = emit_ir(&ast);
 
@@ -1166,12 +1166,12 @@ void test_emit_function_params_are_owned_copies() {
     const char* names[] = { "a" };
     AstBlock body = {0};
     ast_block_append(&body, statement_item(ast_stmt_return(ast_exp_int(0))));
-    AstFunctionDeclaration* functions = malloc(sizeof(AstFunctionDeclaration));
-    functions[0] = function_with_params("foo", names, 1, body);
+    AstDeclaration* functions = malloc(sizeof(AstDeclaration));
+    functions[0] = ast_declaration_function(function_with_params("foo", names, 1, body));
     AstProgram ast = ast_program_create(functions, 1);
     IrProgram ir = emit_ir(&ast);
 
-    assert(ir.items[0].params.items[0] != ast.items[0].params.items[0]);
+    assert(ir.items[0].params.items[0] != ast.items[0].as.function.params.items[0]);
     assert(strcmp(ir.items[0].params.items[0], "a") == 0);
 
     free_ir_program(&ir);

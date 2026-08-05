@@ -25,7 +25,7 @@ static AstBlockItem decl_item(const char* name, AstExp* initializer) {
     return (AstBlockItem){
         .kind = AST_DECLARATION,
         .as.declaration = ast_declaration_variable(
-            ast_variable_declaration(strdup(name), initializer)),
+            ast_variable_declaration(strdup(name), initializer, STORAGE_UNSPECIFIED)),
     };
 }
 
@@ -40,9 +40,9 @@ static AstBlockItem return_var(const char* name) {
 // Wrap a finished body block into a single-function program. ast_program_destroy
 // frees the functions array, so it must be heap-allocated.
 static AstProgram program_with_body(AstBlock body) {
-    AstFunctionDeclaration* functions = malloc(sizeof(AstFunctionDeclaration));
-    functions[0] = ast_function_declaration(strdup("main"), (AstParamList){0},
-                                            SOME(OptionalBlock, body));
+    AstDeclaration* functions = malloc(sizeof(AstDeclaration));
+    functions[0] = ast_declaration_function(ast_function_declaration(strdup("main"), (AstParamList){0},
+                                            SOME(OptionalBlock, body), STORAGE_UNSPECIFIED));
     return ast_program_create(functions, 1);
 }
 
@@ -58,45 +58,45 @@ static AstParamList params_of(const char* const* names) {
 // A single-function program `f(params) { body }` — the vehicle for exercising
 // parameter scoping. ast_program_destroy owns everything.
 static AstProgram function_with_params(AstParamList params, AstBlock body) {
-    AstFunctionDeclaration* functions = malloc(sizeof(AstFunctionDeclaration));
-    functions[0] = ast_function_declaration(strdup("f"), params,
-                                            SOME(OptionalBlock, body));
+    AstDeclaration* functions = malloc(sizeof(AstDeclaration));
+    functions[0] = ast_declaration_function(ast_function_declaration(strdup("f"), params,
+                                            SOME(OptionalBlock, body), STORAGE_UNSPECIFIED));
     return ast_program_create(functions, 1);
 }
 
 // The i-th parameter's (possibly renamed) name after resolution.
 static const char* param_name(AstProgram* prog, size_t index) {
-    return prog->items[0].params.items[index];
+    return prog->items[0].as.function.params.items[index];
 }
 
 // A function definition `name(params) { body }`.
 static AstFunctionDeclaration func_def(const char* name, AstParamList params, AstBlock body) {
-    return ast_function_declaration(strdup(name), params, SOME(OptionalBlock, body));
+    return ast_function_declaration(strdup(name), params, SOME(OptionalBlock, body), STORAGE_UNSPECIFIED);
 }
 
 // A bodyless prototype `f(params);`.
 static AstProgram program_prototype(AstParamList params) {
-    AstFunctionDeclaration* functions = malloc(sizeof(AstFunctionDeclaration));
-    functions[0] = ast_function_declaration(strdup("f"), params, NONE(OptionalBlock));
+    AstDeclaration* functions = malloc(sizeof(AstDeclaration));
+    functions[0] = ast_declaration_function(ast_function_declaration(strdup("f"), params, NONE(OptionalBlock), STORAGE_UNSPECIFIED));
     return ast_program_create(functions, 1);
 }
 
 // A program from `count` function declarations (copied into heap storage that
 // ast_program_destroy owns).
 static AstProgram program_of_functions(const AstFunctionDeclaration* functions, int count) {
-    AstFunctionDeclaration* heap = malloc(sizeof(AstFunctionDeclaration) * count);
-    for (int i = 0; i < count; i++) heap[i] = functions[i];
+    AstDeclaration* heap = malloc(sizeof(AstDeclaration) * count);
+    for (int i = 0; i < count; i++) heap[i] = ast_declaration_function(functions[i]);
     return ast_program_create(heap, count);
 }
 
 // The index-th top-level block item of function `fn`.
 static AstBlockItem* func_item(AstProgram* prog, size_t fn, size_t index) {
-    return &prog->items[fn].body.value.items[index];
+    return &prog->items[fn].as.function.body.value.items[index];
 }
 
 // Convenience accessors into `main`'s top-level body.
 static AstBlockItem* item(AstProgram* prog, size_t index) {
-    return &prog->items[0].body.value.items[index];
+    return &prog->items[0].as.function.body.value.items[index];
 }
 
 static const char* decl_name(AstProgram* prog, size_t index) {

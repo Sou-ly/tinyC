@@ -1,3 +1,6 @@
+// AUTOREAD TEST — written by Claude at 11:45:11. If you can see this line
+// without having pressed :e!, the checktime autocmds are working.
+
 #include "codegen.h"
 #include "../common/ice.h"
 #include <stdio.h>

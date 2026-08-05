@@ -32,7 +32,7 @@ static AstBlockItem decl_item(const char* name, AstExp* initializer) {
     return (AstBlockItem){
         .kind = AST_DECLARATION,
         .as.declaration = ast_declaration_variable(
-            ast_variable_declaration(strdup(name), initializer)),
+            ast_variable_declaration(strdup(name), initializer, STORAGE_UNSPECIFIED)),
     };
 }
 
@@ -58,12 +58,12 @@ static AstExp* call_with_ints(const char* name, int argc) {
 
 // A function definition `name(params) { body }`.
 static AstFunctionDeclaration func_def(const char* name, AstParamList params, AstBlock body) {
-    return ast_function_declaration(strdup(name), params, SOME(OptionalBlock, body));
+    return ast_function_declaration(strdup(name), params, SOME(OptionalBlock, body), STORAGE_UNSPECIFIED);
 }
 
 // A bodyless prototype `name(params);`.
 static AstFunctionDeclaration func_proto(const char* name, AstParamList params) {
-    return ast_function_declaration(strdup(name), params, NONE(OptionalBlock));
+    return ast_function_declaration(strdup(name), params, NONE(OptionalBlock), STORAGE_UNSPECIFIED);
 }
 
 // A body that is just `return <exp>;`.
@@ -76,8 +76,8 @@ static AstBlock body_return(AstExp* exp) {
 // A program from `count` function declarations (copied into heap storage that
 // ast_program_destroy owns).
 static AstProgram program_of_functions(const AstFunctionDeclaration* functions, int count) {
-    AstFunctionDeclaration* heap = malloc(sizeof(AstFunctionDeclaration) * count);
-    for (int i = 0; i < count; i++) heap[i] = functions[i];
+    AstDeclaration* heap = malloc(sizeof(AstDeclaration) * count);
+    for (int i = 0; i < count; i++) heap[i] = ast_declaration_function(functions[i]);
     return ast_program_create(heap, count);
 }
 

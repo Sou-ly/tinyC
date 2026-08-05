@@ -425,7 +425,11 @@ static IrFunction emit_ir_function(const AstFunctionDeclaration* ast_function) {
 IrProgram emit_ir(const AstProgram* ast_program) {
 	IrProgram ir_program = {0};
 	for (size_t i = 0; i < ast_program->count; i++) {
-		const AstFunctionDeclaration* function = &ast_program->items[i];
+		const AstDeclaration* decl = &ast_program->items[i];
+		// TODO: file-scope variables need static storage (.data/.bss) emission;
+		// until then only functions are lowered.
+		if (decl->kind != DECL_FUNC) continue;
+		const AstFunctionDeclaration* function = &decl->as.function;
 		if (!function->body.present) continue;	// prototype: nothing to lower
 		append_ir_function(&ir_program, emit_ir_function(function));
 	}

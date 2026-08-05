@@ -5,6 +5,14 @@
 #include "../common/list.h"
 #include "../common/optional.h"
 
+// --- Storage classes --
+
+typedef enum {
+	STORAGE_UNSPECIFIED,
+	STORAGE_STATIC,
+	STORAGE_EXTERN
+} AstStorageClass;
+
 // --- Expressions ---
 
 typedef enum {
@@ -118,12 +126,14 @@ typedef LIST_OF(char*) AstParamList;
 typedef struct AstVariableDeclaration {
 	char* identifier;
 	AstExp* init;			// nullable: `int x;` has no initializer
+	AstStorageClass storage_class;
 } AstVariableDeclaration;
 
 typedef struct AstFunctionDeclaration {
 	char* identifier;
 	AstParamList params;
 	OptionalBlock body;		// absent for a prototype, present for a definition
+	AstStorageClass storage_class;
 } AstFunctionDeclaration;
 
 typedef enum { DECL_FUNC, DECL_VAR } AstDeclarationKind;
@@ -138,8 +148,8 @@ typedef struct AstDeclaration {
 
 // Adopt identifier and the params/body/init given. Destroys free what the
 // declaration owns, not the node (declarations are stored by value).
-AstFunctionDeclaration ast_function_declaration(char* identifier, AstParamList params, OptionalBlock body);
-AstVariableDeclaration ast_variable_declaration(char* identifier, AstExp* init);
+AstFunctionDeclaration ast_function_declaration(char* identifier, AstParamList params, OptionalBlock body, AstStorageClass storage_class);
+AstVariableDeclaration ast_variable_declaration(char* identifier, AstExp* init, AstStorageClass storage_class);
 AstDeclaration ast_declaration_function(AstFunctionDeclaration function);
 AstDeclaration ast_declaration_variable(AstVariableDeclaration variable);
 void ast_function_declaration_destroy(AstFunctionDeclaration* declaration);
@@ -271,8 +281,10 @@ void ast_block_destroy(AstBlock* block);
 
 // --- Program ---
 
-typedef LIST_OF(AstFunctionDeclaration) AstProgram;
+// A translation unit is a list of file-scope declarations: functions and
+// variables both, in source order.
+typedef LIST_OF(AstDeclaration) AstProgram;
 
-// Adopts `functions` (a heap array of `num_functions`) as backing storage.
-AstProgram ast_program_create(AstFunctionDeclaration* functions, int num_functions);
+// Adopts `declarations` (a heap array of `num_declarations`) as backing storage.
+AstProgram ast_program_create(AstDeclaration* declarations, int num_declarations);
 void ast_program_destroy(AstProgram* program);

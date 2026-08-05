@@ -55,9 +55,9 @@ void test_create_x86_program() {
 static AstProgram make_stmt_program(AstStatement* stmt) {
     AstBlock body = {0};
     ast_block_append(&body, (AstBlockItem){ .kind = AST_STATEMENT, .as.statement = stmt });
-    AstFunctionDeclaration* functions = malloc(sizeof(AstFunctionDeclaration));
-    functions[0] = ast_function_declaration(strdup("main"), (AstParamList){0},
-                                            SOME(OptionalBlock, body));
+    AstDeclaration* functions = malloc(sizeof(AstDeclaration));
+    functions[0] = ast_declaration_function(ast_function_declaration(strdup("main"), (AstParamList){0},
+                                            SOME(OptionalBlock, body), STORAGE_UNSPECIFIED));
     return ast_program_create(functions, 1);
 }
 

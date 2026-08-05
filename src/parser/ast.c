@@ -62,12 +62,12 @@ AstExp* ast_exp_conditional(AstExp* lhs, AstExp* mid, AstExp* rhs) {
 
 // --- Declarations ---
 
-AstFunctionDeclaration ast_function_declaration(char* identifier, AstParamList params, OptionalBlock body) {
-	return (AstFunctionDeclaration){ .identifier = identifier, .params = params, .body = body };
+AstFunctionDeclaration ast_function_declaration(char* identifier, AstParamList params, OptionalBlock body, AstStorageClass storage_class) {
+	return (AstFunctionDeclaration){ .identifier = identifier, .params = params, .body = body, .storage_class = storage_class };
 }
 
-AstVariableDeclaration ast_variable_declaration(char* identifier, AstExp* init) {
-	return (AstVariableDeclaration){ .identifier = identifier, .init = init };
+AstVariableDeclaration ast_variable_declaration(char* identifier, AstExp* init, AstStorageClass storage_class) {
+	return (AstVariableDeclaration){ .identifier = identifier, .init = init, .storage_class = storage_class };
 }
 
 AstDeclaration ast_declaration_function(AstFunctionDeclaration function) {
@@ -308,13 +308,13 @@ void ast_stmt_destroy(AstStatement* stmt) {
 
 // --- Program ---
 
-AstProgram ast_program_create(AstFunctionDeclaration* functions, int num_functions) {
-	return (AstProgram){ .items = functions, .count = num_functions, .capacity = num_functions };
+AstProgram ast_program_create(AstDeclaration* declarations, int num_declarations) {
+	return (AstProgram){ .items = declarations, .count = num_declarations, .capacity = num_declarations };
 }
 
 void ast_program_destroy(AstProgram* program) {
     for (size_t i = 0; i < program->count; i++) {
-        ast_function_declaration_destroy(&program->items[i]);
+        ast_declaration_destroy(&program->items[i]);
     }
     list_free(program);
 }
