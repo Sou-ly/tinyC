@@ -1252,6 +1252,81 @@ void test_resolve_file_scope_variable_reference() {
     printf("  PASS: test_resolve_file_scope_variable_reference\n");
 }
 
+// A block-scope `extern` names the file-scope object, so identifier resolution
+// must leave it alone; a plain local of the same name is renamed as usual.
+// Contrast with test_resolve_local_is_renamed below.
+void test_resolve_block_extern_keeps_name() {
+    AstProgram prog = parse_src("int g = 5; int main(void) { extern int g; return g; }");
+    resolve_variables(&prog);
+    AstBlock* body = &prog.items[1].as.function.body.value;
+    // item 0 is the extern declaration, item 1 the return
+    assert(body->items[0].kind == AST_DECLARATION);
+    assert(strcmp(body->items[0].as.declaration.as.variable.identifier, "g") == 0);
+    AstExp* ret = body->items[1].as.statement->as.ret.exp;
+    assert(ret->kind == EXP_VAR);
+    assert(strcmp(ret->as.variable.identifier, "g") == 0);   // not g.0
+    ast_program_destroy(&prog);
+    printf("  PASS: test_resolve_block_extern_keeps_name\n");
+}
+
+// The counterpart: without `extern`, a block-scope declaration is renamed to a
+// program-unique name, so it shadows rather than aliases the global.
+void test_resolve_local_is_renamed() {
+    AstProgram prog = parse_src("int g = 5; int main(void) { int g = 1; return g; }");
+    resolve_variables(&prog);
+    AstBlock* body = &prog.items[1].as.function.body.value;
+    const char* local = body->items[0].as.declaration.as.variable.identifier;
+    assert(strcmp(local, "g") != 0);                          // renamed
+    AstExp* ret = body->items[1].as.statement->as.ret.exp;
+    assert(strcmp(ret->as.variable.identifier, local) == 0);  // and the use follows it
+    ast_program_destroy(&prog);
+    printf("  PASS: test_resolve_local_is_renamed\n");
+}
+
+// Two `extern` declarations of one name in a single block both refer to the
+// same external object, so they are compatible rather than a redeclaration.
+void test_resolve_repeated_extern_is_legal() {
+    AstProgram prog = parse_src("int g = 5; int main(void) { extern int g; extern int g; return g; }");
+    resolve_variables(&prog);   // must not exit
+    ast_program_destroy(&prog);
+    printf("  PASS: test_resolve_repeated_extern_is_legal\n");
+}
+
+// Like expect_parse_error, but for diagnostics raised by the resolution pass
+// rather than the parser: the program parses cleanly and resolve_variables is
+// what must reject it.
+static void expect_resolve_error(const char* description, const char* src) {
+    fflush(stdout);
+    pid_t pid = fork();
+    assert(pid >= 0);
+    if (pid == 0) {
+        freopen("/dev/null", "w", stderr);
+        AstProgram prog = parse_src(src);
+        resolve_variables(&prog);          // expected to exit(1) before returning
+        ast_program_destroy(&prog);
+        _exit(0);                          // reached only if it wrongly succeeded
+    }
+    int status = 0;
+    assert(waitpid(pid, &status, 0) == pid);
+    if (!(WIFEXITED(status) && WEXITSTATUS(status) != 0)) {
+        printf("  FAIL: %s (expected resolve error, none occurred)\n", description);
+        exit(1);
+    }
+    printf("  PASS: %s\n", description);
+}
+
+// The exemption needs BOTH halves — a previous entry with linkage AND an
+// `extern` on the new declaration. Each of the other three combinations in one
+// scope is a conflicting declaration.
+void test_resolve_conflicting_local_declarations() {
+    expect_resolve_error("local then local",
+                         "int main(void) { int x; int x; return 0; }");
+    expect_resolve_error("local then extern",
+                         "int main(void) { int x; extern int x; return 0; }");
+    expect_resolve_error("extern then local",
+                         "int g = 5; int main(void) { extern int g; int g; return g; }");
+}
+
 void test_parse_storage_errors() {
     // Two storage class specifiers on one declaration, in every combination.
     expect_parse_error("static static",  "static static int x;");
@@ -1423,6 +1498,10 @@ int main(void) {
     test_parse_storage_on_block_function();
     test_parse_storage_specifier_order();
     test_parse_file_scope_variables();
+    test_resolve_block_extern_keeps_name();
+    test_resolve_local_is_renamed();
+    test_resolve_repeated_extern_is_legal();
+    test_resolve_conflicting_local_declarations();
     test_resolve_file_scope_variable_reference();
     test_parse_storage_errors();
     printf("Running goto/label resolution tests...\n");

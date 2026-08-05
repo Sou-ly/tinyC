@@ -692,12 +692,11 @@ VarMap varmap_create(int capacity) {
 VarMap varmap_copy(VarMap map) {
 	VarMap copy = varmap_create(map.capacity);
 	for (int i = 0; i < map.size; i++) {
-		// entries inherited from an enclosing scope: a declaration with
-		// the same name in the new (inner) scope is shadowing, not a dup
 		copy.entries[i] = (VarMapEntry){
 			.key = strdup(map.entries[i].key),
 			.val = strdup(map.entries[i].val),
 			.is_cur_scope = false,
+			.has_linkage = map.entries[i].has_linkage,
 		};
 	}
 	copy.size = map.size;
@@ -789,20 +788,37 @@ static AstExp* resolve_expression(AstExp* exp, VarMap* map) {
 }
 
 static void resolve_declaration(AstVariableDeclaration* decl, VarMap* map) {
-	for (int i = 0; i < map->size; i++) {
-		if (map->entries[i].is_cur_scope &&
-				strcmp(map->entries[i].key, decl->identifier) == 0) {
-			fprintf(stderr, "error: duplicate variable declaration '%s'\n",
-					decl->identifier);
-			exit(1);
-		}
+	VarMapEntry* prev = varmap_get(map, decl->identifier);
+	if (prev && prev->is_cur_scope &&
+			!(prev->has_linkage && decl->storage_class == STORAGE_EXTERN)) {
+		fprintf(stderr, "error: conflicting local declaration of \"%s\"\n", decl->identifier);
+		exit(1);
 	}
-	char* unique = make_unique_name(decl->identifier);
-	varmap_put(map, (VarMapEntry) { .key=strdup(decl->identifier), .val=strdup(unique), .is_cur_scope=true });
 
+	if (decl->storage_class == STORAGE_EXTERN) {
+		// Refers to the file-scope object, so it keeps its source name rather
+		// than being renamed; recording linkage lets a second extern
+		// declaration in this scope pass the check above.
+		varmap_put(map, (VarMapEntry) { 
+				.key=strdup(decl->identifier), 
+				.val=strdup(decl->identifier), 
+				.is_cur_scope=true,
+			    .has_linkage=true
+		});
+		return;
+	}
+
+	char* unique = make_unique_name(decl->identifier);
+	varmap_put(map, (VarMapEntry) { 
+			.key=strdup(decl->identifier), 
+			.val=strdup(unique), 
+			.is_cur_scope=true,
+		    .has_linkage=false
+	});
+	
 	if (decl->init)
 		decl->init = resolve_expression(decl->init, map);
-
+	
 	free(decl->identifier);
 	decl->identifier = unique;
 }
@@ -977,7 +993,13 @@ void resolve_variables(AstProgram* program) {
 		char* name = decl->kind == DECL_FUNC ? decl->as.function.identifier
 		                                     : decl->as.variable.identifier;
 		if (varmap_get(&globals, name) == NULL)
-			varmap_put(&globals, (VarMapEntry){ .key=strdup(name), .val=strdup(name), .is_cur_scope=true });
+			// global variables have (external) linkage
+			varmap_put(&globals, (VarMapEntry){ 
+					.key=strdup(name), 
+					.val=strdup(name), 
+					.is_cur_scope=true,
+					.has_linkage=true	
+		});
 	}
 	for (size_t i = 0; i < program->count; i++) {
 		AstDeclaration* decl = &program->items[i];

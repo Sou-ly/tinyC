@@ -22,6 +22,7 @@ typedef struct {
     char* key;
     char* val;
 	bool is_cur_scope;
+	bool has_linkage;
 } VarMapEntry;
 
 typedef struct {
